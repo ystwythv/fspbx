@@ -4,6 +4,7 @@ namespace App\Http\Webhooks\Jobs;
 
 use App\Jobs\CreateVoicemailEscalationNotificationsJob;
 use App\Jobs\HandleVoicemailEscalationAttemptEventJob;
+use App\Jobs\SendIncomingCallPushJob;
 use App\Jobs\SendNewVoicemailNotificationByEmail;
 use App\Jobs\SendNewVoicemailNotificationBySms;
 use App\Jobs\TranscribeCdrJob;
@@ -83,6 +84,7 @@ class ProcessFreeswitchWebhookJob extends SpatieProcessWebhookJob
             // 'transcribe_call'            => 'transcriptions',
             'voicemail_created'          => 'voicemails',
             'vm_notify_attempt_event'    => 'voicemails',
+            'incoming_call'              => 'notifications',
             default                      => 'default',
         };
     }
@@ -125,6 +127,10 @@ class ProcessFreeswitchWebhookJob extends SpatieProcessWebhookJob
 
                     case 'vm_notify_attempt_event':
                         HandleVoicemailEscalationAttemptEventJob::dispatch($data)->onQueue('voicemails');
+                        break;
+
+                    case 'incoming_call':
+                        SendIncomingCallPushJob::dispatch($data);
                         break;
 
                     case 'transcribe_call':

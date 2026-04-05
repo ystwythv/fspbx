@@ -1086,6 +1086,28 @@ public function store(StoreExtensionRequest $request)
     }
 
 
+    /**
+     * Update APNs VoIP push token for an extension.
+     */
+    public function updatePushToken(Request $request, $extension_uuid)
+    {
+        try {
+            $request->validate(['token' => 'required|string']);
+
+            $extension = Extensions::whereKey($extension_uuid)->firstOrFail();
+            $extension->apns_voip_token = $request->input('token');
+            $extension->save();
+
+            return response()->json(['success' => true]);
+        } catch (\Throwable $e) {
+            logger('ExtensionsController@updatePushToken error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'errors' => ['error' => [$e->getMessage()]],
+            ], 500);
+        }
+    }
+
     public function devices(Request $request, $extension_uuid)
     {
 
