@@ -16,7 +16,7 @@ use Symfony\Component\Process\Process;
 use Symfony\Component\Process\Exception\ProcessFailedException;
 use Illuminate\Support\Facades\File;
 
-class VoxraInitialDBSeed extends Command
+class FSPBXInitialDBSeed extends Command
 {
     protected $signature = 'fspbx:initial-seed';
     protected $description = 'Seed DB after initial Voxra installation';

@@ -11,7 +11,7 @@ use App\Models\Groups;
 use App\Models\DefaultSettings;
 use App\Models\MenuLanguage;
 
-class CreateVoxraMenu extends Command
+class CreateFSPBXMenu extends Command
 {
     /**
      * The name and signature of the console command.
