@@ -1,5 +1,5 @@
 
-# FS PBX
+# Voxra
 
 ## Overview
 
@@ -62,7 +62,7 @@ Before you begin, ensure you have met the following requirements:
 
     Follow the steps in this article to configure your custom domain.
    
-    [How to Secure FS PBX with a Let’s Encrypt SSL Certificate](https://github.com/nemerald-voip/fspbx/wiki/How-to-Secure-FS-PBX-with-a-Let%E2%80%99s-Encrypt-SSL-Certificate)
+    [How to Secure Voxra with a Let’s Encrypt SSL Certificate](https://github.com/nemerald-voip/fspbx/wiki/How-to-Secure-FS-PBX-with-a-Let%E2%80%99s-Encrypt-SSL-Certificate)
 
 3. **Troubleshooting Error 419 (Page Expired)**
 

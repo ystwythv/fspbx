@@ -8,7 +8,7 @@ sidebar_position: 3
 Voicemail Presence Button
 =================
 
-FS PBX includes a feature that lets users monitor team voicemails using a BLF key. 
+Voxra includes a feature that lets users monitor team voicemails using a BLF key. 
 
 ### What the BLF shows
 
@@ -38,7 +38,7 @@ This creates a SIP subscription to:
 
 `sip:vm100@yourdomain.com`
 
-FS PBX then sends real-time presence updates indicating whether there are new voicmeails left at this extension.
+Voxra then sends real-time presence updates indicating whether there are new voicmeails left at this extension.
 
 * * * * *
 
@@ -56,7 +56,7 @@ Add or un-comment:
 
     <!-- YOUR EXISTING CONFIG -->
 
-    <!-- FS PBX: Voicemail BLF daemon -->
+    <!-- Voxra: Voicemail BLF daemon -->
     <param name="startup-script" value="lua/vm_blf.lua"/>
   </settings>
 </configuration>

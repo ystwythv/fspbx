@@ -7,21 +7,21 @@ sidebar_position: 1
 
 # Configure Email‐to‐Fax with Mailgun
 
-FS PBX offers a modern, resource-efficient Email-to-Fax solution by directly integrating with Mailgun inbound email webhooks. This method eliminates IMAP polling and ensures faxes are processed instantly.
+Voxra offers a modern, resource-efficient Email-to-Fax solution by directly integrating with Mailgun inbound email webhooks. This method eliminates IMAP polling and ensures faxes are processed instantly.
 
 * * * * *
 
 **Overview**
 ------------
 
-With FS PBX, you can send faxes simply by emailing your documents to a special address. Mailgun receives the email, then securely relays it to your FS PBX instance for fax delivery. This guide explains how to configure both FS PBX and Mailgun, and outlines the required email format.
+With Voxra, you can send faxes simply by emailing your documents to a special address. Mailgun receives the email, then securely relays it to your Voxra instance for fax delivery. This guide explains how to configure both Voxra and Mailgun, and outlines the required email format.
 
 * * * * *
 
 **1\. Prerequisites**
 ---------------------
 
--   **FS PBX** v0.9.59 or newer
+-   **Voxra** v0.9.59 or newer
 
 -   **A working Mailgun account** with a verified inbound domain
 
@@ -96,9 +96,9 @@ You may attach any of the following file types:
 **5\. How it Works**
 --------------------
 
--   Mailgun receives your inbound email and immediately POSTs it to your FS PBX `/webhook/mailgun` endpoint.
+-   Mailgun receives your inbound email and immediately POSTs it to your Voxra `/webhook/mailgun` endpoint.
 
--   FS PBX parses the email, extracts the fax destination, sender information, and attached files.
+-   Voxra parses the email, extracts the fax destination, sender information, and attached files.
 
 -   The system queues the fax and sends a **confirmation or rejection email** to the original sender.
 
@@ -136,11 +136,11 @@ You may attach any of the following file types:
 **8\. Confirmation & Delivery Reports**
 ---------------------------------------
 
-After submission, FS PBX will reply with a confirmation or rejection notice to the sender's email address.
+After submission, Voxra will reply with a confirmation or rejection notice to the sender's email address.
 
 * * * * *
 
 **Questions?**
 --------------
 
-If you need help, please open an issue or contact the FS PBX support team.
+If you need help, please open an issue or contact the Voxra support team.

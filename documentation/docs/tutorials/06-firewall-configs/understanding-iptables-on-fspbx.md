@@ -1,7 +1,7 @@
-# Understanding IPTables on FSPBX  
+# Understanding IPTables on Voxra  
 ## Example: Allow SNMP (UDP 161) from a Single Source IP
 
-This document describes how to modify **FSPBX** firewall rules using the
+This document describes how to modify **Voxra** firewall rules using the
 `iptables-save` / `iptables-restore` method to allow **SNMP (UDP port 161)**
 *only* from a specific source IP.
 
@@ -136,4 +136,4 @@ iptables-restore < /root/iptables.backup.<timestamp>
 
 ## Change Log
 
-- Added restricted SNMP (UDP 161) access for FSPBX
+- Added restricted SNMP (UDP 161) access for Voxra

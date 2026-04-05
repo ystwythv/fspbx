@@ -8,7 +8,7 @@ sidebar_position: 2
 Voicemail SMS Notifications
 =================
 
-FS PBX can automatically send an SMS notification each time a new voicemail is received.
+Voxra can automatically send an SMS notification each time a new voicemail is received.
 Notifications can include caller details, timestamps, message length, transcription, and optionally the voicemail audio file as an attachment.
 
 
@@ -71,4 +71,4 @@ Navigate to **Default Settings** → **Voicemail** and update or set the followi
 You're All Set!
 ---------------
 
-Once configured, FS PBX will automatically send SMS notifications --- and optionally voicemail transcriptions --- to users whenever they receive a new voicemail, using your selected SMS provider and notification template.
+Once configured, Voxra will automatically send SMS notifications --- and optionally voicemail transcriptions --- to users whenever they receive a new voicemail, using your selected SMS provider and notification template.

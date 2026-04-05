@@ -8,7 +8,7 @@ sidebar_position: 3
 # Bi-Directional PostgreSQL Logical Replication
 
 
-This script configures **logical replication** in both directions between two FS PBX nodes. It also bootstraps the remote schema and sets up publications/subscriptions.
+This script configures **logical replication** in both directions between two Voxra nodes. It also bootstraps the remote schema and sets up publications/subscriptions.
 
 > Works well when servers talk via **external or internal IPs**, and assumes **SSH keys are already exchanged both ways**.
 

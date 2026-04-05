@@ -9,7 +9,7 @@ sidebar_position: 1
 
 ### Overview
 
-The `create:superadmin` Artisan command allows administrators to create a new Superadmin user or reset the password of an existing Superadmin in the FS PBX system. This command ensures that the Superadmin is assigned to the appropriate domain and has the necessary permissions.
+The `create:superadmin` Artisan command allows administrators to create a new Superadmin user or reset the password of an existing Superadmin in the Voxra system. This command ensures that the Superadmin is assigned to the appropriate domain and has the necessary permissions.
 
 ### Usage
 
@@ -23,9 +23,9 @@ This command will prompt the user to enter an email address for the Superadmin a
 
 1. **Access the server**
 
-   * Ensure you have SSH or direct terminal access to the FS PBX server.
+   * Ensure you have SSH or direct terminal access to the Voxra server.
 
-2. **Navigate to the FS PBX application directory**
+2. **Navigate to the Voxra application directory**
 
    * Example:
 
@@ -60,7 +60,7 @@ This command will prompt the user to enter an email address for the Superadmin a
 After successful execution, the terminal will display:
 
 ```
-✅ FS PBX Superadmin Created Successfully!
+✅ Voxra Superadmin Created Successfully!
 =======================================
 🔗 Login URL: https://your-pbx-domain.com
 👤 Email: admin@example.com

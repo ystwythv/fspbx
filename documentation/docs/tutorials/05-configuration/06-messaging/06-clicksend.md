@@ -2,14 +2,14 @@
 id: clicksend
 title: ClickSend SMS Provider Configuration
 slug: /configuration/messaging/clicksend
-description: Configure ClickSend for SMS and MMS in FS PBX.
+description: Configure ClickSend for SMS and MMS in Voxra.
 sidebar_position: 6
 ---
 
 ClickSend SMS Provider Configuration
 ====================================
 
-FS PBX provides two-way SMS and MMS support via **ClickSend**. This guide explains how to:
+Voxra provides two-way SMS and MMS support via **ClickSend**. This guide explains how to:
 
 -   Add ClickSend credentials to your `.env`
 
@@ -61,7 +61,7 @@ Copy:
 
 -   The **API Key** → `CLICKSEND_API_KEY`
 
-These will be used for **outbound** SMS requests from FS PBX.
+These will be used for **outbound** SMS requests from Voxra.
 
 * * * * *
 
@@ -72,14 +72,14 @@ After updating `.env`, reload Laravel's configuration cache:
 
 `php artisan config:cache`
 
-If you skip this, FS PBX will continue using old values and ClickSend may not work correctly.
+If you skip this, Voxra will continue using old values and ClickSend may not work correctly.
 
 * * * * *
 
 4\. Webhook Setup for Inbound SMS
 ------------------------------------------------------------
 
-To enable **inbound** SMS via ClickSend, configure a webhook to send messages to FS PBX.
+To enable **inbound** SMS via ClickSend, configure a webhook to send messages to Voxra.
 
 In ClickSend:
 
@@ -91,7 +91,7 @@ In ClickSend:
 
 When ClickSend posts an inbound message:
 
--   FS PBX receives the payload at `/webhook/clicksend/sms`
+-   Voxra receives the payload at `/webhook/clicksend/sms`
 
 -   If it matches, the message is accepted and routed to the correct extension
 
@@ -99,7 +99,7 @@ When ClickSend posts an inbound message:
 
 ## 5. MMS Support
 
-If your Apidaze number supports MMS, FS PBX can also process media attachments sent through the same messaging flow.
+If your Apidaze number supports MMS, Voxra can also process media attachments sent through the same messaging flow.
 
 To use MMS media storage, S3-compatible storage must already be configured in your system. See the [S3 Configuration for Messages](/docs/configuration/messaging/s3-config-for-messages/) guide.
 
@@ -111,12 +111,12 @@ This allows users to:
 
 ---
 
-6\. Enable ClickSend on a Phone Number in FS PBX
+6\. Enable ClickSend on a Phone Number in Voxra
 ------------------------------------------------
 
 Once credentials and (optionally) webhooks are configured:
 
-1.  Go to **Advanced → Message Settings** in FS PBX.
+1.  Go to **Advanced → Message Settings** in Voxra.
 
 2.  Add or edit a phone number.
 
@@ -124,15 +124,15 @@ Once credentials and (optionally) webhooks are configured:
 
 4.  Assign:
 
-    -   An **extension** → inbound SMS will appear in the FS PBX mobile app for that user.
+    -   An **extension** → inbound SMS will appear in the Voxra mobile app for that user.
 
     -   Optionally an **email address** → for read-only email notifications.
 
 Then:
 
--   Inbound SMS → ClickSend → FS PBX → Extension's Mobile App
+-   Inbound SMS → ClickSend → Voxra → Extension's Mobile App
 
--   Replies from the app → FS PBX (using `CLICKSEND_USERNAME` + `CLICKSEND_API_KEY`) → ClickSend → Original sender
+-   Replies from the app → Voxra (using `CLICKSEND_USERNAME` + `CLICKSEND_API_KEY`) → ClickSend → Original sender
 
 * * * * *
 

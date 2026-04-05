@@ -1,6 +1,6 @@
-# 📡 FS PBX API v1 Availability & Overview
+# 📡 Voxra API v1 Availability & Overview
 
-FS PBX provides a modern, RESTful API (v1) that enables programmatic access to core PBX resources such as domains, extensions, and voicemails. This API is designed for developers, integrators, and service providers who want to automate provisioning, integrate external systems, or build custom dashboards on top of FS PBX.
+Voxra provides a modern, RESTful API (v1) that enables programmatic access to core PBX resources such as domains, extensions, and voicemails. This API is designed for developers, integrators, and service providers who want to automate provisioning, integrate external systems, or build custom dashboards on top of Voxra.
 <!-- truncate -->
 
 Official documentation:  
@@ -16,7 +16,7 @@ https://www.fspbx.com/docs/api/v1/fs-pbx-api/
 - **Format:** JSON (request & response)  
 - **Authentication:** Bearer token (API key)
 
-The API is part of the standard FS PBX platform and is intended for production use. All endpoints are exposed securely over HTTPS; non-TLS requests are rejected.
+The API is part of the standard Voxra platform and is intended for production use. All endpoints are exposed securely over HTTPS; non-TLS requests are rejected.
 
 ---
 
@@ -38,9 +38,9 @@ https://pbx.example.com/api/v1/domains
 
 ## 🔐 Authentication
 
-FS PBX API v1 uses **Bearer token authentication**.
+Voxra API v1 uses **Bearer token authentication**.
 
-- API tokens are generated within the FS PBX web UI (Users section).
+- API tokens are generated within the Voxra web UI (Users section).
 - Each request must include an `Authorization` header.
 
 Example:
@@ -55,7 +55,7 @@ Authorization: Bearer YOUR_API_TOKEN
 
 ## 🛠 API Design & Behavior
 
-The FS PBX API follows standard REST conventions:
+The Voxra API follows standard REST conventions:
 
 - **HTTP verbs:** `GET`, `POST`, `PUT`, `DELETE`
 - **Predictable, resource-based URLs**
@@ -89,7 +89,7 @@ Each resource is exposed using consistent REST patterns for listing, querying, a
 
 ## 💡 Typical Use Cases
 
-The FS PBX API v1 enables a wide range of integrations, including:
+The Voxra API v1 enables a wide range of integrations, including:
 
 - Automated provisioning of domains and extensions
 - Integration with billing, CRM, or OSS/BSS systems

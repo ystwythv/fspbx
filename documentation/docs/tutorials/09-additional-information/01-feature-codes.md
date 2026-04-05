@@ -6,7 +6,7 @@ sidebar_position: 1
 ---
 
 # Feature Codes
-Below are the “*” codes used with FS PBX. You can also create more as needed. If you do be sure to pick ones that are not currently in use.
+Below are the “*” codes used with Voxra. You can also create more as needed. If you do be sure to pick ones that are not currently in use.
 
 ## Basic
 

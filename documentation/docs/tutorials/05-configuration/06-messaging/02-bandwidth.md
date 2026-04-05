@@ -2,14 +2,14 @@
 id: bandwidth
 title: Bandwidth SMS Provider Configuration
 slug: /configuration/messaging/bandwidth
-description: Configure Bandwidth for SMS and MMS in FS PBX.
+description: Configure Bandwidth for SMS and MMS in Voxra.
 sidebar_position: 2
 ---
 
 Bandwidth SMS Provider Configuration
 ====================================
 
-FS PBX provides two-way SMS and MMS support through **Bandwidth**, including inbound message delivery and outbound replies from the mobile app. This guide explains how to configure Bandwidth credentials, enable SMS, and set up the required webhook endpoint.
+Voxra provides two-way SMS and MMS support through **Bandwidth**, including inbound message delivery and outbound replies from the mobile app. This guide explains how to configure Bandwidth credentials, enable SMS, and set up the required webhook endpoint.
 
 
 * * * * *
@@ -46,7 +46,7 @@ After updating your `.env`, you **must** refresh Laravel's configuration cache:
 
 `php artisan config:cache`
 
-Skipping this step will cause FS PBX to continue using outdated configuration values.
+Skipping this step will cause Voxra to continue using outdated configuration values.
 
 * * * * *
 
@@ -54,7 +54,7 @@ Skipping this step will cause FS PBX to continue using outdated configuration va
 ----------------------------
 
 Bandwidth delivers inbound SMS through webhooks.\
-To ensure FS PBX processes inbound messages correctly, **all Bandwidth message webhooks must be pointed to**:
+To ensure Voxra processes inbound messages correctly, **all Bandwidth message webhooks must be pointed to**:
 
 `https://your-domain/webhook/bandwidth/sms`
 
@@ -74,7 +74,7 @@ Ensure the URL is publicly accessible.
 
 * * * * *
 
-4\. Enable SMS for Your Phone Numbers in FS PBX
+4\. Enable SMS for Your Phone Numbers in Voxra
 -----------------------------------------------
 
 Once Bandwidth credentials and webhooks are configured:
@@ -93,7 +93,7 @@ Inbound SMS will now be:
 
 -   Received by Bandwidth
 
--   Posted to the FS PBX webhook
+-   Posted to the Voxra webhook
 
 -   Delivered to the extension's mobile app
 
@@ -101,7 +101,7 @@ Inbound SMS will now be:
 
 ## 5. MMS Support
 
-If your Apidaze number supports MMS, FS PBX can also process media attachments sent through the same messaging flow.
+If your Apidaze number supports MMS, Voxra can also process media attachments sent through the same messaging flow.
 
 To use MMS media storage, S3-compatible storage must already be configured in your system. See the [S3 Configuration for Messages](/docs/configuration/messaging/s3-config-for-messages/) guide.
 
@@ -116,7 +116,7 @@ This allows users to:
 Summary
 -------
 
-To fully enable Bandwidth SMS in FS PBX:
+To fully enable Bandwidth SMS in Voxra:
 
 1.  Add API credentials to `.env`
 

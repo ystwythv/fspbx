@@ -158,15 +158,15 @@ INTRO,
 
         'overrides' => [
             'info.version' => 'v1',
-            'info.title' => 'FS PBX API',
+            'info.title' => 'Voxra API',
             'servers' => [
                 [
                     'url' => 'https://{host}',
-                    'description' => 'FS PBX API server',
+                    'description' => 'Voxra API server',
                     'variables' => [
                         'host' => [
-                            'default' => 'YOUR-FSPBX-HOST',
-                            'description' => 'Hostname where FS PBX is running (example: fspbx.your-domain.net)',
+                            'default' => 'YOUR-Voxra-HOST',
+                            'description' => 'Hostname where Voxra is running (example: voxra.your-domain.net)',
                         ],
                     ],
                 ],

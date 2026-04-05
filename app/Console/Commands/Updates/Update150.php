@@ -13,7 +13,7 @@ class Update150
 
     public function apply()
     {
-        echo "== FS PBX: Reverb setup ==\n";
+        echo "== Voxra: Reverb setup ==\n";
 
         $this->upgradePhpIfNeeded();
 
@@ -209,7 +209,7 @@ class Update150
             $conf = @file_get_contents($path);
             if (!$conf) continue;
 
-            // Must match FS PBX public root
+            // Must match Voxra public root
             $hasRoot = str_contains($conf, 'root /var/www/fspbx/public');
             if (!$hasRoot) continue;
 
@@ -271,7 +271,7 @@ class Update150
 
     private function applyEnvUpdates(string $env, array $updates): string
     {
-        $blockHeader = "\n\n### FS PBX - Laravel Reverb\n";
+        $blockHeader = "\n\n### Voxra - Laravel Reverb\n";
         $append = '';
 
         foreach ($updates as $key => $value) {

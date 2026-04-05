@@ -2,13 +2,13 @@
 id: apidaze
 title: Apidaze SMS Provider Configuration
 slug: /configuration/messaging/apidaze
-description: Configure Apidaze for SMS and MMS in FS PBX.
+description: Configure Apidaze for SMS and MMS in Voxra.
 sidebar_position: 7
 ---
 
 # Apidaze SMS Provider Configuration
 
-FS PBX provides two-way SMS and MMS support via **Apidaze**, including inbound message handling, outbound delivery, and provider authentication. This guide explains how to configure your Apidaze credentials and enable messaging routing to extensions.
+Voxra provides two-way SMS and MMS support via **Apidaze**, including inbound message handling, outbound delivery, and provider authentication. This guide explains how to configure your Apidaze credentials and enable messaging routing to extensions.
 
 ---
 
@@ -36,15 +36,15 @@ After updating your `.env` file, run:
 php artisan config:cache
 ```
 
-This ensures FS PBX loads the updated provider settings.
+This ensures Voxra loads the updated provider settings.
 
 ---
 
 ## 3. Webhook Setup
 
-Apidaze delivers inbound SMS and MMS messages to FS PBX through a webhook.
+Apidaze delivers inbound SMS and MMS messages to Voxra through a webhook.
 
-To ensure FS PBX receives and processes incoming messages, configure your Apidaze webhook URL as:
+To ensure Voxra receives and processes incoming messages, configure your Apidaze webhook URL as:
 
 ```text
 https://your-domain/webhook/apidaze/sms
@@ -66,7 +66,7 @@ https://your-domain/webhook/apidaze/sms
 
 ---
 
-## 4. Enable SMS on a Phone Number in FS PBX
+## 4. Enable SMS on a Phone Number in Voxra
 
 After credentials and webhook configuration are complete:
 
@@ -78,14 +78,14 @@ After credentials and webhook configuration are complete:
 
 When configured:
 
-* Inbound SMS/MMS → Apidaze → FS PBX → Extension’s Mobile App
-* Replies → FS PBX → Apidaze → Original Sender
+* Inbound SMS/MMS → Apidaze → Voxra → Extension’s Mobile App
+* Replies → Voxra → Apidaze → Original Sender
 
 ---
 
 ## 5. MMS Support
 
-If your Apidaze number supports MMS, FS PBX can also process media attachments sent through the same messaging flow.
+If your Apidaze number supports MMS, Voxra can also process media attachments sent through the same messaging flow.
 
 To use MMS media storage, S3-compatible storage must already be configured in your system. See the [S3 Configuration for Messages](/docs/configuration/messaging/s3-config-for-messages/) guide.
 
@@ -109,4 +109,4 @@ To complete Apidaze messaging integration:
 3. Configure the Apidaze webhook to `/webhook/apidaze/sms`
 4. Enable messaging for the number in **Message Settings**
 
-Your Apidaze numbers are now ready for two-way SMS and MMS in FS PBX.
+Your Apidaze numbers are now ready for two-way SMS and MMS in Voxra.

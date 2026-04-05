@@ -1,6 +1,6 @@
 ---
 id: ha-overview
-title: Primary–Standby FS PBX Architecture
+title: Primary–Standby Voxra Architecture
 slug: /ha/overview
 sidebar_position: 1
 ---
@@ -8,9 +8,9 @@ sidebar_position: 1
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# Primary–Standby FS PBX (HA) — Overview
+# Primary–Standby Voxra (HA) — Overview
 
-This guide covers a **two-node Primary–Standby** design for FS PBX with:
+This guide covers a **two-node Primary–Standby** design for Voxra with:
 
 - **Database**: PostgreSQL logical replication (bi-directional)
 - **Files**: Syncthing folder replication (bi-directional)
@@ -44,7 +44,7 @@ You can update the floating record using:
 
 ## Prerequisites
 
-- Both servers with FS PBX installed.
+- Both servers with Voxra installed.
 - **SSH key-based auth** configured **both directions** (A⇄B).
 - Open firewall: TCP 22 (SSH), TCP 5432 (Postgres between peers).
 - External or internal IPs are fine; as long as servers are able to communicate.
@@ -53,7 +53,7 @@ You can update the floating record using:
 
 1. **Prepare DNS** records for `server1`, `server2`, and `pbx`.
 2. Set up **Postgres replication** (bi-directional). See: [Bi-Directional PostgreSQL Setup](tutorials/07-ha/postgres-replication.md).
-3. Set up **Syncthing** with the FS PBX folders. See: [Syncthing File Replication](tutorials/07-ha/syncthing.md).
+3. Set up **Syncthing** with the Voxra folders. See: [Syncthing File Replication](tutorials/07-ha/syncthing.md).
 4. Point your **floating DNS** (`pbx.example.com`) at the active node.
 5. (Optional) Automate failover with a health probe + provider API.
 
@@ -75,5 +75,5 @@ You can update the floating record using:
 
 ## Operational Notes
 
-- Apply FS PBX updates on the **primary first**, verify, then the standby.
+- Apply Voxra updates on the **primary first**, verify, then the standby.
 - For emergency failover: update floating DNS → verify registrations → monitor calls.

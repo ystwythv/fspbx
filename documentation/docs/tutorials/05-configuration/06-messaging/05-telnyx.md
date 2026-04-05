@@ -2,14 +2,14 @@
 id: telnyx
 title: Telnyx SMS Provider Configuration
 slug: /configuration/messaging/telnyx
-description: Configure Telnyx for SMS and MMS in FS PBX.
+description: Configure Telnyx for SMS and MMS in Voxra.
 sidebar_position: 5
 ---
 
 Telnyx SMS Provider Configuration
 =================================
 
-FS PBX provides two-way SMS and MMS support via **Telnyx**, including inbound message handling, outbound delivery, and webhook signature verification for security. This guide explains how to configure your Telnyx credentials and enable SMS routing to extensions.
+Voxra provides two-way SMS and MMS support via **Telnyx**, including inbound message handling, outbound delivery, and webhook signature verification for security. This guide explains how to configure your Telnyx credentials and enable SMS routing to extensions.
 
 * * * * *
 
@@ -40,7 +40,7 @@ After updating your `.env` file, run:
 
 `php artisan config:cache`
 
-This is required for FS PBX to load updated provider settings.
+This is required for Voxra to load updated provider settings.
 
 * * * * *
 
@@ -48,7 +48,7 @@ This is required for FS PBX to load updated provider settings.
 ----------------------------
 
 Telnyx delivers inbound SMS messages and status events through webhooks.\
-To ensure FS PBX receives and processes incoming messages, set the webhook URL in your Telnyx Messaging Profile to:
+To ensure Voxra receives and processes incoming messages, set the webhook URL in your Telnyx Messaging Profile to:
 
 `https://your-domain/webhook/telnyx/sms`
 
@@ -70,7 +70,7 @@ To ensure FS PBX receives and processes incoming messages, set the webhook URL i
 
 ### Webhook Signature Validation
 
-FS PBX will validate incoming Telnyx webhook signatures using the `TELNYX_PUBLIC_KEY` you entered in the `.env`.
+Voxra will validate incoming Telnyx webhook signatures using the `TELNYX_PUBLIC_KEY` you entered in the `.env`.
 
 -   If the signature is invalid
 
@@ -78,13 +78,13 @@ FS PBX will validate incoming Telnyx webhook signatures using the `TELNYX_PUBLIC
 
 -   Or if the signature header is missing
 
-...FS PBX will reject the request automatically.
+...Voxra will reject the request automatically.
 
 This helps ensure **only authentic requests from Telnyx** are processed.
 
 * * * * *
 
-4\. Enable SMS on a Phone Number in FS PBX
+4\. Enable SMS on a Phone Number in Voxra
 ------------------------------------------
 
 After credentials and webhook configuration are complete:
@@ -101,15 +101,15 @@ After credentials and webhook configuration are complete:
 
 When configured:
 
--   Inbound SMS → Telnyx → FS PBX → Extension's Mobile App
+-   Inbound SMS → Telnyx → Voxra → Extension's Mobile App
 
--   Replies → FS PBX → Telnyx → Original Sender
+-   Replies → Voxra → Telnyx → Original Sender
 
 * * * * *
 
 ## 5. MMS Support
 
-If your Apidaze number supports MMS, FS PBX can also process media attachments sent through the same messaging flow.
+If your Apidaze number supports MMS, Voxra can also process media attachments sent through the same messaging flow.
 
 To use MMS media storage, S3-compatible storage must already be configured in your system. See the [S3 Configuration for Messages](/docs/configuration/messaging/s3-config-for-messages/) guide.
 

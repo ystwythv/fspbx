@@ -7,15 +7,15 @@ sidebar_position: 4
 
 # Devices
 
-In FS PBX, **Devices** are primarily used for **auto-provisioning**—that is, generating and delivering phone configuration files so supported phones can “plug in and just work.”
+In Voxra, **Devices** are primarily used for **auto-provisioning**—that is, generating and delivering phone configuration files so supported phones can “plug in and just work.”
 
 This section is **not** a live view of what’s currently connected to the PBX.
 
 ---
 
-## What a “Device” means in FS PBX
+## What a “Device” means in Voxra
 
-A **Device** is a record that describes a physical phone (or endpoint) so FS PBX can:
+A **Device** is a record that describes a physical phone (or endpoint) so Voxra can:
 
 * Identify it (usually by **MAC address**)
 * Apply the right **vendor/model template**
@@ -23,7 +23,7 @@ A **Device** is a record that describes a physical phone (or endpoint) so FS PBX
 * Assign one or more **lines** (extensions) to it
 * Keep provisioning consistent after changes (passwords, line keys, BLFs, etc.)
 
-Think of it as: **“How FS PBX builds configuration for a phone,”** not “which phones are online right now.”
+Think of it as: **“How Voxra builds configuration for a phone,”** not “which phones are online right now.”
 
 ---
 

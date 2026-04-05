@@ -7,7 +7,7 @@ sidebar_position: 1
 
 # Voicemail Email Notifications
 
-FS PBX can automatically send an email notification each time a new voicemail is received.\
+Voxra can automatically send an email notification each time a new voicemail is received.\
 Notifications can include caller details, timestamps, message length, transcription, and optionally the voicemail audio file as an attachment.
 
 * * * * *
@@ -15,11 +15,11 @@ Notifications can include caller details, timestamps, message length, transcript
 🧩 Overview
 -----------
 
-When a caller leaves a voicemail, FS PBX can immediately notify the mailbox owner by email.\
+When a caller leaves a voicemail, Voxra can immediately notify the mailbox owner by email.\
 This makes it easy for users to stay informed --- even when they're away from their desk phone or softphone.
 
-By default, **new FS PBX installations** already use the correct background job system to handle these notifications.\
-If you upgraded from FusionPBX or an older FS PBX version, you may need to **update one setting** (explained below).
+By default, **new Voxra installations** already use the correct background job system to handle these notifications.\
+If you upgraded from FusionPBX or an older Voxra version, you may need to **update one setting** (explained below).
 
 * * * * *
 
@@ -59,7 +59,7 @@ Click **Save** when done.
 ------------------------------------------
 
 Voicemail delivery is handled by the job queue system.\
-FS PBX supports two queue strategies: **legacy** and **modern**.
+Voxra supports two queue strategies: **legacy** and **modern**.
 
 -   ✅ **Modern** (recommended) -- Uses Laravel queues for asynchronous and reliable delivery
 
@@ -76,7 +76,7 @@ If your system was upgraded from FusionPBX, verify the following setting:
 4.  If not, edit the setting, save, and navigate to **Status -> SIP Status** and click on **Flush cache**.
 
 > 💡 **Note:**\
-> All new FS PBX installations already use `modern` by default.\
+> All new Voxra installations already use `modern` by default.\
 > Only older systems may still show `legacy`.
 
 * * * * *
@@ -121,4 +121,4 @@ You have now:
 
 -   Ensured your voicemail queue strategy is set to **modern**
 
-With these settings in place, FS PBX will automatically email users whenever a new voicemail arrives --- ensuring no important message is missed.
+With these settings in place, Voxra will automatically email users whenever a new voicemail arrives --- ensuring no important message is missed.

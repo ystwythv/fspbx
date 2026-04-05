@@ -86,7 +86,7 @@ class Update110
     }
 
     /**
-     * Run the artisan command to update the FS PBX menu.
+     * Run the artisan command to update the Voxra menu.
      *
      * @return int Exit code of the Artisan call
      */
@@ -175,7 +175,7 @@ protected function disableLegacyCron(): void
 
         // Comment out any line containing xml_cdr_import.php
         if (stripos($line, 'xml_cdr_import.php') !== false) {
-            $out[] = '# DISABLED BY FS PBX UPDATE 1.10 — ' . $line;
+            $out[] = '# DISABLED BY Voxra UPDATE 1.10 — ' . $line;
             $changed = true;
             continue;
         }

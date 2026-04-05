@@ -16,14 +16,14 @@ At the time of writing this, the development was fairly active, and offers a Dis
 ### Prerequisites 
 
 ### Servers
-- 2 vCPU/4G of ram/50G of space - FS PBX
+- 2 vCPU/4G of ram/50G of space - Voxra
 - 2 vCPU/8G of ram/50G of space - FreePBX & Asterisk AI
 
 FreePBX, Asterisk AI, and Ollama can operate off of the same system.  If you choose to locally host your LLM or have a machine that handles Ollama (current support) you will have the option in the configuration on which IP to communicate with Ollama's API.
 
 ### Demonstration
 
-In our demonstration we will be setting up Asterisk AI to host two contexts, with appropriate settings in FreePBX (Asterisk) and FS PBX respectively.
+In our demonstration we will be setting up Asterisk AI to host two contexts, with appropriate settings in FreePBX (Asterisk) and Voxra respectively.
 
 This assumes you'll be hosting Ollama on a dedicated system.
 
@@ -35,7 +35,7 @@ These changes allow FreePBX to route calls through FusionPBX to external trunks 
 
 ---
 
-## Set up FSPBX to FreePBX IP Auth Trunk
+## Set up Voxra to FreePBX IP Auth Trunk
 
 ### Steps
 
@@ -184,19 +184,19 @@ We are assuming that you have an Debian installation of FreePBX already setup, a
 
 Under **Connectivity** you will find **Trunks**, once clicked, hit **Add Trunk**
 
-Give the trunk a name: FSPBX
+Give the trunk a name: Voxra
 
 Click **pjsip settings**
 
 1. Make sure Authentication is set to None.
 2. Make sure Registration is set to None.
-3. Set **SIP Server** to **FSPBX**
+3. Set **SIP Server** to **Voxra**
 4. Set **SIP Server Port** to **5060**
 5. Set **Context** to **from-trunk**
 
 Choose **Advanced**
 
-1. Set **Match (Permit)** to IP of FSPBX
+1. Set **Match (Permit)** to IP of Voxra
 2. Set **From Domain** to hostname of "fspbx domain"
 3. Set **Rewrite Contact** to **Yes**
 4. Set **Force rport** to **Yes**
@@ -224,13 +224,13 @@ exten => s,1,NoOp(AI Agent - DID 5556016043)
  
 [custom-to-fusionpbx]
 exten => s,1,NoOp(Forcing call out FusionPBX trunk)
-exten => s,n,Dial(PJSIP/${EXTEN}@FSPBX)  ; or SIP/ depending on trunk type
+exten => s,n,Dial(PJSIP/${EXTEN}@Voxra)  ; or SIP/ depending on trunk type
 exten => s,n,Hangup()
 ```
 
 The two AI agent mentions are for two contexts, CompanyA and CompanyB are the custom extensions that will be visible under **Custom Destinations** when viewing the **Inbound Route**.
 
-The third **custom-to-fusionpbx** is our method of handing the call off to the FSPBX trunk, much like we handled the call with Fusion to FreePBX, it is Asterisk method of handing off.
+The third **custom-to-fusionpbx** is our method of handing the call off to the Voxra trunk, much like we handled the call with Fusion to FreePBX, it is Asterisk method of handing off.
 
 ### Provision Custom Destinations
 
@@ -270,7 +270,7 @@ Display Name: Your name
 
 Click **Advanced** 
 
-Under **Dial** in the **Edit Extension** area, make sure the text field reads `PJSIP/1000@FSPBX`.
+Under **Dial** in the **Edit Extension** area, make sure the text field reads `PJSIP/1000@Voxra`.
 
 And click **Submit** 
 

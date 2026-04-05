@@ -55,28 +55,28 @@ export default function Home(): ReactNode {
         },
         {
             name: 'Robust Performance.',
-            description: 'Engineered for efficiency and scale. FS PBX addresses performance bottlenecks found in FusionPBX – for example, it avoids FusionPBX’s heavy memory usage from loading thousands of variables into PHP. The Laravel framework also brings optimizations that improve overall stability and speed.',
+            description: 'Engineered for efficiency and scale. Voxra addresses performance bottlenecks found in FusionPBX – for example, it avoids FusionPBX’s heavy memory usage from loading thousands of variables into PHP. The Laravel framework also brings optimizations that improve overall stability and speed.',
             icon: BoltIcon,
         },
         {
             name: 'Full FreeSWITCH Power.',
-            description: 'Behind the scenes, FS PBX leverages the full power of FreeSWITCH, delivering a robust, multi-platform VoIP core. It supports everything from SIP trunk management and IVRs to conferencing, voicemail, and much more—all with proven scalability and reliability.',
+            description: 'Behind the scenes, Voxra leverages the full power of FreeSWITCH, delivering a robust, multi-platform VoIP core. It supports everything from SIP trunk management and IVRs to conferencing, voicemail, and much more—all with proven scalability and reliability.',
             icon: CpuChipIcon,
         },
         {
             name: 'Extensible & Modular',
-            description: 'FS PBX offers premium add-on modules like a Contact Center Dashboard for advanced call queue management and real-time wallboard stats. as well as a STIR/SHAKEN module to sign calls with full Attestation A for caller ID authentication.',
+            description: 'Voxra offers premium add-on modules like a Contact Center Dashboard for advanced call queue management and real-time wallboard stats. as well as a STIR/SHAKEN module to sign calls with full Attestation A for caller ID authentication.',
             icon: PuzzlePieceIcon,
         },
         {
             name: 'Secure & Up-to-Date.',
-            description: 'By leveraging the Laravel framework (a widely adopted, well-supported platform), FS PBX benefits from regular security updates and best practices. This enhances security compared to a custom PHP codebase.',
+            description: 'By leveraging the Laravel framework (a widely adopted, well-supported platform), Voxra benefits from regular security updates and best practices. This enhances security compared to a custom PHP codebase.',
 
             icon: LockClosedIcon,
         },
         {
             name: 'High Availability & Redundancy',
-            description: 'FS PBX supports robust deployments with master-to-master (bi-directional) PostgreSQL database replication and file synchronization between servers. This ensures zero downtime, automatic failover, and seamless continuity even if one node goes offline. Perfect for VoIP providers who require maximum reliability and business continuity.',
+            description: 'Voxra supports robust deployments with master-to-master (bi-directional) PostgreSQL database replication and file synchronization between servers. This ensures zero downtime, automatic failover, and seamless continuity even if one node goes offline. Perfect for VoIP providers who require maximum reliability and business continuity.',
             icon: ServerStackIcon,
         }
 
@@ -86,32 +86,32 @@ export default function Home(): ReactNode {
         {
             question: "Modern User Experience",
             answer:
-                "FusionPBX’s interface can be convoluted and confusing for end-users and even admins, with an outdated design. FS PBX replaces that with a streamlined, modern GUI that simplifies management for users who just need to make simple changes. The interface is more polished and visually appealing, built for usability from the ground up.",
+                "FusionPBX’s interface can be convoluted and confusing for end-users and even admins, with an outdated design. Voxra replaces that with a streamlined, modern GUI that simplifies management for users who just need to make simple changes. The interface is more polished and visually appealing, built for usability from the ground up.",
         },
         {
             question: 'Improved Performance',
             answer:
-                'FusionPBX is known to hit performance limits under load, partly due to legacy PHP design (e.g. loading excessive variables into memory). FS PBX’s Laravel backend and optimized codebase eliminate many of these bottlenecks. The developers have introduced real performance enhancements, so the system runs faster and handles high call volumes with greater stability. In practice, FS PBX has been tested with thousands of endpoints and remains rock-solid.',
+                'FusionPBX is known to hit performance limits under load, partly due to legacy PHP design (e.g. loading excessive variables into memory). Voxra’s Laravel backend and optimized codebase eliminate many of these bottlenecks. The developers have introduced real performance enhancements, so the system runs faster and handles high call volumes with greater stability. In practice, Voxra has been tested with thousands of endpoints and remains rock-solid.',
         },
         {
             question: 'Enhanced Security',
             answer:
-                'Security in telecom is paramount. While FusionPBX relies on a custom PHP framework, FS PBX leverages Laravel’s mature ecosystem with built-in hardened security features and regular patches. This means fewer vulnerabilities and a quicker response to any issues (thanks to Laravel’s large community). You get enterprise-grade security without the worry that typically comes with smaller projects.',
+                'Security in telecom is paramount. While FusionPBX relies on a custom PHP framework, Voxra leverages Laravel’s mature ecosystem with built-in hardened security features and regular patches. This means fewer vulnerabilities and a quicker response to any issues (thanks to Laravel’s large community). You get enterprise-grade security without the worry that typically comes with smaller projects.',
         },
         {
             question: 'More Functionality Out-of-the-Box',
             answer:
-                "FS PBX extends FusionPBX by adding new features and modules that are not available by default in FusionPBX. For example, FS PBX includes an optional Contact Center module with an elegant live dashboard for call queues, and support for STIR/SHAKEN call authentication standards. These enhancements make FS PBX a more feature-rich solution ready for modern VoIP challenges. It takes the best of FusionPBX and builds from there.",
+                "Voxra extends FusionPBX by adding new features and modules that are not available by default in FusionPBX. For example, Voxra includes an optional Contact Center module with an elegant live dashboard for call queues, and support for STIR/SHAKEN call authentication standards. These enhancements make Voxra a more feature-rich solution ready for modern VoIP challenges. It takes the best of FusionPBX and builds from there.",
         },
         {
             question: "Better Multi-Tenancy & White-Label Support",
             answer:
-                'Both FusionPBX and FS PBX are multi-tenant, but FS PBX has reimagined how multi-tenant is managed. FS PBX uses one central login for all tenants (no need for separate subdomain per tenant) and still ensures complete separation of domains/tenants internally. Resellers can view and jump between their customer domains easily with FS PBX’s admin group controls – a level of reseller-friendly design FusionPBX lacks. Branding is easier as well, since FS PBX was built with white-label in mind from the start.',
+                'Both FusionPBX and Voxra are multi-tenant, but Voxra has reimagined how multi-tenant is managed. Voxra uses one central login for all tenants (no need for separate subdomain per tenant) and still ensures complete separation of domains/tenants internally. Resellers can view and jump between their customer domains easily with Voxra’s admin group controls – a level of reseller-friendly design FusionPBX lacks. Branding is easier as well, since Voxra was built with white-label in mind from the start.',
         },
         {
             question: 'Active Development & Community',
             answer:
-                "FS PBX is a younger project but is under active development. The goal is to eventually eliminate any legacy FusionPBX code that isn’t needed, achieving a fully standalone platform with no compromise. By contrast, FusionPBX’s development, while active, can be slower to adopt modern frameworks. FS PBX’s openness to community contributions and modern coding standards means it can evolve faster in today’s tech landscape.",
+                "Voxra is a younger project but is under active development. The goal is to eventually eliminate any legacy FusionPBX code that isn’t needed, achieving a fully standalone platform with no compromise. By contrast, FusionPBX’s development, while active, can be slower to adopt modern frameworks. Voxra’s openness to community contributions and modern coding standards means it can evolve faster in today’s tech landscape.",
         },
     ]
 
@@ -121,7 +121,7 @@ export default function Home(): ReactNode {
             id: 'tier-open-source',
             href: 'https://github.com/nemerald-voip/fspbx',
             priceMonthly: '$0',
-            description: "FS PBX is and will always be open source. As part of our commitment to the community, we provide a free support tier available to everyone. Community support is available through forums and social media",
+            description: "Voxra is and will always be open source. As part of our commitment to the community, we provide a free support tier available to everyone. Community support is available through forums and social media",
             features: ['Community support', 'Free bug reports on GitHUb', 'Free forever', 'Premuim modules available *'],
             featured: false,
             mostPopular: false,
@@ -131,7 +131,7 @@ export default function Home(): ReactNode {
             id: 'tier-basic',
             href: '#',
             priceMonthly: '$299',
-            description: "This plan is ideal for small providers or businesses that need occasional help with installation, configuration, or troubleshooting. Get direct access to FS PBX experts for guidance and issue resolution.",
+            description: "This plan is ideal for small providers or businesses that need occasional help with installation, configuration, or troubleshooting. Get direct access to Voxra experts for guidance and issue resolution.",
             features: ['3 hours of support', 'Phone or email', 'Feature development', 'Premuim modules available *'],
             featured: false,
             mostPopular: false,
@@ -161,7 +161,7 @@ export default function Home(): ReactNode {
     return (
         <Layout
             title={`${siteConfig.title}`}
-            description="FS PBX: World’s Best Open-Source PBX">
+            description="Voxra: World’s Best Open-Source PBX">
             {/* <HomepageHeader /> */}
 
             <Head>
@@ -186,10 +186,10 @@ export default function Home(): ReactNode {
                         <div className="mx-auto max-w-7xl px-6 lg:px-8">
                             <div className="mx-auto max-w-2xl text-center">
                                 <h1 className="text-balance !text-5xl font-semibold tracking-tight text-gray-900 sm:text-7xl">
-                                    FS PBX: World’s Best Open-Source PBX
+                                    Voxra: World’s Best Open-Source PBX
                                 </h1>
                                 <p className="mt-8 text-pretty text-lg font-medium text-gray-500 sm:text-xl/8">
-                                    FS PBX is an advanced open-source PBX platform built on the FreeSWITCH telephony engine. It started as a fork of FusionPBX but has been extensively redesigned to deliver a more modern, powerful, and user-friendly experience
+                                    Voxra is an advanced open-source PBX platform built on the FreeSWITCH telephony engine. It started as a fork of FusionPBX but has been extensively redesigned to deliver a more modern, powerful, and user-friendly experience
                                 </p>
                                 <div className="mt-10 flex items-center justify-center gap-x-6">
                                     <a
@@ -323,10 +323,10 @@ export default function Home(): ReactNode {
                                         <div className="mt-6">
                                             <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Designed with simplicity in mind</h2>
                                             <p className="mt-4 text-lg text-gray-500 dark:text-gray-300">
-                                                FS PBX is designed with VoIP service providers in mind, particularly those needing a white-label PBX solution for their customers. It supports full multi-tenancy, allowing you to host multiple client
+                                                Voxra is designed with VoIP service providers in mind, particularly those needing a white-label PBX solution for their customers. It supports full multi-tenancy, allowing you to host multiple client
                                                 PBX instances on a single system – each client (tenant) is completely separated in the database and dial-plan.
-                                                Unlike FusionPBX which requires separate domain URLs or awkward username formats for each tenant, FS PBX uses a unified login portal for all tenants.
-                                                Users simply log in with their email, and FS PBX intelligently routes them to their correct tenant space
+                                                Unlike FusionPBX which requires separate domain URLs or awkward username formats for each tenant, Voxra uses a unified login portal for all tenants.
+                                                Users simply log in with their email, and Voxra intelligently routes them to their correct tenant space
                                             </p>
                                             <div className="mt-6">
                                                 <a
@@ -363,7 +363,7 @@ export default function Home(): ReactNode {
                                                 Reseller access
                                             </h2>
                                             <p className="mt-4 text-lg text-gray-500 dark:text-gray-300">
-                                                For resellers, FS PBX provides a multi-site admin console: admins can effortlessly switch between different customer domains through a redesigned domain selector.
+                                                For resellers, Voxra provides a multi-site admin console: admins can effortlessly switch between different customer domains through a redesigned domain selector.
                                                 You can grant resellers access to manage their client accounts all from one master dashboard – no re-login to different URLs required. This architecture makes maintenance easier for providers and gives end-users a smoother experience
                                                 (for example, password resets are simpler since users just know their email)
                                             </p>
@@ -398,10 +398,10 @@ export default function Home(): ReactNode {
                     <div className="mx-auto mt-16 max-w-7xl px-6 sm:mt-24 lg:px-8">
                         <div className="mx-auto max-w-4xl">
                             <h2 className="!text-4xl font-semibold tracking-tight text-gray-900 dark:text-white sm:text-5xl">
-                                FS PBX vs FusionPBX – Why Upgrade?
+                                Voxra vs FusionPBX – Why Upgrade?
                             </h2>
                             <p className="mt-4 text-gray-700 dark:text-gray-300">
-                                FS PBX began as a FusionPBX fork, but it has rapidly evolved into a superior platform. Here are some key reasons why FS PBX outperforms FusionPBX:
+                                Voxra began as a FusionPBX fork, but it has rapidly evolved into a superior platform. Here are some key reasons why Voxra outperforms FusionPBX:
                             </p>
                             <dl className="mt-16 divide-y divide-gray-900/10 dark:divide-gray-700 mb-10">
                                 {faqs.map((faq) => (
@@ -422,7 +422,7 @@ export default function Home(): ReactNode {
                                 ))}
                             </dl>
                             <p className="text-gray-700 dark:text-gray-300">
-                                In summary, if you’re currently using FusionPBX or evaluating open-source PBX systems, FS PBX offers a compelling upgrade: you keep the reliability of FreeSWITCH and the familiarity of FusionPBX’s features, but gain a faster, easier, and more powerful system. As one industry expert noted, “Everyone needs to take a careful look at this platform... The interface is downright magical.”
+                                In summary, if you’re currently using FusionPBX or evaluating open-source PBX systems, Voxra offers a compelling upgrade: you keep the reliability of FreeSWITCH and the familiarity of FusionPBX’s features, but gain a faster, easier, and more powerful system. As one industry expert noted, “Everyone needs to take a careful look at this platform... The interface is downright magical.”
                             </p>
                         </div>
                     </div>
@@ -436,7 +436,7 @@ export default function Home(): ReactNode {
                                     Professional Support Plans
                                 </p>
                                 <p className="mt-6 text-pretty text-lg/8 text-gray-600 dark:text-gray-300">
-                                    While FS PBX is free to download and use, professional support is available for organizations that want expert help or guaranteed assistance. The maintainers of FS PBX offer paid support options to help you deploy and maintain your PBX with confidence.
+                                    While Voxra is free to download and use, professional support is available for organizations that want expert help or guaranteed assistance. The maintainers of Voxra offer paid support options to help you deploy and maintain your PBX with confidence.
                                 </p>
                             </div>
 
@@ -530,7 +530,7 @@ export default function Home(): ReactNode {
                                         Contact Center Module (Available as an Add-on)
                                     </h3>
                                     <p className="mt-1 text-base/7 text-gray-600 dark:text-gray-300">
-                                        Supercharge your FS PBX deployment with our premium Contact Center module—available for just $99/month.
+                                        Supercharge your Voxra deployment with our premium Contact Center module—available for just $99/month.
                                     </p>
                                 </div>
 
@@ -556,7 +556,7 @@ export default function Home(): ReactNode {
                                         STIR/SHAKEN Module (Available as an Add-on)
                                     </h3>
                                     <p className="mt-1 text-base/7 text-gray-600 dark:text-gray-300">
-                                        Enhance the security and credibility of your outbound calls with the FS PBX STIR/SHAKEN module, available as an add-on for just $99/month.
+                                        Enhance the security and credibility of your outbound calls with the Voxra STIR/SHAKEN module, available as an add-on for just $99/month.
                                         The STIR/SHAKEN module enables full caller ID authentication and call signing, helping you comply with industry regulations and combat caller ID spoofing. Calls are signed with Attestation A, giving recipients confidence that calls from your network are legitimate and trustworthy.
                                     </p>
                                 </div>
@@ -589,14 +589,14 @@ export default function Home(): ReactNode {
                                 <div className="mt-10 grid max-w-xl grid-cols-1 gap-8 text-base/7 text-gray-700 dark:text-gray-300 lg:max-w-none lg:grid-cols-2">
                                     <div>
                                         <p>
-                                            FS PBX is not just a product, it’s a community-driven open-source project. Licensed under the Apache 2.0 License,
+                                            Voxra is not just a product, it’s a community-driven open-source project. Licensed under the Apache 2.0 License,
                                             it is free to use, modify, and distribute. We welcome contributions from developers and VoIP enthusiasts around the world.
                                             If you want to report issues or contribute code, visit our GitHub repository and join the discussion.
-                                            Every bit of feedback and contribution helps make FS PBX better!
+                                            Every bit of feedback and contribution helps make Voxra better!
                                         </p>
                                         <p className="mt-8">
-                                            By choosing FS PBX, you’re not only getting a superior PBX platform, you’re also joining a community that believes in open source and collaboration. We are committed to transparency and innovation.
-                                            Our goal is to make FS PBX the #1 choice for open-source PBX for businesses of all sizes – and with your support, we’re well on our way!
+                                            By choosing Voxra, you’re not only getting a superior PBX platform, you’re also joining a community that believes in open source and collaboration. We are committed to transparency and innovation.
+                                            Our goal is to make Voxra the #1 choice for open-source PBX for businesses of all sizes – and with your support, we’re well on our way!
                                         </p>
                                     </div>
                                     <div>
@@ -604,8 +604,8 @@ export default function Home(): ReactNode {
                                             Community support is available through forums and social media:
                                         </p>
                                         <p className="mt-8">
-                                            <span className="font-bold">Discussion Forums:</span> Join the conversation on forums like PBXForums and VoIP-Info, where FS PBX developers and users actively discuss features, share tips, and help each other.
-                                            Many early adopters have shared success stories (such as deploying FS PBX for thousands of endpoints with great results)
+                                            <span className="font-bold">Discussion Forums:</span> Join the conversation on forums like PBXForums and VoIP-Info, where Voxra developers and users actively discuss features, share tips, and help each other.
+                                            Many early adopters have shared success stories (such as deploying Voxra for thousands of endpoints with great results)
                                         </p>
                                         <p className="mt-8">
                                             <span className="font-bold">YouTube Tutorials:</span> As mentioned, a growing library of video tutorials is available, which is great for visual learners.

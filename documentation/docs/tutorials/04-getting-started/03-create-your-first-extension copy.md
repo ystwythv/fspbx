@@ -7,17 +7,17 @@ sidebar_position: 3
 
 # Create Your First Extension
 
-Extensions are the core of your phone system --- they represent users or devices that can make and receive calls through FS PBX.\
+Extensions are the core of your phone system --- they represent users or devices that can make and receive calls through Voxra.\
 This guide walks you through setting up your **first working extension** so you can log in from a softphone or physical IP phone.
 
 * * * * *
 
-🧩 Step 1 -- Log In to FS PBX
+🧩 Step 1 -- Log In to Voxra
 ----------------------------
 
-Log in to your FS PBX web dashboard using your admin account.
+Log in to your Voxra web dashboard using your admin account.
 
-If you've just installed FS PBX, use the credentials that were generated during installation.
+If you've just installed Voxra, use the credentials that were generated during installation.
 
 Once you’re logged in, **select an existing Domain** (tenant) from the Domain selector, or **create a new Domain** where the extension will be created.
 
@@ -50,17 +50,17 @@ Click **Save** when done.
 
 You can now connect to the PBX using any **SIP-compatible device or softphone**, such as **Zoiper**, **Groundwire**, or **Bria**.
 
-Open your extension in FS PBX and navigate to the **SIP Credentials** tab.\
+Open your extension in Voxra and navigate to the **SIP Credentials** tab.\
 Here you'll find the information needed to register your device:
 
--   **Domain** -- Your FS PBX domain name (for example, `admin.localhost`)
+-   **Domain** -- Your Voxra domain name (for example, `admin.localhost`)
 
 -   **Username** -- Typically your extension number (e.g. `100`)
 
 -   **SIP Password** -- Auto-generated password used for registration
 
 Enter these values into your softphone or desk phone's SIP account settings.\
-Once connected, the extension should show as **Registered** in FS PBX.
+Once connected, the extension should show as **Registered** in Voxra.
 
 ![Extension SIP Credentials](/img/screenshots/extension-sip-credentials.png)
 

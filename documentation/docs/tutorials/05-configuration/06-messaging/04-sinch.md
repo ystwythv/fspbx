@@ -2,14 +2,14 @@
 id: sinch
 title: Sinch SMS Provider Configuration
 slug: /configuration/messaging/sinch
-description: Configure Sinch for SMS and MMS in FS PBX.
+description: Configure Sinch for SMS and MMS in Voxra.
 sidebar_position: 4
 ---
 
 Sinch SMS Provider Configuration
 ================================
 
-FS PBX provides two-way SMS and MMS support through **Sinch**, using the Sinch (Inteliquent) message broker API for outbound messages and a secure inbound webhook for receiving messages. This guide explains how to configure your Sinch credentials, set up inbound security, and enable SMS for phone numbers.
+Voxra provides two-way SMS and MMS support through **Sinch**, using the Sinch (Inteliquent) message broker API for outbound messages and a secure inbound webhook for receiving messages. This guide explains how to configure your Sinch credentials, set up inbound security, and enable SMS for phone numbers.
 
 * * * * *
 
@@ -45,7 +45,7 @@ After entering your `.env` values, refresh the Laravel config cache:
 
 `php artisan config:cache`
 
-If you skip this step, FS PBX will not load your updated Sinch configuration.
+If you skip this step, Voxra will not load your updated Sinch configuration.
 
 * * * * *
 
@@ -53,13 +53,13 @@ If you skip this step, FS PBX will not load your updated Sinch configuration.
 ----------------------------
 
 Sinch delivers inbound SMS messages and status callbacks via webhook.\
-To ensure FS PBX receives inbound messages correctly, configure Sinch to send all SMS webhooks to:
+To ensure Voxra receives inbound messages correctly, configure Sinch to send all SMS webhooks to:
 
 `https://your-domain/webhook/sinch/sms`
 
 ### Sinch Inbound Webhook Security
 
-FS PBX uses the environment variable:
+Voxra uses the environment variable:
 
 `SINCH_INBOUND_API_KEY=`
 
@@ -69,7 +69,7 @@ If this value is set:
 
 -   Sinch **must** include the same key in its webhook request header (typically `X-API-Key` or similar)
 
--   FS PBX will reject requests with mismatched or missing keys
+-   Voxra will reject requests with mismatched or missing keys
 
 This ensures only messages from Sinch are accepted.
 
@@ -97,7 +97,7 @@ Depending on your Sinch/Inteliquent account:
 
 * * * * *
 
-4\. Enable SMS on a Phone Number in FS PBX
+4\. Enable SMS on a Phone Number in Voxra
 ------------------------------------------
 
 Once Sinch is configured and webhooks are set:
@@ -110,19 +110,19 @@ Once Sinch is configured and webhooks are set:
 
 4.  Assign an **extension** (recommended)
 
-    -   Inbound messages will appear in the FS PBX mobile app for that extension
+    -   Inbound messages will appear in the Voxra mobile app for that extension
 
 5.  Optionally assign an **email address** for read-only email notifications
 
 From this point:
 
--   Inbound messages → Sinch → FS PBX → Mobile App
+-   Inbound messages → Sinch → Voxra → Mobile App
 
 -   Outbound replies → Mobile App → Sinch → Recipient
 
 ## 6. MMS Support
 
-If your Apidaze number supports MMS, FS PBX can also process media attachments sent through the same messaging flow.
+If your Apidaze number supports MMS, Voxra can also process media attachments sent through the same messaging flow.
 
 To use MMS media storage, S3-compatible storage must already be configured in your system. See the [S3 Configuration for Messages](/docs/configuration/messaging/s3-config-for-messages/) guide.
 
@@ -137,7 +137,7 @@ This allows users to:
 Summary
 -------
 
-To configure Sinch SMS support in FS PBX:
+To configure Sinch SMS support in Voxra:
 
 1.  Add credentials to `.env`
 

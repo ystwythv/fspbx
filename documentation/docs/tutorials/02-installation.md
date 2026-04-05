@@ -7,7 +7,7 @@ sidebar_position: 2
 
 # Installation
 
-Getting started with FS PBX is a breeze.
+Getting started with Voxra is a breeze.
 
 * * * * *
 
@@ -37,7 +37,7 @@ If you’re installing on **Debian 13**, a **SignalWire Personal Access Token** 
 
     Follow the steps in this article to configure your custom domain.
    
-    [How to Secure FS PBX with a Let’s Encrypt SSL Certificate](05-configuration/10-web-server/lets-encrypt-certificate.md)
+    [How to Secure Voxra with a Let’s Encrypt SSL Certificate](05-configuration/10-web-server/lets-encrypt-certificate.md)
 
 3. **Troubleshooting Error 419 (Page Expired)**
 

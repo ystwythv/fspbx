@@ -7,7 +7,7 @@ sidebar_position: 5
 
 # Users
 
-In FS PBX, a **User** is a person’s login to the web dashboard. Users control **who can sign in**, **what they can see**, and **what they’re allowed to change**.
+In Voxra, a **User** is a person’s login to the web dashboard. Users control **who can sign in**, **what they can see**, and **what they’re allowed to change**.
 
 A User is not the same thing as an Extension.
 
@@ -17,7 +17,7 @@ A User is not the same thing as an Extension.
 
 A **User** is used for:
 
-* Logging into the **FS PBX web UI**
+* Logging into the **Voxra web UI**
 * Managing settings based on **permissions/roles**
 * Accessing user features (depending on your setup), like:
 
@@ -54,7 +54,7 @@ In many setups, you link them together:
 
 **No.** You only need a User if someone needs to:
 
-* log into the FS PBX dashboard, or
+* log into the Voxra dashboard, or
 * use web features that require authentication
 
 If a phone is configured manually (or via provisioning) and only needs to place/receive calls, it can work fine with just an Extension.
@@ -63,7 +63,7 @@ If a phone is configured manually (or via provisioning) and only needs to place/
 
 ## Why Users matter in a multi-tenant system (Domains)
 
-FS PBX is multi-tenant, so Users are typically tied to:
+Voxra is multi-tenant, so Users are typically tied to:
 
 * a specific **Domain** (tenant/company), and
 * a set of **permissions**

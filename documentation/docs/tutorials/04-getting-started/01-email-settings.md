@@ -7,14 +7,14 @@ sidebar_position: 1
 
 # Configure Email Settings
 
-FS PBX uses Laravel's built-in mailer to send notifications such as voicemail alerts, password resets, license updates, and system messages. Correctly configuring email settings ensures all automated messages are delivered reliably.
+Voxra uses Laravel's built-in mailer to send notifications such as voicemail alerts, password resets, license updates, and system messages. Correctly configuring email settings ensures all automated messages are delivered reliably.
 
 * * * * *
 
 🧩 Overview
 -----------
 
-Email delivery is handled through the Laravel `.env` configuration file, located in the root of your FS PBX installation (usually `/var/www/fspbx/.env`).
+Email delivery is handled through the Laravel `.env` configuration file, located in the root of your Voxra installation (usually `/var/www/fspbx/.env`).
 
 You can use several mail transport methods:
 
@@ -29,7 +29,7 @@ You can use several mail transport methods:
 ⚙️ Step 1 -- Locate Your `.env` File
 -----------------------------------
 
-SSH into your FS PBX server and open the `.env` file:
+SSH into your Voxra server and open the `.env` file:
 
 `sudo nano /var/www/fspbx/.env`
 
@@ -49,7 +49,7 @@ MAIL_USERNAME=your_username
 MAIL_PASSWORD=your_password
 MAIL_ENCRYPTION=tls
 MAIL_FROM_ADDRESS=pbx@yourdomain.com
-MAIL_FROM_NAME="FS PBX"
+MAIL_FROM_NAME="Voxra"
 ```
 
 > 💡 **Tip:**
@@ -64,7 +64,7 @@ MAIL_FROM_NAME="FS PBX"
 ⚙️ Step 3 -- Apply Configuration
 -------------------------------
 
-After editing `.env`, rebuild the cached configuration so FS PBX recognizes the new mail settings:
+After editing `.env`, rebuild the cached configuration so Voxra recognizes the new mail settings:
 
 `php artisan config:cache`
 
@@ -75,7 +75,7 @@ This step is **required** whenever you change environment variables such as mail
 🧪 Step 4 -- Test Email Delivery
 -------------------------------
 
-Log in to your **FS PBX Dashboard** and navigate to the **Users** page.
+Log in to your **Voxra Dashboard** and navigate to the **Users** page.
 
 Create a **new user** (or select an existing one) and open the **Security** tab.
 
@@ -111,7 +111,7 @@ If you prefer local delivery (Postfix/Exim), set:
 
 `MAIL_MAILER=sendmail
 MAIL_FROM_ADDRESS=pbx@yourdomain.com
-MAIL_FROM_NAME="FS PBX"`
+MAIL_FROM_NAME="Voxra"`
 
 Ensure your system's MTA is properly configured and running.
 
@@ -142,7 +142,7 @@ MAIL_USERNAME=yourname@gmail.com
 MAIL_PASSWORD=your_app_specific_password
 MAIL_ENCRYPTION=tls
 MAIL_FROM_ADDRESS=yourname@gmail.com
-MAIL_FROM_NAME="FS PBX"
+MAIL_FROM_NAME="Voxra"
 ```
 
 > ⚠️ Gmail requires an *App Password* (not your normal login password).
@@ -156,4 +156,4 @@ Once these steps are completed:
 
 -   Email and system notifications will start working.
 
--   You can monitor errors in `storage/logs/laravel.log` or via the **Status -> Logs** page in FS PBX.
+-   You can monitor errors in `storage/logs/laravel.log` or via the **Status -> Logs** page in Voxra.

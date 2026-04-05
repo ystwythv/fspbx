@@ -101,13 +101,13 @@ class Update0940
      */
     protected function executeUpgradeScript()
     {
-        echo "🚀 Running FS PBX upgrade script...\n";
+        echo "🚀 Running Voxra upgrade script...\n";
         $output = shell_exec("cd /var/www/fspbx && /usr/bin/php /var/www/fspbx/public/core/upgrade/upgrade.php > /dev/null 2>&1");
 
         if ($output === null) {
-            echo "✅ FS PBX upgrade script executed successfully.\n";
+            echo "✅ Voxra upgrade script executed successfully.\n";
         } else {
-            echo "⚠️ FS PBX upgrade script may have encountered an issue. Check logs for details.\n";
+            echo "⚠️ Voxra upgrade script may have encountered an issue. Check logs for details.\n";
         }
     }
 }

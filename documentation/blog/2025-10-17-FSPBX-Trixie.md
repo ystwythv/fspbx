@@ -5,7 +5,7 @@ authors: [lemstrom]
 tags: [osupgrade]
 ---
 
-We're excited to announce that FS PBX now officially supports Debian 13 (Trixie)!
+We're excited to announce that Voxra now officially supports Debian 13 (Trixie)!
 
 
 <!-- truncate -->
@@ -17,7 +17,7 @@ We're excited to announce that FS PBX now officially supports Debian 13 (Trixie
 
 ### 🎉 Highlights
 
-We're excited to announce that FS PBX now officially supports Debian 13 (Trixie)!
+We're excited to announce that Voxra now officially supports Debian 13 (Trixie)!
 
 This release ensures seamless installation and operation on the latest Debian platform, while maintaining backward compatibility with Debian 12 (Bookworm).
 

@@ -1,7 +1,7 @@
 
 # Archive Call Recordings to S3 Storage
 
-This feature lets FS PBX move call recordings from the server to **Amazon S3** or another **S3-compatible storage provider**.
+This feature lets Voxra move call recordings from the server to **Amazon S3** or another **S3-compatible storage provider**.
 
 The main goal is to **reduce local disk usage on your PBX servers**. During the archive process, recordings are also converted from **WAV to MP3**, which helps reduce **cloud storage usage** as well.
 
@@ -12,7 +12,7 @@ After a recording is successfully archived:
 
 ## Default settings vs domain-specific settings
 
-FS PBX supports two ways to configure storage:
+Voxra supports two ways to configure storage:
 
 ### Default settings
 

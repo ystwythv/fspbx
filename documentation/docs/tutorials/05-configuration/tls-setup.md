@@ -1,18 +1,18 @@
 ---
 id: fspbx-tls-setup
-title: Enabling TLS Support for FS PBX
+title: Enabling TLS Support for Voxra
 slug: /configuration/fspbx-tls-setup
 sidebar_position: 100
 ---
 
-# Enabling TLS Support for FS PBX (Using a commercial SSL Certificate)
+# Enabling TLS Support for Voxra (Using a commercial SSL Certificate)
 
-This guide provides a step-by-step tutorial for configuring TLS for FS PBX with a purchased SSL certificate. It covers prerequisites, certificate installation, FreeSWITCH/FX PBX settings, and testing.
+This guide provides a step-by-step tutorial for configuring TLS for Voxra with a purchased SSL certificate. It covers prerequisites, certificate installation, FreeSWITCH/FX PBX settings, and testing.
 
 1\. Prerequisites
 =================
 
-[](https://github.com/nemerald-voip/fspbx/wiki/Enabling-TLS-Support-for-FS-PBX-(Using-a-Purchased-SSL-Certificate)#1-prerequisites)
+[](https://github.com/nemerald-voip/fspbx/wiki/Enabling-TLS-Support-for-Voxra-(Using-a-Purchased-SSL-Certificate)#1-prerequisites)
 
 -   SSL Certificate Files: Obtain your certificate files from the CA. Typically you will have:
 
@@ -24,14 +24,14 @@ This guide provides a step-by-step tutorial for configuring TLS for FS PBX with 
 2\. SSL Certificate Installation
 ================================
 
-[](https://github.com/nemerald-voip/fspbx/wiki/Enabling-TLS-Support-for-FS-PBX-(Using-a-Purchased-SSL-Certificate)#2-ssl-certificate-installation)
+[](https://github.com/nemerald-voip/fspbx/wiki/Enabling-TLS-Support-for-Voxra-(Using-a-Purchased-SSL-Certificate)#2-ssl-certificate-installation)
 
 In this step, you will install your purchased SSL certificate
 
 2.1 Upload and Prepare the Certificate
 --------------------------------------
 
-[](https://github.com/nemerald-voip/fspbx/wiki/Enabling-TLS-Support-for-FS-PBX-(Using-a-Purchased-SSL-Certificate)#21-upload-and-prepare-the-certificate)
+[](https://github.com/nemerald-voip/fspbx/wiki/Enabling-TLS-Support-for-Voxra-(Using-a-Purchased-SSL-Certificate)#21-upload-and-prepare-the-certificate)
 
 Transfer your certificate files (.crt and any CA bundle) and your private key (.key) to the server (use SCP, SFTP, or paste via SSH). Place them in a secure directory (e.g. your home folder) temporarily. Then set the proper permissions on these files for security:
 
@@ -49,11 +49,11 @@ This ensures the key is not publicly readable​. Adjust file names as needed fo
 2.2 Install Certificate for FreeSWITCH (SIP TLS and WebRTC)
 -----------------------------------------------------------
 
-[](https://github.com/nemerald-voip/fspbx/wiki/Enabling-TLS-Support-for-FS-PBX-(Using-a-Purchased-SSL-Certificate)#22-install-certificate-for-freeswitch-sip-tls-and-webrtc)
+[](https://github.com/nemerald-voip/fspbx/wiki/Enabling-TLS-Support-for-Voxra-(Using-a-Purchased-SSL-Certificate)#22-install-certificate-for-freeswitch-sip-tls-and-webrtc)
 
-Next, configure FreeSWITCH to use the certificate for SIP over TLS and WebRTC. FreeSWITCH expects its certificate files in a specific directory (usually `/etc/freeswitch/tls` for FS PBX installations). We will create a combined certificate file as required by FreeSWITCH:
+Next, configure FreeSWITCH to use the certificate for SIP over TLS and WebRTC. FreeSWITCH expects its certificate files in a specific directory (usually `/etc/freeswitch/tls` for Voxra installations). We will create a combined certificate file as required by FreeSWITCH:
 
--   Create FreeSWITCH TLS Directory: Ensure the directory exists and is empty. By default, FS PBX uses `/etc/freeswitch/tls` (this is set by the `internal_ssl_dir` and `external_ssl_dir` variables). Create it if not present and remove any default self-signed files to avoid confusion:
+-   Create FreeSWITCH TLS Directory: Ensure the directory exists and is empty. By default, Voxra uses `/etc/freeswitch/tls` (this is set by the `internal_ssl_dir` and `external_ssl_dir` variables). Create it if not present and remove any default self-signed files to avoid confusion:
 
     ```
     mkdir -p /etc/freeswitch/tls
@@ -97,7 +97,7 @@ Next, configure FreeSWITCH to use the certificate for SIP over TLS and WebRTC. F
 
     These links ensure that whether FreeSWITCH looks for `agent.pem` (used for SIP TLS), `wss.pem` (used for secure WebSockets), or `dtls-srtp.pem` (used for WebRTC media encryption), it will use your combined certificate.
 
--   Set Permissions for FreeSWITCH: FreeSWITCH (under FS PBX) typically runs as the user `www-data. Ensure the` /etc/freeswitch/tls` directory and files are owned by the FreeSWITCH user and group so that it can read the key:
+-   Set Permissions for FreeSWITCH: FreeSWITCH (under Voxra) typically runs as the user `www-data. Ensure the` /etc/freeswitch/tls` directory and files are owned by the FreeSWITCH user and group so that it can read the key:
 
     ```
     chown -R www-data:www-data /etc/freeswitch/tls
@@ -112,11 +112,11 @@ At this point, the certificate is installed in the expected locations. Next, we 
 3\. FreeSWITCH Configuration (Enable TLS and SRTP)
 ==================================================
 
-[](https://github.com/nemerald-voip/fspbx/wiki/Enabling-TLS-Support-for-FS-PBX-(Using-a-Purchased-SSL-Certificate)#3-freeswitch-configuration-enable-tls-and-srtp)
+[](https://github.com/nemerald-voip/fspbx/wiki/Enabling-TLS-Support-for-Voxra-(Using-a-Purchased-SSL-Certificate)#3-freeswitch-configuration-enable-tls-and-srtp)
 
-Now we will enable TLS support in FreeSWITCH's SIP profiles and adjust settings for secure SIP and media. This can be done via FS PBX's GUI (Advanced -> Variables)
+Now we will enable TLS support in FreeSWITCH's SIP profiles and adjust settings for secure SIP and media. This can be done via Voxra's GUI (Advanced -> Variables)
 
--   Advanced -> Variables: In the FS PBX GUI, navigate to Advanced -> Variables. Here, you can check SIP Profile: Internal and External sections for:
+-   Advanced -> Variables: In the Voxra GUI, navigate to Advanced -> Variables. Here, you can check SIP Profile: Internal and External sections for:
 
     -   internal_ssl_enable = true
     -   external_ssl_enable = true
@@ -130,15 +130,15 @@ Now we will enable TLS support in FreeSWITCH's SIP profiles and adjust settings 
 
     Do the same for the external profile if you plan to allow WebSockets on external (commonly not needed unless you have external WS clients). After applying, restart or rescan the SIP profile. This tells FreeSWITCH to listen on those ports for SIP over WebSocket. WSS is required for browser-based calls (WebRTC) when the site is served over HTTPS.
 
--   Extensions Settings: By default, extensions in FS PBX can use UDP, TCP, or TLS for registration as long as the server supports them. There isn't a per-extension "enable TLS" toggle -- you simply configure the device (phone or softphone) to connect with TLS to port 5061. FS PBX will accept it because we enabled TLS on the profile. However, you should double-check extension password security since opening TLS will expose another entry point for registration attempts.
+-   Extensions Settings: By default, extensions in Voxra can use UDP, TCP, or TLS for registration as long as the server supports them. There isn't a per-extension "enable TLS" toggle -- you simply configure the device (phone or softphone) to connect with TLS to port 5061. Voxra will accept it because we enabled TLS on the profile. However, you should double-check extension password security since opening TLS will expose another entry point for registration attempts.
 
--   Dialplan (Optional SRTP enforcement): By default, SRTP enforcement is not strict (to maintain compatibility). If you require all calls from TLS endpoints to be encrypted, you could modify the dial-string or use FS PBX's Dialplan manager to require `rtp_secure_media=true`. This is an advanced configuration and should be tested carefully (many ITSP trunks don't support SRTP, so you may not want to enforce it globally). For most setups, enabling TLS on registration is enough, and endpoints will use SRTP if they are WebRTC or if configured to do so.
+-   Dialplan (Optional SRTP enforcement): By default, SRTP enforcement is not strict (to maintain compatibility). If you require all calls from TLS endpoints to be encrypted, you could modify the dial-string or use Voxra's Dialplan manager to require `rtp_secure_media=true`. This is an advanced configuration and should be tested carefully (many ITSP trunks don't support SRTP, so you may not want to enforce it globally). For most setups, enabling TLS on registration is enough, and endpoints will use SRTP if they are WebRTC or if configured to do so.
 
-After updating FS PBX settings, go to **Status->SIP Status** and flush the cache and rescan profiles if you made changes through the GUI. The FS PBX interface and FreeSWITCH should now be configured to use your SSL certificate for both HTTPS and SIP TLS/WSS. You may also need to restat FreeSWITCH service `systemctl restart freeswitch`
+After updating Voxra settings, go to **Status->SIP Status** and flush the cache and rescan profiles if you made changes through the GUI. The Voxra interface and FreeSWITCH should now be configured to use your SSL certificate for both HTTPS and SIP TLS/WSS. You may also need to restat FreeSWITCH service `systemctl restart freeswitch`
 
 4\. TLS Security
 ================
 
-[](https://github.com/nemerald-voip/fspbx/wiki/Enabling-TLS-Support-for-FS-PBX-(Using-a-Purchased-SSL-Certificate)#4-tls-security)
+[](https://github.com/nemerald-voip/fspbx/wiki/Enabling-TLS-Support-for-Voxra-(Using-a-Purchased-SSL-Certificate)#4-tls-security)
 
 The TLS connection uses standard SSL protocols. Most modern phones and softphones will trust common commercial CAs. To avoid Man-in-the-Middle attacks, clients should verify the server certificate. This means the client must trust the CA that signed your cert. If you purchased from a well-known CA, most devices (and browsers for WebRTC) will implicitly trust it. Avoid using self-signed or private CA certs for client-facing TLS to prevent trust issues. It's also wise to disable old TLS versions if any of your clients allow (e.g., force TLS 1.2+ as mentioned). You can also configure FreeSWITCH to present the full certificate chain (which we did by using fullchain.pem in all.pem) so that clients can validate up to the root. There is an option to require mutual TLS (client certificates), but that's rarely used in SIP and is beyond the scope of this guide.

@@ -7,13 +7,13 @@ sidebar_position: 2
 
 # Domains (Multi-Tenancy 101)
 
-In FS PBX, a **Domain** is the core “tenant” concept. If you’re coming from Asterisk, think of a Domain as **a fully isolated PBX instance** living inside one shared platform—its own users, extensions, devices, dialplans, voicemail, ring groups, call center configs, and (often) its own trunks—without needing separate servers.
+In Voxra, a **Domain** is the core “tenant” concept. If you’re coming from Asterisk, think of a Domain as **a fully isolated PBX instance** living inside one shared platform—its own users, extensions, devices, dialplans, voicemail, ring groups, call center configs, and (often) its own trunks—without needing separate servers.
 
 ---
 
 ## What a Domain is (in plain English)
 
-A **Domain = one customer / one company / one office / one PBX “environment”** inside the same FS PBX system.
+A **Domain = one customer / one company / one office / one PBX “environment”** inside the same Voxra system.
 
 A Domain typically has:
 
@@ -25,7 +25,7 @@ A Domain typically has:
 * Its own **permissions + admin roles**
 * Its own **trunks/gateways** (optional, depending on how you design it)
 
-Most importantly: a Domain keeps customers separated so you can host many companies on one FS PBX cluster safely.
+Most importantly: a Domain keeps customers separated so you can host many companies on one Voxra cluster safely.
 
 ---
 
@@ -61,7 +61,7 @@ In practice:
 
 ## How calls and registrations “know” which Domain they belong to
 
-FS PBX can map a phone/call to the correct Domain using one or more of these:
+Voxra can map a phone/call to the correct Domain using one or more of these:
 
 ### A) SIP registration domain (most common)
 
@@ -84,7 +84,7 @@ Devices and extensions are explicitly assigned to a Domain. Even if two tenants 
 
 In Asterisk, you often model separation with **dialplan contexts** (and sometimes separate DBs or separate instances).
 
-In FreeSWITCH / FS PBX multi-tenancy:
+In FreeSWITCH / Voxra multi-tenancy:
 
 * A Domain commonly maps to a dialplan **context**, but the *domain boundary* is broader than dialplan.
 * It’s not just routing—it’s **data isolation + UI scope + permissions + provisioning + settings**.
@@ -113,7 +113,7 @@ Here’s the mental model that usually clicks for beginners:
 
 ## Creating a Domain (typical workflow)
 
-Your exact UI labels may vary by FS PBX version, but the flow is generally:
+Your exact UI labels may vary by Voxra version, but the flow is generally:
 
 1. **Create the Domain**
 
@@ -184,7 +184,7 @@ Depends on your business model:
 ## Quick glossary
 
 * **Tenant**: a customer/company living inside your platform.
-* **Domain**: FS PBX’s tenant container.
+* **Domain**: Voxra’s tenant container.
 * **DID**: inbound phone number.
 * **Extension**: internal endpoint (user/phone).
 * **Context**: dialplan “namespace” for routing (Domain often maps to one).
@@ -193,7 +193,7 @@ Depends on your business model:
 
 ## A simple real-world example
 
-You host two companies on one FS PBX server:
+You host two companies on one Voxra server:
 
 **Domain: `alpha.example.com`**
 

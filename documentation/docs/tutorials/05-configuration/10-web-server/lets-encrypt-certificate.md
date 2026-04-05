@@ -7,19 +7,19 @@ sidebar_position: 1
 
 # Let's Encrypt SSL certificate
 
-Securing your FS PBX installation with an SSL certificate is crucial for ensuring secure communications. This guide will walk you through the process of installing a **Let's Encrypt SSL certificate** using **Dehydrated** after setting up FS PBX.
+Securing your Voxra installation with an SSL certificate is crucial for ensuring secure communications. This guide will walk you through the process of installing a **Let's Encrypt SSL certificate** using **Dehydrated** after setting up Voxra.
 
 ## Prerequisites
 Before you begin, ensure:
 
-* FS PBX is installed and running.
+* Voxra is installed and running.
 * You have a domain name (e.g., pbx.example.com).
 * Your server is publicly accessible on ports 80 and 443.
 * A user with sudo privileges
 
 # Step 1: Run the SSL Installation Command
-FS PBX includes an **Artisan command** that automates the process of generating and installing SSL certificates. To execute the script:
-1. Navigate to the FS PBX project directory:
+Voxra includes an **Artisan command** that automates the process of generating and installing SSL certificates. To execute the script:
+1. Navigate to the Voxra project directory:
 
    `cd /var/www/fspbx`
 
@@ -43,7 +43,7 @@ The script automatically sets up a cron job to renew the certificate:
 
 # Conclusion
 
-You have successfully installed and configured a **Let's Encrypt SSL certificate** for FS PBX using **Dehydrated**. Your PBX is now secured with HTTPS, and the certificate will automatically renew.
+You have successfully installed and configured a **Let's Encrypt SSL certificate** for Voxra using **Dehydrated**. Your PBX is now secured with HTTPS, and the certificate will automatically renew.
 
 If you encounter any issues, check the logs with:
 

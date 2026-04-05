@@ -2,14 +2,14 @@
 id: commio
 title: Commio (ThinQ) SMS Provider Configuration
 slug: /configuration/messaging/commio
-description: Configure Commio for SMS and MMS in FS PBX.
+description: Configure Commio for SMS and MMS in Voxra.
 sidebar_position: 20
 ---
 
 Commio (ThinQ) SMS Provider Configuration
 =========================================
 
-FS PBX provides two-way SMS and MMS support through **Commio** (formerly ThinQ). This guide explains how to configure your Commio credentials, set up webhook security, and enable SMS on individual phone numbers.
+Voxra provides two-way SMS and MMS support through **Commio** (formerly ThinQ). This guide explains how to configure your Commio credentials, set up webhook security, and enable SMS on individual phone numbers.
 
 * * * * *
 
@@ -34,7 +34,7 @@ COMMIO_WEBHOOK_SECRET=
 | **THINQ_TOKEN** | API token or password paired with the username. |
 | **COMMIO_WEBHOOK_SECRET** | Secret string used to validate inbound webhook signatures. |
 
-> **Note:** Commio uses webhooks extensively for inbound SMS and status updates, and FS PBX validates these requests for security using the webhook secret.
+> **Note:** Commio uses webhooks extensively for inbound SMS and status updates, and Voxra validates these requests for security using the webhook secret.
 
 * * * * *
 
@@ -45,7 +45,7 @@ Whenever you modify `.env`, you must refresh Laravel's cached configuration:
 
 `php artisan config:cache`
 
-If you skip this step, FS PBX will use old values and SMS functionality may fail.
+If you skip this step, Voxra will use old values and SMS functionality may fail.
 
 * * * * *
 
@@ -53,7 +53,7 @@ If you skip this step, FS PBX will use old values and SMS functionality may fail
 ----------------------------
 
 Commio delivers inbound messages and status updates via webhooks.\
-To enable inbound SMS in FS PBX, set your Commio messaging webhooks to:
+To enable inbound SMS in Voxra, set your Commio messaging webhooks to:
 
 `https://your-domain/webhook/commio/sms`
 
@@ -71,19 +71,19 @@ To enable inbound SMS in FS PBX, set your Commio messaging webhooks to:
 
 ### Webhook Signature Validation
 
-FS PBX can optionally validate Commio webhook signatures using:
+Voxra can optionally validate Commio webhook signatures using:
 
 `COMMIO_WEBHOOK_SECRET=`
 
 If you enter a secret here:
 
--   FS PBX will **reject** inbound requests without a valid signature
+-   Voxra will **reject** inbound requests without a valid signature
 
 -   This prevents spoofed or unauthorized webhook calls
 
 * * * * *
 
-4\. Enable SMS on a Phone Number in FS PBX
+4\. Enable SMS on a Phone Number in Voxra
 ------------------------------------------
 
 Once provider credentials and webhooks are configured:
@@ -102,7 +102,7 @@ Once provider credentials and webhooks are configured:
 
 After saving, SMS messages sent to that number will:
 
--   Route through Commio to FS PBX
+-   Route through Commio to Voxra
 
 -   Be delivered to the selected extension's mobile app
 
@@ -110,7 +110,7 @@ After saving, SMS messages sent to that number will:
 
 ## 5. MMS Support
 
-If your Apidaze number supports MMS, FS PBX can also process media attachments sent through the same messaging flow.
+If your Apidaze number supports MMS, Voxra can also process media attachments sent through the same messaging flow.
 
 To use MMS media storage, S3-compatible storage must already be configured in your system. See the [S3 Configuration for Messages](/docs/configuration/messaging/s3-config-for-messages/) guide.
 
@@ -125,7 +125,7 @@ This allows users to:
 Summary
 -------
 
-To configure Commio SMS support in FS PBX:
+To configure Commio SMS support in Voxra:
 
 1.  Add credentials to `.env`
 

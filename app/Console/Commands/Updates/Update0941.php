@@ -41,7 +41,7 @@ class Update0941
         // Run the ESL extension install script
         $this->runInstallESLExtension();
 
-        // Update menu links if the FS PBX menu exists
+        // Update menu links if the Voxra menu exists
         $this->updateMenuLinks();
 
         // Remove Dialplans records where dialplan_number equals "*925" and their associated dialplan_details
@@ -160,7 +160,7 @@ class Update0941
     }
 
     /**
-     * Update the FS PBX menu links by running the artisan command,
+     * Update the Voxra menu links by running the artisan command,
      * but only if the menu exists.
      */
     protected function updateMenuLinks()

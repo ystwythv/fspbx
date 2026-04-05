@@ -2,13 +2,13 @@
 id: s3-config-for-messages
 title: Set Up S3 Storage for Messages
 slug: /configuration/messaging/s3-config-for-messages
-description: Configure Amazon S3 or S3-compatible storage for MMS media in FS PBX.
+description: Configure Amazon S3 or S3-compatible storage for MMS media in Voxra.
 sidebar_position: 99
 ---
 
 # Set Up S3 Storage for Messages
 
-FS PBX can store MMS media files in Amazon S3 or another S3-compatible storage provider.
+Voxra can store MMS media files in Amazon S3 or another S3-compatible storage provider.
 
 The main goal is to keep message media off the PBX server while still allowing users to access attachments through the messaging interface.
 
@@ -16,7 +16,7 @@ After media storage is configured:
 
 - inbound MMS attachments can be stored in cloud storage
 - outbound MMS attachments can be stored in cloud storage
-- message media remains accessible through FS PBX
+- message media remains accessible through Voxra
 
 ---
 
@@ -78,7 +78,7 @@ For a non-AWS provider, enter the provider’s S3-compatible endpoint URL.
 After storage is configured and MMS media is processed:
 
 * media files are uploaded to the configured S3 bucket or S3-compatible provider
-* FS PBX keeps track of the stored object location
+* Voxra keeps track of the stored object location
 * users can continue accessing message attachments through the messaging interface
 
 This allows you to offload media storage from the PBX server without losing access to MMS attachments.
@@ -91,5 +91,5 @@ This setup helps by:
 
 * keeping message media out of local server storage
 * supporting Amazon S3 and compatible providers
-* keeping MMS attachments accessible from FS PBX
+* keeping MMS attachments accessible from Voxra
 

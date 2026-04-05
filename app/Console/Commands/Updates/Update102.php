@@ -20,7 +20,7 @@ class Update102
         $targetAvailable = rtrim($nginxAvailable, '/').'/'.$targetName;
         $targetEnabled   = rtrim($nginxEnabled, '/').'/'.$targetName;
 
-        echo "==> FS PBX Update 1.0.2: Installing Nginx internal vhost\n";
+        echo "==> Voxra Update 1.0.2: Installing Nginx internal vhost\n";
 
         // 0) Preconditions
         if (!File::exists($source)) {

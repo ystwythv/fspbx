@@ -7,7 +7,7 @@ sidebar_position: 7
 
 # Phone Numbers (DIDs)
 
-In FS PBX, **Phone Numbers** usually refer to your external numbers from a carrier—often called **DIDs**. These are the numbers people dial from the public phone network to reach your business.
+In Voxra, **Phone Numbers** usually refer to your external numbers from a carrier—often called **DIDs**. These are the numbers people dial from the public phone network to reach your business.
 
 If you’re coming from Asterisk: this is the “inbound DID” side of your trunking setup.
 
@@ -19,7 +19,7 @@ A **DID (Direct Inward Dialing)** number is a public phone number like:
 
 * (555) 111-0000
 
-When someone calls that number, the call comes from your carrier into FS PBX and must be routed to something inside your Domain.
+When someone calls that number, the call comes from your carrier into Voxra and must be routed to something inside your Domain.
 
 ---
 
@@ -33,7 +33,7 @@ These two work together, but they are not the same:
 
 Simple flow:
 
-**Caller → Carrier → Gateway → FS PBX → DID match → Destination**
+**Caller → Carrier → Gateway → Voxra → DID match → Destination**
 
 ---
 
@@ -50,7 +50,7 @@ You need Phone Numbers when you want:
 
 ## Where Phone Numbers live in a multi-tenant system (Domains)
 
-In FS PBX, Phone Numbers are typically assigned to a specific **Domain** so the system knows which tenant should receive the call.
+In Voxra, Phone Numbers are typically assigned to a specific **Domain** so the system knows which tenant should receive the call.
 
 This is what makes multi-tenancy work cleanly:
 

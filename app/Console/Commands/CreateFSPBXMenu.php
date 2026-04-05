@@ -11,7 +11,7 @@ use App\Models\Groups;
 use App\Models\DefaultSettings;
 use App\Models\MenuLanguage;
 
-class CreateFSPBXMenu extends Command
+class CreateVoxraMenu extends Command
 {
     /**
      * The name and signature of the console command.
@@ -25,7 +25,7 @@ class CreateFSPBXMenu extends Command
      *
      * @var string
      */
-    protected $description = 'Create or update the FS PBX Recommended Menu with predefined items.';
+    protected $description = 'Create or update the Voxra Recommended Menu with predefined items.';
 
     /**
      * Whether to update existing records.
@@ -42,7 +42,7 @@ class CreateFSPBXMenu extends Command
     {
         $this->shouldUpdate = $this->option('update');
         $menuName = 'fspbx';
-        $menuDescription = 'FS PBX Default Menu';
+        $menuDescription = 'Voxra Default Menu';
 
         // Check if the menu already exists
         $menu = Menu::where('menu_name', $menuName)->first();

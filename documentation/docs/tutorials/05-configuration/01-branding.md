@@ -6,7 +6,7 @@ sidebar_position: 1
 ---
 
 # Branding
-FS PBX allows custom branding by letting administrators upload their own logos and favicons. This guide explains how to upload and configure the necessary image files to ensure full functionality across different devices and browsers.
+Voxra allows custom branding by letting administrators upload their own logos and favicons. This guide explains how to upload and configure the necessary image files to ensure full functionality across different devices and browsers.
 
 ## 1. Generate the Required Files
 To generate all required favicon and logo files, use [Real Favicon Generator](https://realfavicongenerator.net/). Upload your branded logo, and the tool will generate a complete set of files.
@@ -35,7 +35,7 @@ To generate all required favicon and logo files, use [Real Favicon Generator](ht
 
 * **Main Logo:**
 
-  * logo.png (Main branding logo used in FS PBX)
+  * logo.png (Main branding logo used in Voxra)
 
 ## 2. Uploading the Files
 ### Step 1: Upload the Files
@@ -49,11 +49,11 @@ Copy the generated favicon and logo files to the `/storage/app/public/` director
 
 `chown -R www-data:www-data /var/www/fspbx/storage/app/public/`
 
-## 3. Configuring FS PBX to Use the New Logo
+## 3. Configuring Voxra to Use the New Logo
 ### Step 1: Update the Logo
-To apply the new logo in FS PBX:
+To apply the new logo in Voxra:
 
-1. Log in to FS PBX.
+1. Log in to Voxra.
 1. Navigate to **Advanced > Default Settings**.
 1. Find the setting `menu_brand_image` under the **Theme** category.
 1. Modify the value to: `/storage/logo.png`
@@ -85,7 +85,7 @@ After uploading the files and updating settings, clear your browser cache verify
   * Double-check that the menu_brand_image and favicon settings under Advanced > Default Settings are correctly set to `/storage/logo.png` and `/storage/favicon.ico`, respectively.
 
 ## Conclusion
-By following these steps, you will have a fully branded FS PBX with custom logos and favicons optimized for all devices and platforms.
+By following these steps, you will have a fully branded Voxra with custom logos and favicons optimized for all devices and platforms.
 
 
 

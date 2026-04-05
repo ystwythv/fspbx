@@ -1205,7 +1205,7 @@ class DatabaseSeeder extends Seeder
         try {
             $features = [
                 [
-                    'name' => 'FS PBX Pro Features',
+                    'name' => 'Voxra Pro Features',
                     'slug' => 'fspbx',
                 ],
             ];

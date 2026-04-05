@@ -1,5 +1,5 @@
 ---
-slug: FSPBX-Version-1-1-0-AI-Transcriptions
+slug: Voxra-Version-1-1-0-AI-Transcriptions
 title: New Release - v1.1.0 - AI Transcriptions
 authors: [lemstrom]
 tags: [osupgrade]
@@ -18,7 +18,7 @@ We're excited to announce the addition of AI Transcription services, via use of 
 
 ### 🧩 What's New
 
-Learn how to enable AI-powered call transcriptions and summaries in FS PBX, the modern FreeSWITCH-based PBX platform built for VoIP providers and enterprises.
+Learn how to enable AI-powered call transcriptions and summaries in Voxra, the modern FreeSWITCH-based PBX platform built for VoIP providers and enterprises.
 
 In this step-by-step video, we’ll show you how to:
 - View call recordings and open AI voice transcripts directly from the Call History page
@@ -27,7 +27,7 @@ In this step-by-step video, we’ll show you how to:
 - Enable call transcriptions globally or per tenant for full control
 - Adjust advanced options like speaker diarization, automatic language detection, and PII redaction for HIPAA-compliant operations
 
-At launch, FS PBX integrates AssemblyAI for accurate, HIPAA-compliant speech-to-text and OpenAI for concise AI-generated call summaries.
+At launch, Voxra integrates AssemblyAI for accurate, HIPAA-compliant speech-to-text and OpenAI for concise AI-generated call summaries.
 
 <iframe
       width="560"

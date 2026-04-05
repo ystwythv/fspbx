@@ -10,7 +10,7 @@ sidebar_position: 4
 
 Voicemail Escalation helps make sure important voicemails do not sit unnoticed in a mailbox.
 
-When a new voicemail is left, FS PBX can automatically call one or more recipients and continue escalating the notification until someone accepts responsibility for the message.
+When a new voicemail is left, Voxra can automatically call one or more recipients and continue escalating the notification until someone accepts responsibility for the message.
 
 This is useful for:
 
@@ -24,9 +24,9 @@ This is useful for:
 
 When a voicemail arrives in a mailbox with escalation enabled:
 
-1. FS PBX starts calling the recipients in the first priority group.
+1. Voxra starts calling the recipients in the first priority group.
 2. All recipients with the same priority are called at the same time.
-3. If nobody accepts responsibility, FS PBX moves to the next priority group.
+3. If nobody accepts responsibility, Voxra moves to the next priority group.
 4. If all priority groups are exhausted, the system can retry the escalation based on your retry settings.
 5. Once someone accepts responsibility, the escalation stops.
 
@@ -158,7 +158,7 @@ If you set:
 
 - **Retry Count = 1**
 
-FS PBX will:
+Voxra will:
 
 - try all configured priorities once
 - then retry the entire escalation one more time if nobody accepted
@@ -169,7 +169,7 @@ A value of `0` means there is no retry after the first full pass.
 
 ## Retry Delay (Minutes)
 
-How long FS PBX waits before starting the next retry cycle.
+How long Voxra waits before starting the next retry cycle.
 
 This delay is used **after all priority groups have already been tried** and nobody has accepted the voicemail.
 
@@ -181,7 +181,7 @@ If Retry Delay is set to `5`, the system will wait 5 minutes before trying the e
 
 ## Priority Delay (Minutes)
 
-How long FS PBX waits before moving from one priority group to the next.
+How long Voxra waits before moving from one priority group to the next.
 
 This delay is used **between priority groups**.
 
@@ -190,7 +190,7 @@ This delay is used **between priority groups**.
 If Priority Delay is set to `2`:
 
 - priority 0 is called first
-- if no one accepts, FS PBX waits 2 minutes
+- if no one accepts, Voxra waits 2 minutes
 - then priority 1 is called
 - then waits 2 minutes again before moving to priority 2, if needed
 
@@ -292,7 +292,7 @@ Examples:
 
 ## Attach Voicemail to Completion Emails
 
-When enabled, FS PBX attaches the voicemail recording to the completion email.
+When enabled, Voxra attaches the voicemail recording to the completion email.
 
 This can be helpful when:
 
@@ -330,9 +330,9 @@ Completion Emails:
 
 1. A new voicemail is left in mailbox `100`
 2. Extension `101` is called first
-3. If nobody accepts, FS PBX waits 2 minutes
+3. If nobody accepts, Voxra waits 2 minutes
 4. The external number is called next
-5. If still nobody accepts, FS PBX waits 1 minute
+5. If still nobody accepts, Voxra waits 1 minute
 6. The escalation is retried one more time
 7. If someone accepts, the success email is sent
 8. If nobody accepts after all attempts, the failure email is sent

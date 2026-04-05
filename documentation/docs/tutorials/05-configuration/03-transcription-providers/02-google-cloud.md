@@ -59,7 +59,7 @@ We need to create a "robot account" with specific permissions to perform transcr
 
 ## Step 3: Configuration
 
-We will configure the FS PBX to use the credentials from the JSON file directly from the configuration, without storing the file on the server.
+We will configure the Voxra to use the credentials from the JSON file directly from the configuration, without storing the file on the server.
 
 ### 1. Update Environment Variables (`.env`)
 
@@ -95,7 +95,7 @@ php artisan queue:restart
 
 Once the credentials and configuration are in place, the final step is to instruct the application to use the Google provider for all new voicemail transcriptions.
 
-1.  In the FS PBX user interface, navigate to the **Default Settings** section and then select **Voicemail**.
+1.  In the Voxra user interface, navigate to the **Default Settings** section and then select **Voicemail**.
 2.  Locate the setting named `voicemail_queue_strategy`. Update its value to `modern`.
 3.  Locate the setting named `transcribe_provider`. Update its value to `google`.
 4.  Save the changes.
@@ -108,7 +108,7 @@ All new voicemails will now be sent to Google Cloud Speech-to-Text for transcrip
 
 ### Checking the Logs
 
-The first place to check for any transcription issues is the main FS PBX log file.
+The first place to check for any transcription issues is the main Voxra log file.
 
 The log is located at: `/var/www/fspbx/storage/logs/laravel.log`
 

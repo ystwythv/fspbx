@@ -7,7 +7,7 @@ sidebar_position: 3
 
 # Syncthing File Replication (Bi-Directional)
 
-This guide uses an **automated script** to install & pair Syncthing between two FS PBX servers and share core folders.
+This guide uses an **automated script** to install & pair Syncthing between two Voxra servers and share core folders.
 
 ## What It Does
 

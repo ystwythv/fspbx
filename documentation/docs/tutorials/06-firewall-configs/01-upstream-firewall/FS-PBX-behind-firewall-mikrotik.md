@@ -1,26 +1,26 @@
-# MikroTik Port Forwarding for FSPBX
+# MikroTik Port Forwarding for Voxra
 
-To get FS PBX working correctly behind a firewall, you must configure both FS PBX and your firewall to handle network address translation (NAT) and allow the necessary SIP and RTP traffic. The specific settings you need to adjust depend on your network environment, especially whether you have a static public IP address.
+To get Voxra working correctly behind a firewall, you must configure both Voxra and your firewall to handle network address translation (NAT) and allow the necessary SIP and RTP traffic. The specific settings you need to adjust depend on your network environment, especially whether you have a static public IP address.
 
 ## Adjust firewall settings
 
-Your firewall must have specific ports forwarded to the internal IP address of your FS PBX server. For security, it is highly recommended to restrict this port forwarding to only the IP addresses of your SIP trunk provider and remote extensions.
+Your firewall must have specific ports forwarded to the internal IP address of your Voxra server. For security, it is highly recommended to restrict this port forwarding to only the IP addresses of your SIP trunk provider and remote extensions.
 
 ## Required ports to forward:
 
-	* SIP: UDP/TCP - `5060` (or `5060-5091`): For SIP signaling traffic. Note that FS PBX may use port 5080 for the external SIP profile, depending on the configuration.
+	* SIP: UDP/TCP - `5060` (or `5060-5091`): For SIP signaling traffic. Note that Voxra may use port 5080 for the external SIP profile, depending on the configuration.
 
 	* RTP: UDP: `16384-32768`: For the voice and media traffic. Some providers or setups might use a different range, so it's best to confirm with them.
 
-	* Web GUI (Optional): TCP: `443` and `80`: If you need to access the FS PBX web interface from outside your network.
+	* Web GUI (Optional): TCP: `443` and `80`: If you need to access the Voxra web interface from outside your network.
 
-## Update FS PBX settings
+## Update Voxra settings
 
-These adjustments within the FS PBX interface tell the FreeSWITCH core how to handle traffic when it is behind NAT.
+These adjustments within the Voxra interface tell the FreeSWITCH core how to handle traffic when it is behind NAT.
 
 Configure SIP profiles for NAT
 
-For more granular control, you can adjust the SIP profiles in FS PBX.
+For more granular control, you can adjust the SIP profiles in Voxra.
 
 	* Internal Profile: In Advanced > SIP Profiles, go to the settings for the internal profile (`5060`).
 
@@ -34,19 +34,19 @@ For more granular control, you can adjust the SIP profiles in FS PBX.
 
 For each extension that is located behind a different NAT than the PBX, you may need to adjust the media handling settings.
 
-	* Proxy Media: On the Extensions page, ensure that the media mode is set to "Proxy Media" instead of "Bypass Media." When proxy media is enabled, the FS PBX server acts as a proxy for the media stream, helping to resolve issues with NAT.
+	* Proxy Media: On the Extensions page, ensure that the media mode is set to "Proxy Media" instead of "Bypass Media." When proxy media is enabled, the Voxra server acts as a proxy for the media stream, helping to resolve issues with NAT.
 
 Example scenario: Remote extensions and external SIP trunks
 
 If your setup includes both remote extensions and external SIP trunks, follow these steps:
 
 	* Create firewall aliases: Create aliases on your firewall for the IP addresses of your SIP trunk provider and your remote extensions.
-	* Set up port forwarding rules: Create rules on your firewall to forward SIP (`5060` or `5080`) and RTP (`16384-32768`) traffic only from the IP addresses in your aliases to the internal IP of the FS PBX server.
+	* Set up port forwarding rules: Create rules on your firewall to forward SIP (`5060` or `5080`) and RTP (`16384-32768`) traffic only from the IP addresses in your aliases to the internal IP of the Voxra server.
 	* Use correct SIP profiles: Point your external gateways and remote phones to the `external` SIP profile, which by default uses port `5080` and is better equipped to handle external traffic.
 
-# MikroTik Port Forwarding for FSPBX
+# MikroTik Port Forwarding for Voxra
 
-Continuing through configuring **port forwarding** on a MikroTik router for a FSPBX (FSPBX) server.
+Continuing through configuring **port forwarding** on a MikroTik router for a Voxra (Voxra) server.
 
 ---
 
@@ -54,12 +54,12 @@ Continuing through configuring **port forwarding** on a MikroTik router for a FS
 
 - Access to MikroTik RouterOS via **WinBox**, **WebFig**, or **CLI**
 - Public IP on WAN interface
-- FSPBX server with static LAN IP (e.g., `192.168.88.100`)
-- Knowledge of the ports FSPBX needs
+- Voxra server with static LAN IP (e.g., `192.168.88.100`)
+- Knowledge of the ports Voxra needs
 
 ---
 
-## 2. Typical FSPBX Ports to Forward
+## 2. Typical Voxra Ports to Forward
 
 | Service                     | Protocol | Port(s)       |
 |------------------------------|---------|---------------|
@@ -90,16 +90,16 @@ Continuing through configuring **port forwarding** on a MikroTik router for a FS
 5. Set **Protocol** to the port’s protocol (TCP or UDP).
 6. Set **Dst. Port** to the port you want to forward (e.g., 5060).
 7. In **Action**, select `dst-nat`.
-8. Set **To Addresses** to your FSPBX LAN IP (e.g., `192.168.88.100`).
+8. Set **To Addresses** to your Voxra LAN IP (e.g., `192.168.88.100`).
 9. Set **To Ports** to the same port.
-10. Add a **Description** (e.g., `Forward SIP UDP 5060 to FSPBX`).
+10. Add a **Description** (e.g., `Forward SIP UDP 5060 to Voxra`).
 11. Click **OK**.
 12. Repeat for each port in the table above.
 
 ### Via CLI:
 
 ```bash
-/ip firewall nat add chain=dstnat dst-port=5060 protocol=udp action=dst-nat to-addresses=192.168.88.100 to-ports=5060 comment="SIP UDP 5060 to FSPBX"
+/ip firewall nat add chain=dstnat dst-port=5060 protocol=udp action=dst-nat to-addresses=192.168.88.100 to-ports=5060 comment="SIP UDP 5060 to Voxra"
 ```
 
 Repeat for other ports (5061 TCP, RTP 16384-32768 UDP, etc.).
@@ -108,11 +108,11 @@ Repeat for other ports (5061 TCP, RTP 16384-32768 UDP, etc.).
 
 ## 5. Allow Firewall Traffic (Optional if not automatic)
 
-- Ensure the **forward chain** in **IP → Firewall → Filter Rules** allows traffic to your FSPBX server.
+- Ensure the **forward chain** in **IP → Firewall → Filter Rules** allows traffic to your Voxra server.
 - Example CLI rule for UDP:
 
 ```bash
-/ip firewall filter add chain=forward dst-address=192.168.88.100 protocol=udp dst-port=5060 action=accept comment="Allow SIP UDP to FSPBX"
+/ip firewall filter add chain=forward dst-address=192.168.88.100 protocol=udp dst-port=5060 action=accept comment="Allow SIP UDP to Voxra"
 ```
 
 ---
@@ -121,7 +121,7 @@ Repeat for other ports (5061 TCP, RTP 16384-32768 UDP, etc.).
 
 - Test from an external network (not your LAN).
 - Use a softphone or SIP testing tool to confirm connectivity.
-- Ensure the FSPBX server firewall allows incoming connections on forwarded ports.
+- Ensure the Voxra server firewall allows incoming connections on forwarded ports.
 
 ---
 

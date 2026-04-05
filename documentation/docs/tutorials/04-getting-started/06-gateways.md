@@ -7,7 +7,7 @@ sidebar_position: 6
 
 # Gateways
 
-In FS PBX, a **Gateway** is how your PBX connects to the outside world—usually to a SIP carrier (VoIP provider) so you can make and receive calls using real phone numbers (DIDs).
+In Voxra, a **Gateway** is how your PBX connects to the outside world—usually to a SIP carrier (VoIP provider) so you can make and receive calls using real phone numbers (DIDs).
 
 If you’re coming from Asterisk: **Gateway ≈ SIP Trunk registration/peer**.
 
@@ -40,7 +40,7 @@ These often get mixed up:
 
 A good mental model:
 
-**Carrier ⇄ Gateway ⇄ FS PBX ⇒ (DID match) ⇒ Destination (IVR/Ring Group/Extension)**
+**Carrier ⇄ Gateway ⇄ Voxra ⇒ (DID match) ⇒ Destination (IVR/Ring Group/Extension)**
 
 ---
 
@@ -48,7 +48,7 @@ A good mental model:
 
 ### 1) Registration-based trunk (most common)
 
-FS PBX “registers” to the carrier using a username/password.
+Voxra “registers” to the carrier using a username/password.
 
 * Pros: simple, common with ITSPs
 * Cons: NAT/keepalive details matter more
@@ -75,7 +75,7 @@ You only need a Gateway when you want:
 
 ## Multi-tenant notes (Domains)
 
-In a multi-tenant FS PBX system, you can design gateways in a few ways:
+In a multi-tenant Voxra system, you can design gateways in a few ways:
 
 ### Per-domain gateways (most common for hosting)
 

@@ -16,10 +16,10 @@ use Symfony\Component\Process\Process;
 use Symfony\Component\Process\Exception\ProcessFailedException;
 use Illuminate\Support\Facades\File;
 
-class FSPBXInitialDBSeed extends Command
+class VoxraInitialDBSeed extends Command
 {
     protected $signature = 'fspbx:initial-seed';
-    protected $description = 'Seed DB after initial FS PBX installation';
+    protected $description = 'Seed DB after initial Voxra installation';
 
     public function handle()
     {
@@ -121,10 +121,10 @@ class FSPBXInitialDBSeed extends Command
         Artisan::call('db:seed', ['--force' => true]);  // Add --force flag
         $this->info("Settings seeded successfully.");
 
-        // Step 11: Create FS PBX menu
-        $this->info("Creating FS PBX menu...");
+        // Step 11: Create Voxra menu
+        $this->info("Creating Voxra menu...");
         Artisan::call('menu:create-fspbx');
-        $this->info("Created FS PBX menu...");
+        $this->info("Created Voxra menu...");
 
         // Step 12: Run Provision Template seeder
         $this->info("Seeding provisioning templates...");
@@ -210,7 +210,7 @@ class FSPBXInitialDBSeed extends Command
 
     private function applyEnvUpdates(string $env, array $updates): string
     {
-        $blockHeader = "\n\n### FS PBX - Laravel Reverb\n";
+        $blockHeader = "\n\n### Voxra - Laravel Reverb\n";
         $append = '';
 
         foreach ($updates as $key => $value) {
@@ -486,10 +486,10 @@ class FSPBXInitialDBSeed extends Command
     private function displayCompletionMessage($username, $password)
     {
         $this->info("\n" . str_repeat('=', 60));
-        $this->info("\e[32m✅ FS PBX Installation Completed Successfully! \e[0m");
+        $this->info("\e[32m✅ Voxra Installation Completed Successfully! \e[0m");
         $this->info(str_repeat('=', 60) . "\n");
 
-        // FS PBX ASCII Logo
+        // Voxra ASCII Logo
         $this->line("\e[36m");
         $this->line(" ███████████  █████████     ███████████  ███████████  █████ █████ ");
         $this->line("░░███░░░░░░█ ███░░░░░███   ░░███░░░░░███░░███░░░░░███░░███ ░░███  ");
@@ -501,7 +501,7 @@ class FSPBXInitialDBSeed extends Command
         $this->line("░░░░░        ░░░░░░░░░     ░░░░░        ░░░░░░░░░░░  ░░░░░ ░░░░░  ");
         $this->line("\e[0m"); // Reset color
 
-        $this->info("\n\e[32m🎉 Welcome to FS PBX! 🎉\e[0m");
+        $this->info("\n\e[32m🎉 Welcome to Voxra! 🎉\e[0m");
         $this->info("\n" . str_repeat('=', 60));
 
         $this->info("\e[33m🔗 Login URL:\e[0m  " . config('app.url'));

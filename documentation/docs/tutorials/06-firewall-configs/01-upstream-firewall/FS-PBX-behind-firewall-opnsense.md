@@ -1,30 +1,30 @@
-# OPNsense Port Forwarding for FSPBX
+# OPNsense Port Forwarding for Voxra
 
-This guide walks you through configuring **port forwarding** on OPNsense for a FSPBX (FSPBX) server.
+This guide walks you through configuring **port forwarding** on OPNsense for a Voxra (Voxra) server.
 
-# FS PBX Behind Firewall (example: opnsense)
+# Voxra Behind Firewall (example: opnsense)
 
-To get FS PBX working correctly behind a firewall, you must configure both FS PBX and your firewall to handle network address translation (NAT) and allow the necessary SIP and RTP traffic. The specific settings you need to adjust depend on your network environment, especially whether you have a static public IP address.
+To get Voxra working correctly behind a firewall, you must configure both Voxra and your firewall to handle network address translation (NAT) and allow the necessary SIP and RTP traffic. The specific settings you need to adjust depend on your network environment, especially whether you have a static public IP address.
 
 ## Adjust firewall settings
 
-Your firewall must have specific ports forwarded to the internal IP address of your FS PBX server. For security, it is highly recommended to restrict this port forwarding to only the IP addresses of your SIP trunk provider and remote extensions.
+Your firewall must have specific ports forwarded to the internal IP address of your Voxra server. For security, it is highly recommended to restrict this port forwarding to only the IP addresses of your SIP trunk provider and remote extensions.
 
 ## Required ports to forward:
 
-	* SIP: UDP/TCP - `5060` (or `5060-5091`): For SIP signaling traffic. Note that FS PBX may use port 5080 for the external SIP profile, depending on the configuration.
+	* SIP: UDP/TCP - `5060` (or `5060-5091`): For SIP signaling traffic. Note that Voxra may use port 5080 for the external SIP profile, depending on the configuration.
 
 	* RTP: UDP: `16384-32768`: For the voice and media traffic. Some providers or setups might use a different range, so it's best to confirm with them.
 
-	* Web GUI (Optional): TCP: `443` and `80`: If you need to access the FS PBX web interface from outside your network.
+	* Web GUI (Optional): TCP: `443` and `80`: If you need to access the Voxra web interface from outside your network.
 
-## Update FS PBX settings
+## Update Voxra settings
 
-These adjustments within the FS PBX interface tell the FreeSWITCH core how to handle traffic when it is behind NAT.
+These adjustments within the Voxra interface tell the FreeSWITCH core how to handle traffic when it is behind NAT.
 
 Configure SIP profiles for NAT
 
-For more granular control, you can adjust the SIP profiles in FS PBX.
+For more granular control, you can adjust the SIP profiles in Voxra.
 
 	* Internal Profile: In Advanced > SIP Profiles, go to the settings for the internal profile (`5060`).
 
@@ -41,12 +41,12 @@ For more granular control, you can adjust the SIP profiles in FS PBX.
 
 - OPNsense admin access
 - Public IP assigned to WAN interface
-- FSPBX server with static LAN IP (e.g., `192.168.1.100`)
-- Knowledge of FSPBX ports
+- Voxra server with static LAN IP (e.g., `192.168.1.100`)
+- Knowledge of Voxra ports
 
 ---
 
-## 2. Typical FSPBX Ports to Forward
+## 2. Typical Voxra Ports to Forward
 
 | Service                     | Protocol | Port(s)       |
 |------------------------------|---------|---------------|
@@ -80,9 +80,9 @@ For more granular control, you can adjust the SIP profiles in FS PBX.
 - **Source port range:** any
 - **Destination:** WAN address
 - **Destination port range:** 5060
-- **Redirect target IP:** your FSPBX server LAN IP (e.g., `192.168.1.100`)
+- **Redirect target IP:** your Voxra server LAN IP (e.g., `192.168.1.100`)
 - **Redirect target port:** 5060
-- **Description:** Forward SIP UDP 5060 to FSPBX
+- **Description:** Forward SIP UDP 5060 to Voxra
 - **Filter rule association:** Add associated filter rule (usually check this box)
 
 3. Click **Save**.
@@ -100,7 +100,7 @@ For more granular control, you can adjust the SIP profiles in FS PBX.
 
 - Test from an external network (not your LAN).  
 - Use SIP testing tools or a softphone outside your network.  
-- Ensure your FSPBX server firewall allows incoming connections on these ports.
+- Ensure your Voxra server firewall allows incoming connections on these ports.
 
 ---
 

@@ -20,7 +20,7 @@ class Update0951
     }
 
     /**
-     * Run the artisan command to update the FS PBX menu.
+     * Run the artisan command to update the Voxra menu.
      *
      * @return int Exit code of the Artisan call
      */

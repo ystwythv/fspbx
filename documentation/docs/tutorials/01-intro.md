@@ -7,13 +7,13 @@ sidebar_position: 1
 
 # Introduction
 
-FS PBX is a modern, enterprise-grade VoIP and unified communications platform built on top of FreeSWITCH®. It began as a **fork of FusionPBX**, then was **redesigned from the ground up** with new technologies such as **Laravel, Vue.js, Tailwind, and modern APIs**.
+Voxra is a modern, enterprise-grade VoIP and unified communications platform built on top of FreeSWITCH®. It began as a **fork of FusionPBX**, then was **redesigned from the ground up** with new technologies such as **Laravel, Vue.js, Tailwind, and modern APIs**.
 
 The result is a platform that maintains compatibility with the proven FusionPBX architecture, while delivering a cleaner interface, improved performance, and new features that meet the needs of today's telecom providers and enterprises.
 
 * * * * *
 
-Why FS PBX?
+Why Voxra?
 -----------
 
 -   **Modern Dashboard** -- A fresh, streamlined UI built with Laravel + Vue.js, designed for speed, clarity, and ease of use.
@@ -48,7 +48,7 @@ Key Features
 <!-- Getting Started
 ---------------
 
-1.  **Installation** -- Learn how to deploy FS PBX on Debian with FreeSWITCH and PostgreSQL.
+1.  **Installation** -- Learn how to deploy Voxra on Debian with FreeSWITCH and PostgreSQL.
 
 2.  **Configuration** -- Set up domains, extensions, dialplans, and security policies.
 
@@ -56,16 +56,16 @@ Key Features
 
 4.  **Exploring Modules** -- Enable advanced features like the Contact Center, Hotel PMS, or SMS.
 
-5.  **Managing Updates** -- Keep your system secure and up-to-date with FS PBX release updates. -->
+5.  **Managing Updates** -- Keep your system secure and up-to-date with Voxra release updates. -->
 
 * * * * *
 
 Who This Documentation is For
 -----------------------------
 
--   **Administrators** -- Install, configure, and manage FS PBX systems.
+-   **Administrators** -- Install, configure, and manage Voxra systems.
 
--   **Developers** -- Extend FS PBX with custom modules, APIs, and integrations.
+-   **Developers** -- Extend Voxra with custom modules, APIs, and integrations.
 
 -   **Service Providers** -- Scale deployments across customers and manage multi-tenant environments.
 
@@ -76,7 +76,7 @@ Who This Documentation is For
 <!-- Next Steps
 ----------
 
-👉 Start with the Installation Guide to get your first FS PBX system up and running.
+👉 Start with the Installation Guide to get your first Voxra system up and running.
 
 # Tutorial Intro
 

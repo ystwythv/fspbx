@@ -6,7 +6,7 @@ sidebar_position: 1
 ---
 # OpenAI
 
-This guide outlines the steps required to configure the OpenAI Speech to Text API (Whisper) for use with the FS PBX voicemail transcription service.
+This guide outlines the steps required to configure the OpenAI Speech to Text API (Whisper) for use with the Voxra voicemail transcription service.
 
 OpenAI uses a modern and straightforward **API Key** for authentication. The underlying model, Whisper, is highly accurate and supports a wide range of languages.
 
@@ -42,7 +42,7 @@ First, you must generate a secret API key from your OpenAI account dashboard.
 
 ## Step 2: Configuration
 
-Now, we will configure FS PBX to use your new OpenAI API key.
+Now, we will configure Voxra to use your new OpenAI API key.
 
 ### 1. Update Environment Variables (`.env`)
 
@@ -55,7 +55,7 @@ OPENAI_API_KEY="sk-YourSecretApiKeyCopiedFromOpenAI"
 
 ### 2. Optional: Select a Transcription Model
 
-FS PBX allows you to choose between different OpenAI Whisper models to balance cost, speed, and accuracy. This setting can be found in the user interface under **Default Settings -> Voicemail** by modifying the `openai_transcription_model` value.
+Voxra allows you to choose between different OpenAI Whisper models to balance cost, speed, and accuracy. This setting can be found in the user interface under **Default Settings -> Voicemail** by modifying the `openai_transcription_model` value.
 
 The available models are:
 *   **`whisper-1`** (Default): The original, high-quality Whisper model. A great balance of speed and accuracy.
@@ -74,9 +74,9 @@ php artisan queue:restart
 
 ## Step 3: Activate the OpenAI Transcription Provider
 
-> **Note:** For all new installations of FS PBX, the transcription provider is set to `openai` by default. You may only need to perform this step if you have changed it to another provider or wish to confirm the setting.
+> **Note:** For all new installations of Voxra, the transcription provider is set to `openai` by default. You may only need to perform this step if you have changed it to another provider or wish to confirm the setting.
 
-1.  In the FS PBX interface, navigate to the **Default Settings** section and then select **Voicemail**.
+1.  In the Voxra interface, navigate to the **Default Settings** section and then select **Voicemail**.
 2.  Locate the setting named `transcribe_provider`.
 3.  Ensure its value is set to `openai`.
 4.  Save any changes.
@@ -87,7 +87,7 @@ php artisan queue:restart
 
 ### Checking the Logs
 
-The first place to check for any transcription issues is the main FS PBX log file.
+The first place to check for any transcription issues is the main Voxra log file.
 
 The log is located at: `/var/www/fspbx/storage/logs/laravel.log`
 

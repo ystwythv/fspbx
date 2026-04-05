@@ -19,7 +19,7 @@ class CreateSuperAdmin extends Command
 
     public function handle()
     {
-        $this->info('🔹 FS PBX Superadmin Setup');
+        $this->info('🔹 Voxra Superadmin Setup');
 
         // Prompt for email with validation
         $email = $this->ask('Enter the Superadmin email address');

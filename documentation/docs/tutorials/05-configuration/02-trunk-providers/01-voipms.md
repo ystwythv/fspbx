@@ -13,7 +13,7 @@ This walkthrough will guide you through how to setup a DID to an extension.
 This setup also assumes you will be using a Softphone, and have some experience in setting it up.
 
 ## 1. Setting up a gateway
-This assumes that you've got FS PBX setup on a host.
+This assumes that you've got Voxra setup on a host.
 
 ### Setup
 Gateway - Accounts > Gateways

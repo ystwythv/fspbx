@@ -1,13 +1,13 @@
 ---
 id: retrieving-logs
-title: Retrieving Logs in FS PBX
+title: Retrieving Logs in Voxra
 slug: /troubleshooting/retrieving-logs/
 sidebar_position: 1
 ---
 
-# Retrieving Logs in FS PBX
+# Retrieving Logs in Voxra
 
-In **FS PBX**, all application logs are stored inside the `storage/logs` directory. These logs record system activity, errors, and debugging information --- making them an essential tool when troubleshooting or checking system behavior.
+In **Voxra**, all application logs are stored inside the `storage/logs` directory. These logs record system activity, errors, and debugging information --- making them an essential tool when troubleshooting or checking system behavior.
 
 * * * * *
 
@@ -28,7 +28,7 @@ The main file is:
 🖥️ Viewing Logs in Real Time
 -----------------------------
 
-To **watch new log entries as they happen**, use the `tail` command from your FS PBX server's terminal.
+To **watch new log entries as they happen**, use the `tail` command from your Voxra server's terminal.
 
 `cd /var/www/fspbx
 tail -f -n 200 storage/logs/laravel.log`
@@ -50,7 +50,7 @@ tail -f -n 200 storage/logs/laravel.log`
 
 You might want to check the Laravel logs when:
 
--   🔍 You encounter an error in FS PBX and need detailed information for troubleshooting.
+-   🔍 You encounter an error in Voxra and need detailed information for troubleshooting.
 
 -   ⚡ You suspect something isn't working correctly and want to verify it in real time.
 

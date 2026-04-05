@@ -18,7 +18,7 @@ class InstallLetsEncryptCertificate extends Command
      *
      * @var string
      */
-    protected $description = 'Set up Let\'s Encrypt SSL using Dehydrated for FS PBX';
+    protected $description = 'Set up Let\'s Encrypt SSL using Dehydrated for Voxra';
 
     /**
      * Execute the console command.

@@ -30,7 +30,7 @@ When **Call Sequence** is enabled:
 
 1.  Your desk phone rings first for the number of rings (or seconds) you specify.
 
-2.  If unanswered, FS PBX rings your backup destinations **one at a time in order**.
+2.  If unanswered, Voxra rings your backup destinations **one at a time in order**.
 
 3.  Ringing stops immediately when any destination answers.
 
@@ -102,7 +102,7 @@ You can add **as many steps as you need**.
 
 ## Presence Button (BLF Monitoring and Toggle from Your Phone)
 
-FS PBX includes a feature that lets users toggle the **Call Sequence** using a BLF key. Once the destinatons are set in the dashboard you can enable/disable the feture by pressing a button on your phone.
+Voxra includes a feature that lets users toggle the **Call Sequence** using a BLF key. Once the destinatons are set in the dashboard you can enable/disable the feture by pressing a button on your phone.
 
 ### What the BLF shows
 
@@ -133,7 +133,7 @@ This creates a SIP subscription to:
 
 `sip:fm100@yourdomain.com`
 
-FS PBX then sends real-time presence updates indicating whether Sequential Ring is enabled.
+Voxra then sends real-time presence updates indicating whether Sequential Ring is enabled.
 
 * * * * *
 
@@ -151,7 +151,7 @@ Add or un-comment:
 
     <!-- YOUR EXISTING CONFIG -->
 
-    <!-- FS PBX: FollowMe BLF daemon -->
+    <!-- Voxra: FollowMe BLF daemon -->
     <param name="startup-script" value="lua/followme_blf.lua"/>
   </settings>
 </configuration>

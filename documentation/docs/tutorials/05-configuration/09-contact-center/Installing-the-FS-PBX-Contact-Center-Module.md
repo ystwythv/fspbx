@@ -1,13 +1,13 @@
 ---
 id: contact-center-module
-title: Installing the FS PBX Contact Center Module
+title: Installing the Voxra Contact Center Module
 slug: /configuration/contact-center/installing-contact-center-module/
 sidebar_position: 1
 ---
 
-# Installing the FS PBX Contact Center Module
+# Installing the Voxra Contact Center Module
 
-The FS PBX Contact Center is a premium module that adds advanced call center functionality to your FS PBX system. Before proceeding with the installation, please note that a valid license is required, which can be obtained through our sales team. Trial licenses are available for a 30-day evaluation period.
+The Voxra Contact Center is a premium module that adds advanced call center functionality to your Voxra system. Before proceeding with the installation, please note that a valid license is required, which can be obtained through our sales team. Trial licenses are available for a 30-day evaluation period.
 
 [YouTube Video Walkthrough](https://youtu.be/OEshZIH5qAs)
 
@@ -31,8 +31,8 @@ To apply any new updates that have been downloaded, run the `app:update` Artisan
 `php artisan app:update`
 
 ## Step 4: Add License Key via Web Interface
-1. Open the FS PBX web interface and navigate to the /pro-features page.
-1. Edit the **FS PBX Pro Features** and add your license key.
+1. Open the Voxra web interface and navigate to the /pro-features page.
+1. Edit the **Voxra Pro Features** and add your license key.
 1. Activate the license and ensure it's valid.
 
 ## Step 5: Download the Contact Center Module

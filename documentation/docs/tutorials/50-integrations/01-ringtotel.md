@@ -5,19 +5,19 @@ slug: /integrations/ringotel/
 sidebar_position: 1
 ---
 
-# Ringotel Provisioning Guide for FS PBX
+# Ringotel Provisioning Guide for Voxra
 
 ## Overview
 
-This guide explains how to provision Ringotel mobile and desktop softphone apps with FS PBX.
+This guide explains how to provision Ringotel mobile and desktop softphone apps with Voxra.
 
-Ringotel allows you to deploy and manage softphone users through a centralized cloud platform while keeping provisioning simple from the FS PBX dashboard. Once configured, users can sign in to Ringotel apps across multiple devices and access PBX-integrated calling features with minimal manual setup.
+Ringotel allows you to deploy and manage softphone users through a centralized cloud platform while keeping provisioning simple from the Voxra dashboard. Once configured, users can sign in to Ringotel apps across multiple devices and access PBX-integrated calling features with minimal manual setup.
 
 ### Key Benefits
 
-- **Simple App Provisioning**: Quickly deploy and manage Ringotel apps directly from the FS PBX dashboard without complicated manual configuration
-- **Centralized User Management**: Manage users, app settings, contacts, and related options from one place inside FS PBX
-- **Seamless PBX Integration**: Ringotel works smoothly with FS PBX features, making it easy for users to access calling, messaging, and other tools
+- **Simple App Provisioning**: Quickly deploy and manage Ringotel apps directly from the Voxra dashboard without complicated manual configuration
+- **Centralized User Management**: Manage users, app settings, contacts, and related options from one place inside Voxra
+- **Seamless PBX Integration**: Ringotel works smoothly with Voxra features, making it easy for users to access calling, messaging, and other tools
 - **Faster Onboarding**: Get new users up and running quickly with a streamlined setup process and minimal IT involvement
 - **Cross-Platform Experience**: Deliver the same connected experience across iOS, Android, Windows, Mac, and Linux
 
@@ -26,7 +26,7 @@ Ringotel allows you to deploy and manage softphone users through a centralized c
 Before you begin, make sure you have:
 
 - A **Ringotel account**
-- Access to the **FS PBX administrator dashboard**
+- Access to the **Voxra administrator dashboard**
 - Ability to update **firewall rules** if needed
 - Your public PBX domain available for webhook configuration
 
@@ -40,13 +40,13 @@ Before you begin, make sure you have:
 2. After signup, you will be redirected to the Ringotel provisioning portal
 3. Ringotel uses a multi-tenant architecture, so you can manage multiple customer organizations from one account
 
-### Step 2: Access Ringotel Settings in FS PBX
+### Step 2: Access Ringotel Settings in Voxra
 
-1. Log in to your FS PBX admin interface
+1. Log in to your Voxra admin interface
 2. Navigate to **Advanced → Ringotel App Settings**
 3. Open the Ringotel-related settings area
 
-This is where you will connect FS PBX to your Ringotel account.
+This is where you will connect Voxra to your Ringotel account.
 
 ### Step 3: Obtain Your Ringotel API Credentials
 
@@ -59,48 +59,48 @@ After creating your Ringotel account, you will need to generate an API key and c
 
    `https://pbx.domain.com/sms/ringotelwebhook`
 
-Replace `pbx.domain.com` with your actual FS PBX domain.
+Replace `pbx.domain.com` with your actual Voxra domain.
 
-### Step 4: Configure the Ringotel Integration in FS PBX
+### Step 4: Configure the Ringotel Integration in Voxra
 
-After you have your API key, return to FS PBX and enter it into the Ringotel settings.
+After you have your API key, return to Voxra and enter it into the Ringotel settings.
 
-1. In FS PBX, go to **Advanced → Ringotel App Settings**
+1. In Voxra, go to **Advanced → Ringotel App Settings**
 2. Open the **API Key** setting
 3. Paste in your Ringotel API key
 4. Click **Save**
 
 ### What This Integration Does
 
-Once configured, the integration allows FS PBX and Ringotel to work together automatically.
+Once configured, the integration allows Voxra and Ringotel to work together automatically.
 
-- **Automatic User Sync**: Creating or updating extensions in FS PBX can sync those changes to Ringotel
+- **Automatic User Sync**: Creating or updating extensions in Voxra can sync those changes to Ringotel
 - **Real-Time Updates**: Changes such as passwords or user settings can be pushed to Ringotel automatically
-- **Simplified Provisioning**: Users created in FS PBX can be made available for Ringotel app provisioning quickly
-- **Ongoing Coordination**: FS PBX can notify Ringotel when relevant configuration changes occur
+- **Simplified Provisioning**: Users created in Voxra can be made available for Ringotel app provisioning quickly
+- **Ongoing Coordination**: Voxra can notify Ringotel when relevant configuration changes occur
 
 ### Test the Integration
 
 After saving your API key, test the connection:
 
-1. Create a test extension in FS PBX
+1. Create a test extension in Voxra
 2. Provision a Ringotel user for that extension
 3. Check the Ringotel admin portal and confirm the user appears
-4. Make a small update to the extension in FS PBX
+4. Make a small update to the extension in Voxra
 5. Confirm the update is reflected in Ringotel
 
 If the integration is not working, verify the following:
 
 - The API key was entered correctly
 - The webhook URL is complete and uses the correct PBX domain
-- FS PBX has outbound internet access
+- Voxra has outbound internet access
 - Your firewall allows outbound HTTPS connections to Ringotel
 
 ---
 
-## Part 2: Activate the FS PBX Domain for Ringotel Integration
+## Part 2: Activate the Voxra Domain for Ringotel Integration
 
-FS PBX can create the Ringotel organization for you directly from the dashboard.
+Voxra can create the Ringotel organization for you directly from the dashboard.
 
 1. Go to **Advanced → Ringotel App Settings**
 2. Find the domain you want to activate
@@ -123,7 +123,7 @@ FS PBX can create the Ringotel organization for you directly from the dashboard.
 
 ## Part 3: Create a Connection Profile
 
-The connection profile defines how Ringotel connects to your FS PBX.
+The connection profile defines how Ringotel connects to your Voxra.
 
 ### Required Settings
 
@@ -133,7 +133,7 @@ The connection profile defines how Ringotel connects to your FS PBX.
   - TCP
   - TLS
   - DNS-NAPTR
-- **IP Address or Domain**: The local domain or address for the tenant in FS PBX
+- **IP Address or Domain**: The local domain or address for the tenant in Voxra
   - Example: `pbx.yourcompany.com`
 - **SIP Port**: Usually `5060` for UDP/TCP or `5061` for TLS
 
@@ -184,7 +184,7 @@ Depending on your deployment, this may include:
 
 - Internal contacts and presence visibility
 - BLF-related contact views
-- Calling features connected to FS PBX
+- Calling features connected to Voxra
 - Messaging and other integrated user tools where supported
 
 Review your organization and connection settings to make sure users are assigned correctly and can access the features you want to expose through the app.
@@ -247,8 +247,8 @@ After login, confirm that the user is connected successfully.
 
 ## Conclusion
 
-You have now configured Ringotel provisioning with FS PBX.
+You have now configured Ringotel provisioning with Voxra.
 
-With the integration in place, you can create and manage users from the FS PBX dashboard, streamline app onboarding, and provide a consistent softphone experience across mobile and desktop platforms.
+With the integration in place, you can create and manage users from the Voxra dashboard, streamline app onboarding, and provide a consistent softphone experience across mobile and desktop platforms.
 
-For advanced setup or troubleshooting, refer to your Ringotel portal settings and your FS PBX system configuration.
+For advanced setup or troubleshooting, refer to your Ringotel portal settings and your Voxra system configuration.

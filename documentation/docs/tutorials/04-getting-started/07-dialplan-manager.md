@@ -7,9 +7,9 @@ sidebar_position: 7
 
 # Dialplan Manager
 
-The **Dialplan Manager** is an advanced area of FS PBX used to view and edit **FreeSWITCH dialplans** directly.
+The **Dialplan Manager** is an advanced area of Voxra used to view and edit **FreeSWITCH dialplans** directly.
 
-For most day-to-day PBX setups, you won’t need it—FS PBX already ships with a preconfigured dialplan that covers the common features (extensions, voicemail, ring groups, IVRs, outbound routes, etc.).
+For most day-to-day PBX setups, you won’t need it—Voxra already ships with a preconfigured dialplan that covers the common features (extensions, voicemail, ring groups, IVRs, outbound routes, etc.).
 
 ---
 
@@ -34,17 +34,17 @@ Dialplan Manager is mainly for:
 
 * **advanced users**
 * system admins comfortable with FreeSWITCH concepts
-* people building custom behavior beyond what the standard FS PBX UI provides
+* people building custom behavior beyond what the standard Voxra UI provides
 
-If you’re new to VoIP or just migrating from another system, you’ll typically configure call flows using the regular FS PBX pages (Extensions, Ring Groups, IVRs, Routes, etc.) instead of editing dialplan directly.
+If you’re new to VoIP or just migrating from another system, you’ll typically configure call flows using the regular Voxra pages (Extensions, Ring Groups, IVRs, Routes, etc.) instead of editing dialplan directly.
 
 ---
 
-## Do I need to change the dialplan to run FS PBX?
+## Do I need to change the dialplan to run Voxra?
 
 **No.** Most installations never touch it.
 
-FS PBX’s default configuration is designed so you can:
+Voxra’s default configuration is designed so you can:
 
 * create domains
 * add extensions/users/devices

@@ -6,8 +6,8 @@ import type * as OpenApiPlugin from "docusaurus-plugin-openapi-docs";
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
 const config: Config = {
-    title: 'FS PBX – Open Source PBX Dashboard for VoIP Providers',
-    tagline: 'FS PBX is an open-source FreeSWITCH PBX with a sleek white‑label VoIP dashboard – a FusionPBX alternative for telecom providers, resellers, and enthusiasts.',
+    title: 'Voxra – Open Source PBX Dashboard for VoIP Providers',
+    tagline: 'Voxra is an open-source FreeSWITCH PBX with a sleek white‑label VoIP dashboard – a FusionPBX alternative for telecom providers, resellers, and enthusiasts.',
     favicon: 'img/favicon.ico',
 
     // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
@@ -86,15 +86,15 @@ const config: Config = {
 
     themeConfig: {
         metadata: [
-            { name: 'description', content: 'FS PBX is an open-source FreeSWITCH PBX with a sleek white‑label VoIP dashboard – a FusionPBX alternative for telecom providers, resellers, and enthusiasts.' },
-            { name: 'keywords', content: 'open source PBX, FS PBX, FusionPBX, FusionPBX alternative, FreeSWITCH, VoIP, VoIP dashboard, white label VoIP, telecom, telecom provider' },
+            { name: 'description', content: 'Voxra is an open-source FreeSWITCH PBX with a sleek white‑label VoIP dashboard – a FusionPBX alternative for telecom providers, resellers, and enthusiasts.' },
+            { name: 'keywords', content: 'open source PBX, Voxra, FusionPBX, FusionPBX alternative, FreeSWITCH, VoIP, VoIP dashboard, white label VoIP, telecom, telecom provider' },
         ],
         // Replace with your project's social card
-        image: 'img/fspbx-social-card.png',
+        image: 'img/voxra-social-card.png',
         navbar: {
             title: '',
             logo: {
-                alt: 'FS PBX Logo',
+                alt: 'Voxra Logo',
                 src: 'img/logo.png',
             },
             items: [
@@ -139,7 +139,7 @@ const config: Config = {
                         },
                         {
                             label: 'Reddit',
-                            href: 'https://www.reddit.com/r/FSPBX/',
+                            href: 'https://www.reddit.com/r/Voxra/',
                         },
                     ],
                 },
@@ -157,7 +157,7 @@ const config: Config = {
                     ],
                 },
             ],
-            copyright: `Copyright © ${new Date().getFullYear()} FS PBX.`,
+            copyright: `Copyright © ${new Date().getFullYear()} Voxra.`,
         },
         prism: {
             theme: prismThemes.github,
@@ -170,7 +170,7 @@ const config: Config = {
             // Public API key: it is safe to commit it
             apiKey: 'e1a4e92ec4048f2297c96d7cf229d6fa',
 
-            indexName: 'FS PBX Docs',
+            indexName: 'Voxra Docs',
 
             // Optional: see doc section below
             contextualSearch: true,

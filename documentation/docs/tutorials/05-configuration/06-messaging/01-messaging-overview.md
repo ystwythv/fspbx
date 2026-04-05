@@ -8,7 +8,7 @@ sidebar_position: 1
 Messaging Overview
 ==================
 
-FS PBX includes a modern, flexible messaging framework that allows your system to **send and receive both SMS and MMS messages** using multiple supported providers. This article provides a high-level overview of how messaging works within FS PBX. Provider-specific setup guides are covered in separate articles.
+Voxra includes a modern, flexible messaging framework that allows your system to **send and receive both SMS and MMS messages** using multiple supported providers. This article provides a high-level overview of how messaging works within Voxra. Provider-specific setup guides are covered in separate articles.
 
 * * * * *
 
@@ -17,14 +17,14 @@ Key Capabilities
 
 ### **Send & Receive SMS and MMS Through Multiple Providers**
 
-FS PBX supports several messaging carriers and gives you the freedom to choose which provider handles each phone number.  
+Voxra supports several messaging carriers and gives you the freedom to choose which provider handles each phone number.  
 Once configured, any messaging-capable number can:
 
 -   Receive inbound SMS and MMS messages
 
 -   Send outbound SMS and MMS replies
 
--   Deliver messages to the FS PBX dashboard
+-   Deliver messages to the Voxra dashboard
 
 -   Optionally deliver messages to the mobile app
 
@@ -34,20 +34,20 @@ You can mix and match providers — each phone number can use a different provid
 
 * * * * *
 
-Messaging in the FS PBX Dashboard
+Messaging in the Voxra Dashboard
 ---------------------------------
 
-Messaging is now built directly into the **FS PBX dashboard**.  
+Messaging is now built directly into the **Voxra dashboard**.  
 Users can view conversations, read inbound messages, and send replies without needing the mobile app.
 
-This allows FS PBX users to manage business text messaging directly from the web interface, making messaging more accessible for desktop users and teams working inside the PBX dashboard.
+This allows Voxra users to manage business text messaging directly from the web interface, making messaging more accessible for desktop users and teams working inside the PBX dashboard.
 
 * * * * *
 
 Mobile App Integration
 ----------------------
 
-FS PBX can still deliver messages to the **mobile app**, but the mobile app is no longer required for messaging.
+Voxra can still deliver messages to the **mobile app**, but the mobile app is no longer required for messaging.
 
 When a phone number is assigned to an extension:
 
@@ -64,14 +64,14 @@ This remains a useful option for users who want to stay connected while away fro
 Email Notifications (Optional)
 ------------------------------
 
-FS PBX can also send message notifications to a user's **email address** for convenience.  
+Voxra can also send message notifications to a user's **email address** for convenience.  
 However:
 
 -   Email delivery is *one-way only*
 
 -   Users **cannot reply from email** to send a message back
 
--   Replies must be made from the FS PBX dashboard or the mobile app
+-   Replies must be made from the Voxra dashboard or the mobile app
 
 * * * * *
 
@@ -94,7 +94,7 @@ Assign where inbound messages should be delivered:
 
 -   An **extension**
 
-    -   Allows the user to work with messages inside the FS PBX dashboard
+    -   Allows the user to work with messages inside the Voxra dashboard
     -   Can also deliver messages to the mobile app if the user has one
 
 -   An **email address**
@@ -103,7 +103,7 @@ Assign where inbound messages should be delivered:
 
 You can assign either or both.
 
-Once configured, FS PBX automatically routes:
+Once configured, Voxra automatically routes:
 
 -   Inbound SMS/MMS → to the selected extension and/or email
 
@@ -114,9 +114,9 @@ Once configured, FS PBX automatically routes:
 MMS Support
 -----------
 
-FS PBX now supports **MMS messaging**, allowing users to send and receive picture messages in addition to regular text messages.
+Voxra now supports **MMS messaging**, allowing users to send and receive picture messages in addition to regular text messages.
 
-This means conversations are no longer limited to plain SMS. Users can exchange media with customers directly through supported providers and manage those conversations from the FS PBX dashboard or mobile app.
+This means conversations are no longer limited to plain SMS. Users can exchange media with customers directly through supported providers and manage those conversations from the Voxra dashboard or mobile app.
 
 Some MMS features may depend on provider support and system storage configuration.
 
@@ -125,7 +125,7 @@ Some MMS features may depend on provider support and system storage configuratio
 System Notification SMS Numbers
 -------------------------------
 
-FS PBX also allows adding **system notification numbers** under Message Settings.
+Voxra also allows adding **system notification numbers** under Message Settings.
 
 These numbers are used specifically for **system-generated messages**, such as:
 
@@ -152,13 +152,13 @@ Detailed message logs can be viewed in:
 Summary
 -------
 
-FS PBX provides a powerful, flexible messaging engine with:
+Voxra provides a powerful, flexible messaging engine with:
 
 -   Multi-provider support
 
 -   SMS and MMS support
 
--   Two-way messaging directly in the FS PBX dashboard
+-   Two-way messaging directly in the Voxra dashboard
 
 -   Optional mobile app delivery
 
@@ -168,4 +168,4 @@ FS PBX provides a powerful, flexible messaging engine with:
 
 -   Support for system-level notification numbers
 
-Once a number is messaging-enabled and assigned to a provider and destination, FS PBX handles the full messaging lifecycle: receiving inbound messages, delivering them to users, and sending outbound replies through the correct provider.
+Once a number is messaging-enabled and assigned to a provider and destination, Voxra handles the full messaging lifecycle: receiving inbound messages, delivering them to users, and sending outbound replies through the correct provider.

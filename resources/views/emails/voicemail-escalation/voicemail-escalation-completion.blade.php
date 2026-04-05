@@ -114,7 +114,7 @@
     @endif
 
     <p style="margin-top: 24px; color: #6B7280; font-size: 12px;">
-           This email was generated automatically by {{ config('app.name', 'FS PBX') }} Voicemail Escalation.
+           This email was generated automatically by {{ config('app.name', 'Voxra') }} Voicemail Escalation.
     </p>
 </body>
 </html>

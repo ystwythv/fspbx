@@ -2,13 +2,13 @@
 id: voipms
 title: VoIP.ms SMS Provider Configuration
 slug: /configuration/messaging/voipms
-description: Configure VoIP.ms for SMS and MMS in FS PBX.
+description: Configure VoIP.ms for SMS and MMS in Voxra.
 sidebar_position: 7
 ---
 
 # VoIP.ms SMS Provider Configuration
 
-FS PBX provides two-way SMS and MMS support via **VoIP.ms**, including inbound message handling, outbound delivery, and provider authentication. This guide explains how to configure your VoIP.ms credentials and enable messaging routing to extensions.
+Voxra provides two-way SMS and MMS support via **VoIP.ms**, including inbound message handling, outbound delivery, and provider authentication. This guide explains how to configure your VoIP.ms credentials and enable messaging routing to extensions.
 
 ---
 
@@ -36,15 +36,15 @@ After updating your `.env` file, run:
 php artisan config:cache
 ```
 
-This ensures FS PBX loads the updated provider settings.
+This ensures Voxra loads the updated provider settings.
 
 ---
 
 ## 3. Webhook Setup
 
-VoIP.ms delivers inbound SMS and MMS messages to FS PBX through a webhook.
+VoIP.ms delivers inbound SMS and MMS messages to Voxra through a webhook.
 
-To ensure FS PBX receives and processes incoming messages, configure your VoIP.ms webhook URL (POST Request in a JSON Format) as:
+To ensure Voxra receives and processes incoming messages, configure your VoIP.ms webhook URL (POST Request in a JSON Format) as:
 
 ```text
 https://your-domain/webhook/voipms/sms
@@ -66,7 +66,7 @@ https://your-domain/webhook/voipms/sms
 
 ---
 
-## 4. Enable SMS on a Phone Number in FS PBX
+## 4. Enable SMS on a Phone Number in Voxra
 
 After credentials and webhook configuration are complete:
 
@@ -78,14 +78,14 @@ After credentials and webhook configuration are complete:
 
 When configured:
 
-* Inbound SMS/MMS → VoIP.ms → FS PBX → Assigned Extension
-* Replies → FS PBX → VoIP.ms → Original Sender
+* Inbound SMS/MMS → VoIP.ms → Voxra → Assigned Extension
+* Replies → Voxra → VoIP.ms → Original Sender
 
 ---
 
 ## 5. MMS Support
 
-If your VoIP.ms number supports MMS, FS PBX can also process media attachments sent through the same messaging flow.
+If your VoIP.ms number supports MMS, Voxra can also process media attachments sent through the same messaging flow.
 
 To use MMS media storage, S3-compatible storage must already be configured in your system. See the [S3 Configuration for Messages](/docs/configuration/messaging/s3-config-for-messages/) guide.
 
@@ -112,6 +112,6 @@ To complete VoIP.ms messaging integration:
 
 4. Enable messaging for the number in **Message Settings**
 
-Your VoIP.ms numbers are now ready for two-way SMS and MMS in FS PBX.
+Your VoIP.ms numbers are now ready for two-way SMS and MMS in Voxra.
 
 ```
