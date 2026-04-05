@@ -1829,6 +1829,7 @@ public function store(StoreExtensionRequest $request)
             case 'contact_centers':
             case 'faxes':
             case 'call_flows':
+            case 'ai_agents':
                 return $inputs[$targetKey] ?? null;
 
             case 'voicemails':

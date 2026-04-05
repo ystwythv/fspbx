@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AiAgentController;
 use App\Http\Controllers\AccountSettingsController;
 use App\Http\Controllers\ActiveCallsController;
 use App\Http\Controllers\ActivityLogController;
@@ -187,6 +188,9 @@ Route::group(['middleware' => 'auth'], function () {
 
     // Voicemail Messages
     Route::get('/voicemails/{voicemail}/messages/', [VoicemailMessagesController::class, 'index'])->name('voicemails.messages.index');
+
+    // AI Agents
+    Route::get('ai-agents', [AiAgentController::class, 'index'])->name('ai-agents.index');
 
     // Virtual Receptionist
     Route::get('virtual-receptionists', [VirtualReceptionistController::class, 'index'])->name('virtual-receptionists.index');

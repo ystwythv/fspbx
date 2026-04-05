@@ -1411,6 +1411,7 @@ if (!function_exists('buildDestinationAction')) {
             case 'conferences':
             case 'faxes':
             case 'call_flows':
+            case 'ai_agents':
                 return [
                     'destination_app' => 'transfer',
                     'destination_data' => $option['extension'] . ' XML ' . $domain_name,

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AiAgentController;
 use App\Http\Controllers\AccountSettingsController;
 use App\Http\Controllers\Api\EmergencyCallController;
 use App\Http\Controllers\Api\HolidayHoursController;
@@ -220,6 +221,14 @@ Route::group(['middleware' => ['auth:sanctum', 'api.cookie.auth']], function () 
     Route::delete('/voicemails/messages/{message}', [VoicemailMessagesController::class, 'destroy'])->name('voicemails.messages.destroy');
     Route::get('/voicemails/messages/{message}/download', [VoicemailMessagesController::class, 'downloadVoicemailMessage'])->name('downloadVoicemailMessage');
     Route::get('/voicemails/messages/{message}/delete', [VoicemailMessagesController::class, 'deleteVoicemailMessage'])->name('deleteVoicemailMessage');
+
+    // AI Agents
+    Route::post('ai-agents', [AiAgentController::class, 'store'])->name('ai-agents.store');
+    Route::put('ai-agents/{ai_agent}', [AiAgentController::class, 'update'])->name('ai-agents.update');
+    Route::get('ai-agents/data', [AiAgentController::class, 'getData'])->name('ai-agents.data');
+    Route::post('ai-agents/item-options', [AiAgentController::class, 'getItemOptions'])->name('ai-agents.item.options');
+    Route::post('ai-agents/bulk-delete', [AiAgentController::class, 'bulkDelete'])->name('ai-agents.bulk.delete');
+    Route::post('ai-agents/select-all', [AiAgentController::class, 'selectAll'])->name('ai-agents.select.all');
 
     // Virtual Receptionist
     Route::post('virtual-receptionists', [VirtualReceptionistController::class, 'store'])->name('virtual-receptionists.store');

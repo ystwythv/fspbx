@@ -21,6 +21,7 @@
         'call_flows' => 'call_flow_extension',
         'recordings' => 'recording_filename',
         'voicemails' => 'voicemail_id',
+        'ai_agents' => 'agent_extension',
     ];
 
 /**

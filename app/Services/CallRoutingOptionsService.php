@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\{
+    AiAgent,
     BusinessHour,
     CallCenterQueues,
     CallFlows,
@@ -36,6 +37,7 @@ class CallRoutingOptionsService
         ['value' => 'conferences', 'name' => 'Conferences'],
         ['value' => 'check_voicemail', 'name' => 'Check Voicemail'],
         ['value' => 'company_directory', 'name' => 'Company Directory'],
+        ['value' => 'ai_agents', 'name' => 'AI Agent'],
         ['value' => 'hangup', 'name' => 'Hang up'],
         // ['value' => 'other', 'name' => 'Other']
     ];
@@ -51,6 +53,7 @@ class CallRoutingOptionsService
         ['value' => 'faxes', 'label' => 'Fax'],
         ['value' => 'call_flows', 'label' => 'Call Flow'],
         // ['value' => 'recordings', 'label' => 'Play Greeting'],
+        ['value' => 'ai_agents', 'label' => 'AI Agent'],
         ['value' => 'external', 'label' => 'External Number'],
     ];
 
@@ -69,6 +72,7 @@ class CallRoutingOptionsService
         'faxes'            => \App\Models\Faxes::class,
         'call_flows'       => \App\Models\CallFlows::class,
         'recordings'       => \App\Models\Recordings::class,
+        'ai_agents'        => \App\Models\AiAgent::class,
     ];
 
     private const TRANSFER_FORMAT = '%s:%s XML %s';
@@ -105,6 +109,8 @@ class CallRoutingOptionsService
                 return $this->buildOptions(Dialplans::class, 'dialplan_number', 'dialplan_name');
             case 'conferences':
                 return $this->buildOptions(Conferences::class, 'conference_extension', 'conference_name');
+            case 'ai_agents':
+                return $this->buildOptions(AiAgent::class, 'agent_extension', 'agent_name');
             case 'voicemails':
                 return $this->buildOptions(Voicemails::class, 'voicemail_id', 'voicemail_description');
             case 'other':
@@ -515,6 +521,7 @@ class CallRoutingOptionsService
             'time_conditions' => '/\b(year|yday|mon|mday|week|mweek|wday|hour|minute|minute-of-day|time-of-day|date-time)=("[^"]+"|\'[^\']+\'|\S+)/',
             'faxes' => '/fax_uuid=([0-9a-fA-F-]+)/',
             'conferences' => '/conference_uuid=([0-9a-fA-F-]+)/',
+            'ai_agents' => '/ai_agent_uuid=([0-9a-fA-F-]+)/',
             'check_voicemail' => '/app.lua voicemail/',
             'company_directory' => '/directory.lua/',
             'external' => '/disa.lua/',
@@ -642,6 +649,7 @@ class CallRoutingOptionsService
             'company_directory' => 'Company Directory',
             'check_voicemail' => 'Check Voicemail',
             'hangup' => 'Hang up',
+            'ai_agents' => 'AI Agent',
             'external' => "External Number"
         ];
 

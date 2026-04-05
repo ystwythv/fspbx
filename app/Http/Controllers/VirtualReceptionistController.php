@@ -676,6 +676,7 @@ class VirtualReceptionistController extends Controller
             case 'conferences':
             case 'faxes':
             case 'call_flows':
+            case 'ai_agents':
                 return 'transfer ' . $key['extension'] . ' XML ' . session('domain_name');
             case 'voicemails':
                 return 'transfer *99' . $key['extension'] . ' XML ' . session('domain_name');
@@ -706,6 +707,7 @@ class VirtualReceptionistController extends Controller
             case 'conferences':
             case 'faxes':
             case 'call_flows':
+            case 'ai_agents':
                 return ['action' => 'transfer', 'data' => $target . ' XML ' . session('domain_name')];
             case 'voicemails':
                 return ['action' => 'transfer', 'data' => '*99' . $target . ' XML ' . session('domain_name')];
