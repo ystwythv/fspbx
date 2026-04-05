@@ -89,7 +89,11 @@
             <!--  ASSEMBLY AI -->
             <section v-if="selectedMenuOption === 'assemblyai'">
                 <AssemblyAiForm :routes="routes" :domain_uuid="data.domain_uuid" @error="handleErrorResponse" @success="showNotification" />
+            </section>
 
+            <!--  ELEVENLABS STT -->
+            <section v-if="selectedMenuOption === 'elevenlabs_stt'">
+                <ElevenLabsSttForm :routes="routes" :domain_uuid="data.domain_uuid" @error="handleErrorResponse" @success="showNotification" />
             </section>
 
             <!-- ROOM MANAGEMENT -->
@@ -177,6 +181,7 @@ import ConfirmationModal from "./components/modal/ConfirmationModal.vue";
 import GraphicEqIcon from "@icons/GraphicEqIcon.vue"
 import CallTranscriptionOptionsForm from "./components/forms/CallTranscriptionOptionsForm.vue"
 import AssemblyAiForm from "./components/forms/AssemblyAiForm.vue"
+import ElevenLabsSttForm from "./components/forms/ElevenLabsSttForm.vue"
 import {
     Cog6ToothIcon,
     MapPinIcon,
@@ -239,7 +244,8 @@ const navigation = [
         icon: markRaw(GraphicEqIcon),
         children: [
             { key: 'transcription_options', name: 'Options', icon: markRaw(AdjustmentsVerticalIcon) },
-            { key: 'assemblyai', name: 'AssemblyAI', icon: markRaw(GraphicEqIcon) }
+            { key: 'assemblyai', name: 'AssemblyAI', icon: markRaw(GraphicEqIcon) },
+            { key: 'elevenlabs_stt', name: 'ElevenLabs', icon: markRaw(GraphicEqIcon) }
         ],
     },
     {

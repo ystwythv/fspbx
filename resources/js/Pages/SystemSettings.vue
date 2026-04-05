@@ -63,7 +63,11 @@
             <!--  ASSEMBLY AI -->
             <section v-if="selectedMenuOption === 'assemblyai'">
                 <AssemblyAiForm :routes="routes" @error="handleErrorResponse" @success="showNotification"/>
+            </section>
 
+            <!--  ELEVENLABS STT -->
+            <section v-if="selectedMenuOption === 'elevenlabs_stt'">
+                <ElevenLabsSttForm :routes="routes" @error="handleErrorResponse" @success="showNotification"/>
             </section>
         </template>
 
@@ -91,6 +95,7 @@ import Badge from "@generalComponents/Badge.vue";
 import { CreditCardIcon, Cog6ToothIcon } from '@heroicons/vue/24/outline'
 import GraphicEqIcon from "@icons/GraphicEqIcon.vue"
 import AssemblyAiForm from "./components/forms/AssemblyAiForm.vue"
+import ElevenLabsSttForm from "./components/forms/ElevenLabsSttForm.vue"
 import CallTranscriptionOptionsForm from "./components/forms/CallTranscriptionOptionsForm.vue"
 import { AdjustmentsVerticalIcon } from "@heroicons/vue/24/outline";
 
@@ -135,7 +140,8 @@ onMounted(() => {
             icon: markRaw(GraphicEqIcon),
             children: [
                 { key: 'transcription_options', name: 'Options', icon: markRaw(AdjustmentsVerticalIcon) },
-                { key: 'assemblyai', name: 'AssemblyAI', icon: markRaw(GraphicEqIcon) }
+                { key: 'assemblyai', name: 'AssemblyAI', icon: markRaw(GraphicEqIcon) },
+                { key: 'elevenlabs_stt', name: 'ElevenLabs', icon: markRaw(GraphicEqIcon) }
             ],
         })
     }
