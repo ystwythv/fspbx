@@ -154,6 +154,10 @@ class DatabaseSeeder extends Seeder
             ['application_name' => 'XML CDR', 'permission_name' => 'xml_cdr_search_sentiment'],
             ['application_name' => 'Messages', 'permission_name' => 'messages_view'],
             ['application_name' => 'Messages', 'permission_name' => 'messages_view_as'],
+            ['application_name' => 'AI Agents', 'permission_name' => 'ai_agent_view'],
+            ['application_name' => 'AI Agents', 'permission_name' => 'ai_agent_add'],
+            ['application_name' => 'AI Agents', 'permission_name' => 'ai_agent_edit'],
+            ['application_name' => 'AI Agents', 'permission_name' => 'ai_agent_delete'],
         ];
         $timestamp = date("Y-m-d H:i:s");
 
@@ -254,6 +258,10 @@ class DatabaseSeeder extends Seeder
                 'xml_cdr_search_sentiment',
                 'messages_view',
                 'messages_view_as',
+                'ai_agent_view',
+                'ai_agent_add',
+                'ai_agent_edit',
+                'ai_agent_delete',
             ],
             'admin' => [
                 'wakeup_calls_list_view',
@@ -285,6 +293,10 @@ class DatabaseSeeder extends Seeder
                 'extension_voicemail_settings',
                 'voicemail_message_update',
                 'xml_cdr_search_sentiment',
+                'ai_agent_view',
+                'ai_agent_add',
+                'ai_agent_edit',
+                'ai_agent_delete',
             ],
             'Message Admin' => [
                 'message_settings_list_view',
