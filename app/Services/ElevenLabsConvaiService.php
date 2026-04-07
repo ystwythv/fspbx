@@ -159,6 +159,134 @@ class ElevenLabsConvaiService
         }
     }
 
+    /**
+     * Upload a file to the ElevenLabs knowledge base.
+     * POST /v1/convai/knowledge-base/file
+     */
+    public function uploadKbFile(string $filePath, string $name): array
+    {
+        $response = $this->httpMultipart()
+            ->attach('file', file_get_contents($filePath), basename($filePath))
+            ->post('v1/convai/knowledge-base/file', [
+                ['name' => 'name', 'contents' => $name],
+            ]);
+
+        if (!$response->successful()) {
+            logger('ElevenLabs KB file upload error: ' . $response->body());
+            throw new RuntimeException('Failed to upload KB file: ' . ($response->json('detail.message') ?? $response->body()));
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Add a URL document to the ElevenLabs knowledge base.
+     * POST /v1/convai/knowledge-base/url
+     */
+    public function addKbUrl(string $url, string $name): array
+    {
+        $response = $this->http()->post('v1/convai/knowledge-base/url', [
+            'url'  => $url,
+            'name' => $name,
+        ]);
+
+        if (!$response->successful()) {
+            logger('ElevenLabs KB url add error: ' . $response->body());
+            throw new RuntimeException('Failed to add KB url: ' . ($response->json('detail.message') ?? $response->body()));
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Add a text snippet to the ElevenLabs knowledge base.
+     * POST /v1/convai/knowledge-base/text
+     */
+    public function addKbText(string $text, string $name): array
+    {
+        $response = $this->http()->post('v1/convai/knowledge-base/text', [
+            'text' => $text,
+            'name' => $name,
+        ]);
+
+        if (!$response->successful()) {
+            logger('ElevenLabs KB text add error: ' . $response->body());
+            throw new RuntimeException('Failed to add KB text: ' . ($response->json('detail.message') ?? $response->body()));
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Delete a knowledge base document.
+     * DELETE /v1/convai/knowledge-base/{documentation_id}
+     */
+    public function deleteKbDocument(string $documentationId): void
+    {
+        $response = $this->http()->delete("v1/convai/knowledge-base/{$documentationId}");
+
+        if (!$response->successful() && $response->status() !== 404) {
+            logger('ElevenLabs KB delete error: ' . $response->body());
+            throw new RuntimeException('Failed to delete KB document: ' . $response->body());
+        }
+    }
+
+    /**
+     * Set the agent's knowledge base array.
+     * Each entry: ['type' => 'file'|'url'|'text', 'id' => $documentationId, 'name' => $name]
+     * PATCH /v1/convai/agents/{agent_id}
+     */
+    public function setAgentKnowledgeBase(string $agentId, array $documents): array
+    {
+        $body = [
+            'conversation_config' => [
+                'agent' => [
+                    'prompt' => [
+                        'knowledge_base' => array_values(array_map(function ($d) {
+                            return [
+                                'type' => $d['type'],
+                                'id'   => $d['id'],
+                                'name' => $d['name'],
+                            ];
+                        }, $documents)),
+                    ],
+                ],
+            ],
+        ];
+
+        $response = $this->http()->patch("v1/convai/agents/{$agentId}", $body);
+
+        if (!$response->successful()) {
+            logger('ElevenLabs set agent KB error: ' . $response->body());
+            throw new RuntimeException('Failed to set agent knowledge base: ' . ($response->json('detail.message') ?? $response->body()));
+        }
+
+        return $response->json();
+    }
+
+    private function httpMultipart(): \Illuminate\Http\Client\PendingRequest
+    {
+        return Http::baseUrl($this->baseUrl . '/')
+            ->timeout($this->timeout)
+            ->withHeaders([
+                'xi-api-key' => $this->apiKey,
+                'Accept'     => 'application/json',
+            ])
+            ->retry(
+                3,
+                500,
+                function ($exception) {
+                    if ($exception instanceof ConnectionException) {
+                        return true;
+                    }
+                    $response = method_exists($exception, 'response') ? $exception->response() : null;
+                    $status = $response?->status();
+                    return in_array($status, [429, 500, 502, 503, 504], true);
+                },
+                throw: false
+            );
+    }
+
     private function http(): \Illuminate\Http\Client\PendingRequest
     {
         return Http::baseUrl($this->baseUrl . '/')

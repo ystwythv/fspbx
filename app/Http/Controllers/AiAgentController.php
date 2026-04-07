@@ -4,11 +4,13 @@ namespace App\Http\Controllers;
 
 use Inertia\Inertia;
 use App\Models\AiAgent;
+use App\Models\AiAgentKbDocument;
 use App\Models\Dialplans;
 use App\Models\FusionCache;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 use App\Services\CallRoutingOptionsService;
@@ -16,6 +18,7 @@ use App\Services\ElevenLabsConvaiService;
 use App\Services\Tts\ElevenLabsTtsService;
 use App\Http\Requests\StoreAiAgentRequest;
 use App\Http\Requests\UpdateAiAgentRequest;
+use App\Http\Requests\StoreAiAgentKbDocumentRequest;
 use App\Traits\ChecksLimits;
 
 class AiAgentController extends Controller
@@ -247,6 +250,22 @@ class AiAgentController extends Controller
             }
 
             foreach ($items as $item) {
+                // Clean up KB documents (ElevenLabs + local files + DB rows)
+                $kbDocs = AiAgentKbDocument::where('ai_agent_uuid', $item->ai_agent_uuid)->get();
+                foreach ($kbDocs as $kbDoc) {
+                    if ($convaiService && $kbDoc->elevenlabs_documentation_id) {
+                        try {
+                            $convaiService->deleteKbDocument($kbDoc->elevenlabs_documentation_id);
+                        } catch (\Exception $e) {
+                            logger('ElevenLabs KB cleanup warning: ' . $e->getMessage());
+                        }
+                    }
+                    if ($kbDoc->file_path && Storage::disk('local')->exists($kbDoc->file_path)) {
+                        Storage::disk('local')->delete($kbDoc->file_path);
+                    }
+                    $kbDoc->delete();
+                }
+
                 // Clean up ElevenLabs resources
                 if ($convaiService) {
                     try {
@@ -353,6 +372,8 @@ class AiAgentController extends Controller
                 'store_route' => route('ai-agents.store'),
             ];
 
+            $kbDocuments = [];
+
             $routingOptionsService = new CallRoutingOptionsService;
             $routingTypes = $routingOptionsService->routingTypes;
 
@@ -371,8 +392,30 @@ class AiAgentController extends Controller
                     ->firstOrFail();
 
                 $routes = array_merge($routes, [
-                    'update_route' => route('ai-agents.update', $agent),
+                    'update_route'     => route('ai-agents.update', $agent),
+                    'kb_store_route'   => route('ai-agents.kb.store', ['ai_agent' => $agent->ai_agent_uuid]),
                 ]);
+
+                $kbDocuments = $agent->kbDocuments()
+                    ->orderBy('insert_date', 'desc')
+                    ->get([
+                        'kb_document_uuid',
+                        'document_type',
+                        'name',
+                        'url',
+                        'file_mime_type',
+                        'file_size',
+                        'sync_status',
+                        'sync_error',
+                    ])
+                    ->map(function ($doc) {
+                        return array_merge($doc->toArray(), [
+                            'delete_route' => route('ai-agents.kb.delete', [
+                                'ai_agent'    => $doc->ai_agent_uuid,
+                                'kb_document' => $doc->kb_document_uuid,
+                            ]),
+                        ]);
+                    });
             } else {
                 if ($resp = $this->enforceLimit('ai_agents', AiAgent::class, 'domain_uuid', 'ai_agent_limit_error')) {
                     return $resp;
@@ -419,6 +462,7 @@ class AiAgentController extends Controller
                 'routing_types' => $routingTypes,
                 'voices' => $voices,
                 'languages' => $languages,
+                'kb_documents' => $kbDocuments,
             ]);
         } catch (\Throwable $e) {
             logger('Error: ' . $e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine());
@@ -438,6 +482,154 @@ class AiAgentController extends Controller
             'ai_agent_destroy' => userCheckPermission('ai_agent_delete'),
             'is_superadmin' => isSuperAdmin(),
         ];
+    }
+
+    public function storeKbDocument(StoreAiAgentKbDocumentRequest $request, string $aiAgentUuid)
+    {
+        if (!userCheckPermission('ai_agent_edit')) {
+            return response()->json(['errors' => ['server' => ['Permission denied.']]], 403);
+        }
+
+        $inputs = $request->validated();
+
+        try {
+            $agent = AiAgent::where('ai_agent_uuid', $aiAgentUuid)
+                ->where('domain_uuid', session('domain_uuid'))
+                ->firstOrFail();
+
+            if (!$agent->elevenlabs_agent_id) {
+                return response()->json([
+                    'errors' => ['server' => ['This agent is not linked to ElevenLabs.']]
+                ], 422);
+            }
+
+            $convaiService = app(ElevenLabsConvaiService::class);
+
+            $kbDoc = new AiAgentKbDocument();
+            $kbDoc->kb_document_uuid = (string) Str::uuid();
+            $kbDoc->ai_agent_uuid    = $agent->ai_agent_uuid;
+            $kbDoc->domain_uuid      = $agent->domain_uuid;
+            $kbDoc->document_type    = $inputs['document_type'];
+            $kbDoc->name             = $inputs['name'];
+            $kbDoc->insert_date      = date('Y-m-d H:i:s');
+            $kbDoc->insert_user      = session('user_uuid');
+
+            $elevenlabsResponse = null;
+
+            if ($inputs['document_type'] === 'file') {
+                $uploaded = $request->file('file');
+                $relativePath = 'ai_agent_kb/' . $agent->domain_uuid . '/' . $kbDoc->kb_document_uuid . '/' . $uploaded->getClientOriginalName();
+                Storage::disk('local')->put($relativePath, file_get_contents($uploaded->getRealPath()));
+
+                $kbDoc->file_path      = $relativePath;
+                $kbDoc->file_mime_type = $uploaded->getClientMimeType();
+                $kbDoc->file_size      = $uploaded->getSize();
+
+                $elevenlabsResponse = $convaiService->uploadKbFile(
+                    Storage::disk('local')->path($relativePath),
+                    $inputs['name']
+                );
+            } elseif ($inputs['document_type'] === 'url') {
+                $kbDoc->url = $inputs['url'];
+                $elevenlabsResponse = $convaiService->addKbUrl($inputs['url'], $inputs['name']);
+            } else { // text
+                $kbDoc->text_content = $inputs['text'];
+                $elevenlabsResponse = $convaiService->addKbText($inputs['text'], $inputs['name']);
+            }
+
+            $kbDoc->elevenlabs_documentation_id = $elevenlabsResponse['id']
+                ?? $elevenlabsResponse['documentation_id']
+                ?? null;
+            $kbDoc->sync_status = $kbDoc->elevenlabs_documentation_id ? 'synced' : 'failed';
+            $kbDoc->save();
+
+            // Re-PATCH the agent with the full KB array
+            $this->syncAgentKbList($agent, $convaiService);
+
+            return response()->json([
+                'kb_document' => array_merge($kbDoc->toArray(), [
+                    'delete_route' => route('ai-agents.kb.delete', [
+                        'ai_agent'    => $agent->ai_agent_uuid,
+                        'kb_document' => $kbDoc->kb_document_uuid,
+                    ]),
+                ]),
+                'messages' => ['success' => ['Knowledge base document added.']],
+            ], 201);
+        } catch (\Exception $e) {
+            logger($e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine());
+            return response()->json([
+                'errors' => ['server' => ['Failed to add knowledge base document. ' . $e->getMessage()]]
+            ], 500);
+        }
+    }
+
+    public function deleteKbDocument(string $aiAgentUuid, string $kbDocumentUuid)
+    {
+        if (!userCheckPermission('ai_agent_edit')) {
+            return response()->json(['errors' => ['server' => ['Permission denied.']]], 403);
+        }
+
+        try {
+            $agent = AiAgent::where('ai_agent_uuid', $aiAgentUuid)
+                ->where('domain_uuid', session('domain_uuid'))
+                ->firstOrFail();
+
+            $kbDoc = AiAgentKbDocument::where('kb_document_uuid', $kbDocumentUuid)
+                ->where('ai_agent_uuid', $agent->ai_agent_uuid)
+                ->firstOrFail();
+
+            $convaiService = app(ElevenLabsConvaiService::class);
+
+            if ($kbDoc->elevenlabs_documentation_id) {
+                try {
+                    $convaiService->deleteKbDocument($kbDoc->elevenlabs_documentation_id);
+                } catch (\Exception $e) {
+                    logger('ElevenLabs KB delete warning: ' . $e->getMessage());
+                }
+            }
+
+            if ($kbDoc->file_path && Storage::disk('local')->exists($kbDoc->file_path)) {
+                Storage::disk('local')->delete($kbDoc->file_path);
+            }
+
+            $kbDoc->delete();
+
+            // Re-PATCH the agent with the remaining KB array
+            $this->syncAgentKbList($agent, $convaiService);
+
+            return response()->json([
+                'messages' => ['success' => ['Knowledge base document removed.']],
+            ], 200);
+        } catch (\Exception $e) {
+            logger($e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine());
+            return response()->json([
+                'errors' => ['server' => ['Failed to remove knowledge base document.']]
+            ], 500);
+        }
+    }
+
+    private function syncAgentKbList(AiAgent $agent, ElevenLabsConvaiService $convaiService): void
+    {
+        if (!$agent->elevenlabs_agent_id) {
+            return;
+        }
+
+        $docs = AiAgentKbDocument::where('ai_agent_uuid', $agent->ai_agent_uuid)
+            ->where('sync_status', 'synced')
+            ->whereNotNull('elevenlabs_documentation_id')
+            ->get(['document_type', 'elevenlabs_documentation_id', 'name'])
+            ->map(fn($d) => [
+                'type' => $d->document_type,
+                'id'   => $d->elevenlabs_documentation_id,
+                'name' => $d->name,
+            ])
+            ->toArray();
+
+        try {
+            $convaiService->setAgentKnowledgeBase($agent->elevenlabs_agent_id, $docs);
+        } catch (\Exception $e) {
+            logger('ElevenLabs setAgentKnowledgeBase warning: ' . $e->getMessage());
+        }
     }
 
     public function selectAll()

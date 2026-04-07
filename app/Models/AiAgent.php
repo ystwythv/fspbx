@@ -41,6 +41,11 @@ class AiAgent extends Model
         return $this->belongsTo(Domain::class, 'domain_uuid', 'domain_uuid');
     }
 
+    public function kbDocuments()
+    {
+        return $this->hasMany(AiAgentKbDocument::class, 'ai_agent_uuid', 'ai_agent_uuid');
+    }
+
     public function getId()
     {
         return $this->agent_extension;
