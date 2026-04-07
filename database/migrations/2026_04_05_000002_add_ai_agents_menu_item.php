@@ -8,11 +8,9 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Find the parent menu item that Virtual Receptionists belongs to (typically "Applications" or similar)
+        // Find the parent menu item that Virtual Receptionists belongs to (typically "Applications")
         $virtualReceptionist = DB::table('v_menu_items')
-            ->where('menu_item_link', '/app/ivr_menus/ivr_menus.php')
-            ->orWhere('menu_item_title', 'IVR Menu')
-            ->orWhere('menu_item_title', 'Virtual Receptionist')
+            ->where('menu_item_link', '/virtual-receptionists')
             ->first();
 
         $parentUuid = $virtualReceptionist?->menu_item_parent_uuid;
@@ -53,7 +51,7 @@ return new class extends Migration
             'menu_item_category' => 'internal',
             'menu_item_icon' => null,
             'menu_item_parent_uuid' => $parentUuid,
-            'menu_item_order' => null,
+            'menu_item_order' => 15,
             'menu_item_description' => 'ElevenLabs Conversational AI Agents',
             'insert_date' => now(),
             'insert_user' => null,
