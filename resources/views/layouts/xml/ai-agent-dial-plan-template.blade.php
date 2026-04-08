@@ -5,6 +5,9 @@
         <action application="sleep" data="1000" />
         <action application="set" data="hangup_after_bridge=true" />
         <action application="set" data="absolute_codec_string=PCMU,PCMA" />
+        <action application="set" data="ringback=$${uk-ring}" />
+        <action application="set" data="transfer_ringback=$${uk-ring}" />
+        <action application="set" data="ignore_early_media=true" />
         <action application="set" data="ai_agent_uuid={{ $agent->ai_agent_uuid }}" />
         <action application="bridge" data="sofia/external/sip:{{ $agent->agent_extension }}@sip.rtc.elevenlabs.io:5060;transport=tcp" />
     </condition>
