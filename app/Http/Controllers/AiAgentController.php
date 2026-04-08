@@ -116,7 +116,8 @@ class AiAgentController extends Controller
                 try {
                     $phoneResponse = $convaiService->createSipTrunkPhoneNumber(
                         'Voxra Agent: ' . $inputs['agent_name'],
-                        '+1' . $inputs['agent_extension'],
+                        $inputs['agent_extension'],
+                        config('services.elevenlabs.sip_allowed_addresses', []),
                     );
                     $elevenlabsPhoneNumberId = $phoneResponse['phone_number_id'] ?? null;
 

@@ -113,14 +113,30 @@ class ElevenLabsConvaiService
     }
 
     /**
-     * Create a SIP trunk phone number in ElevenLabs.
+     * Create an inbound SIP trunk phone number in ElevenLabs.
+     *
+     * Without an `inbound_trunk_config.allowed_addresses` allowlist the
+     * resulting number will not accept inbound SIP — INVITEs reach
+     * sip.rtc.elevenlabs.io, get 100 Processing, then are silently dropped.
      */
-    public function createSipTrunkPhoneNumber(string $label, string $phoneNumber): array
-    {
+    public function createSipTrunkPhoneNumber(
+        string $label,
+        string $phoneNumber,
+        array $allowedAddresses = [],
+        string $mediaEncryption = 'allowed'
+    ): array {
         $body = [
             'phone_number' => $phoneNumber,
-            'label' => $label,
+            'label'        => $label,
+            'provider'     => 'sip_trunk',
         ];
+
+        if (!empty($allowedAddresses)) {
+            $body['inbound_trunk_config'] = [
+                'allowed_addresses' => array_values($allowedAddresses),
+                'media_encryption'  => $mediaEncryption,
+            ];
+        }
 
         $response = $this->http()->post('v1/convai/phone-numbers', $body);
 
@@ -130,6 +146,33 @@ class ElevenLabsConvaiService
         }
 
         return $response->json();
+    }
+
+    /**
+     * Replace an existing ElevenLabs SIP trunk phone number with a freshly
+     * configured one (delete + recreate + reassign agent). Used by the
+     * ai-agents:resync-elevenlabs artisan command to backfill agents that
+     * were created before inbound_trunk_config support existed.
+     */
+    public function replaceSipTrunkPhoneNumber(
+        ?string $existingPhoneNumberId,
+        string $label,
+        string $phoneNumber,
+        array $allowedAddresses,
+        string $agentId
+    ): array {
+        if ($existingPhoneNumberId) {
+            $this->deletePhoneNumber($existingPhoneNumberId);
+        }
+
+        $created = $this->createSipTrunkPhoneNumber($label, $phoneNumber, $allowedAddresses);
+
+        $newId = $created['phone_number_id'] ?? null;
+        if ($newId && $agentId) {
+            $this->assignAgentToPhoneNumber($newId, $agentId);
+        }
+
+        return $created;
     }
 
     /**
