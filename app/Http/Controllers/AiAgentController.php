@@ -401,6 +401,7 @@ class AiAgentController extends Controller
                     ->orderBy('insert_date', 'desc')
                     ->get([
                         'kb_document_uuid',
+                        'ai_agent_uuid',
                         'document_type',
                         'name',
                         'url',
