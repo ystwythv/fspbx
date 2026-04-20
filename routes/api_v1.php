@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\RingGroupController;
 use App\Http\Controllers\Api\V1\VoicemailController;
 use App\Http\Controllers\Api\V1\PhoneNumberController;
 use App\Http\Controllers\Api\V1\UserController;
+use App\Http\Controllers\Api\V1\AiAgentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -137,4 +138,15 @@ Route::middleware(['auth:sanctum', 'api.token.auth', 'throttle:api'])->group(fun
 
     Route::delete('/domains/{domain_uuid}/users/{user_uuid}', [UserController::class, 'destroy'])
         ->middleware('user.authorize:user_delete')->name('api.v1.users.destroy');
+
+    /*
+    |--------------------------------------------------------------------------
+    | AI Agents (domain-scoped, read-only)
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/domains/{domain_uuid}/ai-agents', [AiAgentController::class, 'index'])
+        ->middleware('user.authorize:ai_agent_view')->name('api.v1.ai-agents.index');
+
+    Route::get('/domains/{domain_uuid}/ai-agents/{ai_agent_uuid}', [AiAgentController::class, 'show'])
+        ->middleware('user.authorize:ai_agent_view')->name('api.v1.ai-agents.show');
 });
