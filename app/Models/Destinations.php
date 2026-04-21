@@ -82,12 +82,31 @@ class Destinations extends Model
 
     public function getDestinationNumberFormattedAttribute()
     {
-        return formatPhoneNumber($this->destination_number, 'US', PhoneNumberFormat::NATIONAL);
+        $countryCode = $this->domain_uuid
+            ? (get_domain_setting('country', $this->domain_uuid) ?? 'US')
+            : 'US';
+
+        return formatPhoneNumber($this->destination_number_e164, $countryCode, PhoneNumberFormat::NATIONAL);
     }
 
     public function getDestinationNumberE164Attribute()
     {
-        return formatPhoneNumber($this->destination_number, 'US', PhoneNumberFormat::E164);
+        $number = preg_replace('/\D/', '', (string) $this->destination_number);
+
+        if ($number === '') {
+            return '';
+        }
+
+        if (str_starts_with((string) $this->destination_number, '+')) {
+            return '+' . $number;
+        }
+
+        $prefix = preg_replace('/\D/', '', (string) $this->destination_prefix);
+        if ($prefix !== '' && !str_starts_with($number, $prefix)) {
+            return '+' . $prefix . $number;
+        }
+
+        return '+' . $number;
     }
 
     public function getRoutingOptionsAttribute()
