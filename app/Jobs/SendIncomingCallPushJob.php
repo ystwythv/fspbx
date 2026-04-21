@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\Domain;
 use App\Models\Extensions;
 use App\Services\ApnsPushService;
 use Illuminate\Bus\Queueable;
@@ -28,19 +29,31 @@ class SendIncomingCallPushJob implements ShouldQueue
     public function handle(ApnsPushService $apns): void
     {
         $extensionUuid = $this->data['extension_uuid'] ?? null;
+        $extensionNumber = $this->data['extension_number'] ?? null;
+        $domainName = $this->data['domain_name'] ?? null;
         $callerIdName = $this->data['caller_id_name'] ?? 'Unknown';
         $callerIdNumber = $this->data['caller_id_number'] ?? '';
         $callUuid = $this->data['call_uuid'] ?? '';
 
-        if (!$extensionUuid) {
-            Log::warning('[IncomingCallPush] Missing extension_uuid', $this->data);
+        $extension = null;
+        if ($extensionUuid) {
+            $extension = Extensions::where('extension_uuid', $extensionUuid)->first();
+        }
+        if (!$extension && $extensionNumber && $domainName) {
+            $domain = Domain::where('domain_name', $domainName)->first();
+            if ($domain) {
+                $extension = Extensions::where('domain_uuid', $domain->domain_uuid)
+                    ->where('extension', $extensionNumber)
+                    ->first();
+            }
+        }
+        if (!$extension) {
+            Log::warning('[IncomingCallPush] Extension not found', $this->data);
             return;
         }
-
-        $extension = Extensions::where('extension_uuid', $extensionUuid)->first();
-        if (!$extension || !$extension->apns_voip_token) {
+        if (!$extension->apns_voip_token) {
             Log::info('[IncomingCallPush] No push token for extension', [
-                'extension_uuid' => $extensionUuid,
+                'extension_uuid' => $extension->extension_uuid,
             ]);
             return;
         }
