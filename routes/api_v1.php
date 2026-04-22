@@ -176,6 +176,41 @@ Route::middleware(['auth:sanctum', 'api.token.auth', 'throttle:api'])->group(fun
 
             Route::get('/domains/{domain_uuid}/cdr/stats/by-hangup-cause', [CdrStatsController::class, 'byHangupCause'])
                 ->name('api.v1.cdr.stats.by-hangup-cause');
+
+            Route::get('/domains/{domain_uuid}/cdr/stats/by-extension', [CdrStatsController::class, 'byExtension'])
+                ->name('api.v1.cdr.stats.by-extension');
+
+            Route::get('/domains/{domain_uuid}/cdr/stats/timeseries', [CdrStatsController::class, 'timeseries'])
+                ->name('api.v1.cdr.stats.timeseries');
+
+            Route::get('/domains/{domain_uuid}/cdr/stats/quality', [CdrStatsController::class, 'quality'])
+                ->name('api.v1.cdr.stats.quality');
+
+            Route::get('/domains/{domain_uuid}/cdr/stats/top-destinations', [CdrStatsController::class, 'topDestinations'])
+                ->name('api.v1.cdr.stats.top-destinations');
+        });
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | CDR — global (cross-domain) admin endpoints
+    |--------------------------------------------------------------------------
+    | `cdr.scope:global` rejects tenant tokens. `cdr_api_read_all_domains`
+    | permission is also required.
+    */
+    Route::middleware(['cdr.scope:global', 'user.authorize:cdr_api_read_all_domains'])->group(function () {
+        Route::get('/cdr/calls', [CdrCallController::class, 'globalIndex'])
+            ->name('api.v1.cdr.global.calls.index');
+
+        Route::middleware('throttle:cdr-stats')->group(function () {
+            Route::get('/cdr/stats/summary', [CdrStatsController::class, 'globalSummary'])
+                ->name('api.v1.cdr.global.stats.summary');
+
+            Route::get('/cdr/stats/by-direction', [CdrStatsController::class, 'globalByDirection'])
+                ->name('api.v1.cdr.global.stats.by-direction');
+
+            Route::get('/cdr/stats/by-hangup-cause', [CdrStatsController::class, 'globalByHangupCause'])
+                ->name('api.v1.cdr.global.stats.by-hangup-cause');
         });
     });
 
