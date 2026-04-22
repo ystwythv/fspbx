@@ -5438,6 +5438,284 @@ paths:
         name: domain_uuid
         required: true
         schema: { type: string }
+  '/api/v1/domains/{domain_uuid}/cdr/stats/by-extension':
+    get:
+      summary: 'CDR stats grouped by extension'
+      operationId: cdrStatsByExtension
+      description: "Per-extension call counts, answered/missed split, total + average billsec, and average inbound MOS. Rows ordered by call count desc, limited to 500 extensions."
+      parameters:
+        - { $ref: '#/components/parameters/CdrDateFrom' }
+        - { $ref: '#/components/parameters/CdrDateTo' }
+        - { $ref: '#/components/parameters/CdrDirection' }
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  object: cdr_stats_by_extension
+                  domain_uuid: 4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b
+                  window: { from: '2026-04-01T00:00:00Z', to: '2026-04-15T00:00:00Z' }
+                  data:
+                    -
+                      extension_uuid: 5bcb68c3-7c1f-4a36-a8f0-7d1d6c3b0b22
+                      calls: 312
+                      answered: 281
+                      missed: 12
+                      total_billsec: 67840
+                      avg_billsec: 217
+                      mos_avg: 4.35
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+        422: { $ref: '#/components/responses/WindowValidation' }
+      tags: [CDR]
+    parameters:
+      - { in: path, name: domain_uuid, required: true, schema: { type: string } }
+  '/api/v1/domains/{domain_uuid}/cdr/stats/timeseries':
+    get:
+      summary: 'CDR time-series (hour or day buckets)'
+      operationId: cdrStatsTimeseries
+      description: "Call volume, answered, failed, total billsec, and avg MOS bucketed by `hour` or `day` (UTC). Useful for dashboards."
+      parameters:
+        - { $ref: '#/components/parameters/CdrDateFrom' }
+        - { $ref: '#/components/parameters/CdrDateTo' }
+        -
+          in: query
+          name: bucket
+          required: false
+          schema: { type: string, enum: [hour, day] }
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  object: cdr_stats_timeseries
+                  domain_uuid: 4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b
+                  window: { from: '2026-04-01T00:00:00Z', to: '2026-04-03T00:00:00Z' }
+                  bucket: hour
+                  data:
+                    -
+                      bucket_start: '2026-04-01T09:00:00Z'
+                      calls: 42
+                      answered: 36
+                      failed: 2
+                      total_billsec: 6820
+                      mos_avg: 4.32
+                    -
+                      bucket_start: '2026-04-01T10:00:00Z'
+                      calls: 55
+                      answered: 49
+                      failed: 1
+                      total_billsec: 8400
+                      mos_avg: 4.28
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+        422: { $ref: '#/components/responses/WindowValidation' }
+      tags: [CDR]
+    parameters:
+      - { in: path, name: domain_uuid, required: true, schema: { type: string } }
+  '/api/v1/domains/{domain_uuid}/cdr/stats/quality':
+    get:
+      summary: 'CDR quality distribution (MOS)'
+      operationId: cdrStatsQuality
+      description: "Mean Opinion Score (inbound RTP audio) distribution and poor-call count. Outbound MOS, jitter, and packet loss are exposed as `null` until FreeSWITCH CDR template changes capture them."
+      parameters:
+        - { $ref: '#/components/parameters/CdrDateFrom' }
+        - { $ref: '#/components/parameters/CdrDateTo' }
+        -
+          in: query
+          name: poor_threshold
+          description: 'MOS under which a call is "poor" (default 4.0).'
+          required: false
+          schema: { type: number, format: float }
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  object: cdr_stats_quality
+                  domain_uuid: 4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b
+                  window: { from: '2026-04-01T00:00:00Z', to: '2026-04-15T00:00:00Z' }
+                  samples: 3905
+                  mos_inbound: { avg: 4.21, min: 2.1, max: 4.5, p50: 4.3, p95: 4.5 }
+                  mos_outbound: null
+                  jitter_ms: null
+                  packet_loss: null
+                  distribution: { excellent_4_3_plus: 2801, good_4_0_4_3: 702, fair_3_6_4_0: 301, poor_below_3_6: 101 }
+                  poor_threshold: 4.0
+                  poor_calls_count: 402
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+        422: { $ref: '#/components/responses/WindowValidation' }
+      tags: [CDR]
+    parameters:
+      - { in: path, name: domain_uuid, required: true, schema: { type: string } }
+  '/api/v1/domains/{domain_uuid}/cdr/stats/top-destinations':
+    get:
+      summary: 'Top called destinations'
+      operationId: cdrStatsTopDestinations
+      description: "Top N called destination numbers by call count, with total and average billsec. Useful for outbound cost visibility. `cost` is null until the rating engine ships."
+      parameters:
+        - { $ref: '#/components/parameters/CdrDateFrom' }
+        - { $ref: '#/components/parameters/CdrDateTo' }
+        - { $ref: '#/components/parameters/CdrDirection' }
+        -
+          in: query
+          name: limit
+          required: false
+          schema: { type: integer }
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  object: cdr_stats_top_destinations
+                  domain_uuid: 4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b
+                  window: { from: '2026-04-01T00:00:00Z', to: '2026-04-15T00:00:00Z' }
+                  data:
+                    -
+                      destination_number: '+442079460000'
+                      calls: 128
+                      total_billsec: 23040
+                      avg_billsec: 180
+                      cost: null
+                      cost_currency: null
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+        422: { $ref: '#/components/responses/WindowValidation' }
+      tags: [CDR]
+    parameters:
+      - { in: path, name: domain_uuid, required: true, schema: { type: string } }
+  /api/v1/cdr/calls:
+    get:
+      summary: 'List CDRs across the fleet (global admin)'
+      operationId: listCdrsGlobal
+      description: "Cross-tenant CDR list. Requires a global admin token (i.e. `personal_access_tokens.domain_uuid IS NULL`) AND the `cdr_api_read_all_domains` permission. Accepts an optional `?domain_uuid=` filter for targeted queries."
+      parameters:
+        - { $ref: '#/components/parameters/CdrDateFrom' }
+        - { $ref: '#/components/parameters/CdrDateTo' }
+        - { $ref: '#/components/parameters/CdrDirection' }
+        -
+          in: query
+          name: domain_uuid
+          description: 'Optional tenant filter.'
+          required: false
+          schema: { type: string }
+        -
+          in: query
+          name: limit
+          required: false
+          schema: { type: integer }
+        -
+          in: query
+          name: starting_after
+          required: false
+          schema: { type: string }
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  object: list
+                  url: /api/v1/cdr/calls
+                  has_more: true
+                  scope: global
+                  domain_uuid_filter: null
+                  data: []
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403:
+          description: 'Tenant token used against a global-only endpoint'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: { type: invalid_request_error, message: 'This endpoint requires a global admin token.', code: forbidden_scope }
+      tags: [CDR]
+  /api/v1/cdr/stats/summary:
+    get:
+      summary: 'Fleet-wide CDR summary (global admin)'
+      operationId: cdrStatsSummaryGlobal
+      description: "Cross-tenant summary. Supports `group_by_domain=true` to return one row per domain (ordered by call count desc), or a targeted single-tenant summary via `domain_uuid`."
+      parameters:
+        - { $ref: '#/components/parameters/CdrDateFrom' }
+        - { $ref: '#/components/parameters/CdrDateTo' }
+        -
+          in: query
+          name: domain_uuid
+          required: false
+          schema: { type: string }
+        -
+          in: query
+          name: group_by_domain
+          required: false
+          schema: { type: boolean }
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  object: cdr_stats_by_domain
+                  scope: global
+                  window: { from: '2026-04-01T00:00:00Z', to: '2026-04-15T00:00:00Z' }
+                  data:
+                    -
+                      domain_uuid: 4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b
+                      totals: { calls: 4821, answered: 3905, missed: 412, voicemail: 88, abandoned: 27, busy: 203, no_answer: 97, failed: 89 }
+                      duration: { total_sec: 892341, total_billsec: 871002, avg_sec: 185 }
+                      rates: { asr: 0.902, acd_sec: 223 }
+                      cost: { total: null, currency: null }
+        401: { $ref: '#/components/responses/Unauthenticated' }
+      tags: [CDR]
+  /api/v1/cdr/stats/by-direction:
+    get:
+      summary: 'Fleet-wide CDR summary by direction (global admin)'
+      operationId: cdrStatsByDirectionGlobal
+      parameters:
+        - { $ref: '#/components/parameters/CdrDateFrom' }
+        - { $ref: '#/components/parameters/CdrDateTo' }
+        -
+          in: query
+          name: domain_uuid
+          required: false
+          schema: { type: string }
+      responses:
+        200: { description: Success }
+        401: { $ref: '#/components/responses/Unauthenticated' }
+      tags: [CDR]
+  /api/v1/cdr/stats/by-hangup-cause:
+    get:
+      summary: 'Fleet-wide CDR hangup-cause breakdown (global admin)'
+      operationId: cdrStatsByHangupCauseGlobal
+      parameters:
+        - { $ref: '#/components/parameters/CdrDateFrom' }
+        - { $ref: '#/components/parameters/CdrDateTo' }
+        -
+          in: query
+          name: domain_uuid
+          required: false
+          schema: { type: string }
+      responses:
+        200: { description: Success }
+        401: { $ref: '#/components/responses/Unauthenticated' }
+      tags: [CDR]
   '/api/v1/domains/{domain_uuid}/cdr/stats/by-hangup-cause':
     get:
       summary: 'CDR breakdown by hangup cause'

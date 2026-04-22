@@ -216,6 +216,48 @@ class CdrCallController extends Controller
         );
     }
 
+    /**
+     * List CDRs across the whole fleet.
+     *
+     * Reachable only via `cdr.scope:global`. Accepts an optional
+     * `?domain_uuid=` query param to filter to a single tenant.
+     *
+     * @group CDR
+     * @authenticated
+     */
+    public function globalIndex(Request $request)
+    {
+        $filters = $this->filterParser->fromRequest($request);
+
+        $domainUuid = trim((string) $request->query('domain_uuid', '')) ?: null;
+        if ($domainUuid !== null) {
+            $this->assertUuid($domainUuid, 'domain_uuid');
+        }
+
+        $limit = $this->parseLimit($request);
+        $startingAfter = trim((string) $request->query('starting_after', '')) ?: null;
+
+        $query = $this->queries->baseQuery($domainUuid, $filters->dateFromEpoch, $filters->dateToEpoch);
+        $this->queries->applyFilters($query, $filters);
+
+        [$rows, $hasMore] = $this->queries->paginate($query, $limit, $startingAfter);
+
+        $data = $rows->map(fn (CDR $cdr) => $this->toCallData($cdr))->all();
+
+        $payload = new CdrListResponseData(
+            object: 'list',
+            url: '/api/v1/cdr/calls',
+            has_more: $hasMore,
+            data: $data,
+        );
+
+        $envelope = $payload->toArray();
+        $envelope['scope'] = 'global';
+        $envelope['domain_uuid_filter'] = $domainUuid;
+
+        return response()->json($envelope, 200);
+    }
+
     private function resolveRecordingUrl(CDR $cdr): ?string
     {
         if (empty($cdr->record_name) && empty($cdr->archive_recording?->object_key)) {

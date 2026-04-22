@@ -16,13 +16,15 @@ use Illuminate\Database\Eloquent\Builder;
 class CdrQueryService
 {
     /**
-     * Base query scoped to a single domain and a date window on start_epoch.
+     * Base query scoped to a date window on start_epoch, optionally filtered
+     * to a single domain. Pass `null` for $domainUuid to run fleet-wide —
+     * only use this from a `cdr.scope:global` gated route.
+     *
      * Excludes LOSE_RACE + child legs to match the existing Vue CDR list.
      */
-    public function baseQuery(string $domainUuid, int $fromEpoch, int $toEpoch): Builder
+    public function baseQuery(?string $domainUuid, int $fromEpoch, int $toEpoch): Builder
     {
-        return CDR::query()
-            ->where('domain_uuid', $domainUuid)
+        $query = CDR::query()
             ->where('start_epoch', '>=', $fromEpoch)
             ->where('start_epoch', '<=', $toEpoch)
             ->where(function ($q) {
@@ -31,6 +33,12 @@ class CdrQueryService
             })
             ->whereNull('cc_member_session_uuid')
             ->whereNull('originating_leg_uuid');
+
+        if ($domainUuid !== null) {
+            $query->where('domain_uuid', $domainUuid);
+        }
+
+        return $query;
     }
 
     public function applyFilters(Builder $query, CdrFilterData $filters): Builder

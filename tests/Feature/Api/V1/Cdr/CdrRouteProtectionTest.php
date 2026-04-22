@@ -48,4 +48,40 @@ class CdrRouteProtectionTest extends TestCase
             'type' => 'global',
         ])->assertStatus(401);
     }
+
+    public function test_by_extension_requires_authentication(): void
+    {
+        $this->getJson('/api/v1/domains/' . self::DOMAIN . '/cdr/stats/by-extension')
+            ->assertStatus(401);
+    }
+
+    public function test_timeseries_requires_authentication(): void
+    {
+        $this->getJson('/api/v1/domains/' . self::DOMAIN . '/cdr/stats/timeseries')
+            ->assertStatus(401);
+    }
+
+    public function test_quality_requires_authentication(): void
+    {
+        $this->getJson('/api/v1/domains/' . self::DOMAIN . '/cdr/stats/quality')
+            ->assertStatus(401);
+    }
+
+    public function test_top_destinations_requires_authentication(): void
+    {
+        $this->getJson('/api/v1/domains/' . self::DOMAIN . '/cdr/stats/top-destinations')
+            ->assertStatus(401);
+    }
+
+    public function test_global_calls_list_requires_authentication(): void
+    {
+        $this->getJson('/api/v1/cdr/calls')
+            ->assertStatus(401);
+    }
+
+    public function test_global_summary_requires_authentication(): void
+    {
+        $this->getJson('/api/v1/cdr/stats/summary')
+            ->assertStatus(401);
+    }
 }
