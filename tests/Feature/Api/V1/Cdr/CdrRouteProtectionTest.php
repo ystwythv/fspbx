@@ -84,4 +84,17 @@ class CdrRouteProtectionTest extends TestCase
         $this->getJson('/api/v1/cdr/stats/summary')
             ->assertStatus(401);
     }
+
+    public function test_tenant_tokens_list_requires_authentication(): void
+    {
+        $this->getJson('/api/v1/domains/' . self::DOMAIN . '/api-tokens')
+            ->assertStatus(401);
+    }
+
+    public function test_tenant_tokens_create_requires_authentication(): void
+    {
+        $this->postJson('/api/v1/domains/' . self::DOMAIN . '/api-tokens', [
+            'name' => 'test',
+        ])->assertStatus(401);
+    }
 }

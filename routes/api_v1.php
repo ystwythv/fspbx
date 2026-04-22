@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\AiAgentController;
 use App\Http\Controllers\Api\V1\CdrCallController;
 use App\Http\Controllers\Api\V1\CdrStatsController;
+use App\Http\Controllers\Api\V1\TenantApiTokenController;
 use App\Http\Controllers\Api\V1\Admin\ApiTokenController;
 
 /*
@@ -229,5 +230,24 @@ Route::middleware(['auth:sanctum', 'api.token.auth', 'throttle:api'])->group(fun
 
         Route::delete('/admin/api-tokens/{token_id}', [ApiTokenController::class, 'destroy'])
             ->name('api.v1.admin.api-tokens.destroy');
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Tenant self-service API tokens
+    |--------------------------------------------------------------------------
+    | Tenant users can mint / list / revoke tokens for their own domain. The
+    | `cdr.scope:tenant` middleware locks a tenant token to the URL's
+    | {domain_uuid}. `api_token_self_manage` gates who on that domain can do it.
+    */
+    Route::middleware(['cdr.scope:tenant', 'user.authorize:api_token_self_manage'])->group(function () {
+        Route::get('/domains/{domain_uuid}/api-tokens', [TenantApiTokenController::class, 'index'])
+            ->name('api.v1.tenant.api-tokens.index');
+
+        Route::post('/domains/{domain_uuid}/api-tokens', [TenantApiTokenController::class, 'store'])
+            ->name('api.v1.tenant.api-tokens.store');
+
+        Route::delete('/domains/{domain_uuid}/api-tokens/{token_id}', [TenantApiTokenController::class, 'destroy'])
+            ->name('api.v1.tenant.api-tokens.destroy');
     });
 });

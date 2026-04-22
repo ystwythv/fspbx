@@ -5768,6 +5768,51 @@ paths:
         name: domain_uuid
         required: true
         schema: { type: string }
+  '/api/v1/domains/{domain_uuid}/api-tokens':
+    get:
+      summary: 'List tenant API tokens'
+      operationId: listTenantApiTokens
+      description: "Tenant self-service token management. The calling token must be bound to this `domain_uuid`, and the caller must have the `api_token_self_manage` permission."
+      responses:
+        200: { description: Success }
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+      tags: ['Tenant API Tokens']
+    post:
+      summary: 'Create a tenant API token'
+      operationId: createTenantApiToken
+      description: "Mints a token bound to this `domain_uuid`. Tenants cannot grant themselves the `cdr:all-domains` ability — it will be silently stripped."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, example: 'Accounting dashboard' }
+                expires_at: { type: string, example: '2027-04-22T00:00:00Z' }
+                abilities: { type: array, items: { type: string }, example: [cdr:read] }
+      responses:
+        201: { description: Created }
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+      tags: ['Tenant API Tokens']
+    parameters:
+      - { in: path, name: domain_uuid, required: true, schema: { type: string } }
+  '/api/v1/domains/{domain_uuid}/api-tokens/{token_id}':
+    delete:
+      summary: 'Revoke a tenant API token'
+      operationId: revokeTenantApiToken
+      responses:
+        200: { description: Revoked }
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+        404: { $ref: '#/components/responses/ResourceMissing' }
+      tags: ['Tenant API Tokens']
+    parameters:
+      - { in: path, name: domain_uuid, required: true, schema: { type: string } }
+      - { in: path, name: token_id, required: true, schema: { type: string } }
   /api/v1/admin/api-tokens:
     get:
       summary: 'List API tokens'
@@ -5909,6 +5954,9 @@ tags:
   -
     name: 'Admin API Tokens'
     description: 'Mint and revoke API tokens (internal admin only).'
+  -
+    name: 'Tenant API Tokens'
+    description: 'Self-service token management for a single tenant.'
 components:
   securitySchemes:
     default:
