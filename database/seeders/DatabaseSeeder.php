@@ -158,6 +158,9 @@ class DatabaseSeeder extends Seeder
             ['application_name' => 'AI Agents', 'permission_name' => 'ai_agent_add'],
             ['application_name' => 'AI Agents', 'permission_name' => 'ai_agent_edit'],
             ['application_name' => 'AI Agents', 'permission_name' => 'ai_agent_delete'],
+            ['application_name' => 'CDR API', 'permission_name' => 'cdr_api_read'],
+            ['application_name' => 'CDR API', 'permission_name' => 'cdr_api_read_all_domains'],
+            ['application_name' => 'CDR API', 'permission_name' => 'api_token_manage'],
         ];
         $timestamp = date("Y-m-d H:i:s");
 

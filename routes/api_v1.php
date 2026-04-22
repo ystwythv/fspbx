@@ -8,6 +8,9 @@ use App\Http\Controllers\Api\V1\VoicemailController;
 use App\Http\Controllers\Api\V1\PhoneNumberController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\AiAgentController;
+use App\Http\Controllers\Api\V1\CdrCallController;
+use App\Http\Controllers\Api\V1\CdrStatsController;
+use App\Http\Controllers\Api\V1\Admin\ApiTokenController;
 
 /*
 |--------------------------------------------------------------------------
@@ -149,4 +152,47 @@ Route::middleware(['auth:sanctum', 'api.token.auth', 'throttle:api'])->group(fun
 
     Route::get('/domains/{domain_uuid}/ai-agents/{ai_agent_uuid}', [AiAgentController::class, 'show'])
         ->middleware('user.authorize:ai_agent_view')->name('api.v1.ai-agents.show');
+
+    /*
+    |--------------------------------------------------------------------------
+    | CDR (Call Detail Records) — domain-scoped, read-only
+    |--------------------------------------------------------------------------
+    | All routes enforce tenant-vs-global token scope via `cdr.scope`. Stats
+    | endpoints use a stricter rate limiter.
+    */
+    Route::middleware(['cdr.scope:tenant', 'user.authorize:cdr_api_read'])->group(function () {
+        Route::get('/domains/{domain_uuid}/cdr/calls', [CdrCallController::class, 'index'])
+            ->name('api.v1.cdr.calls.index');
+
+        Route::get('/domains/{domain_uuid}/cdr/calls/{xml_cdr_uuid}', [CdrCallController::class, 'show'])
+            ->name('api.v1.cdr.calls.show');
+
+        Route::middleware('throttle:cdr-stats')->group(function () {
+            Route::get('/domains/{domain_uuid}/cdr/stats/summary', [CdrStatsController::class, 'summary'])
+                ->name('api.v1.cdr.stats.summary');
+
+            Route::get('/domains/{domain_uuid}/cdr/stats/by-direction', [CdrStatsController::class, 'byDirection'])
+                ->name('api.v1.cdr.stats.by-direction');
+
+            Route::get('/domains/{domain_uuid}/cdr/stats/by-hangup-cause', [CdrStatsController::class, 'byHangupCause'])
+                ->name('api.v1.cdr.stats.by-hangup-cause');
+        });
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Admin — API token management
+    |--------------------------------------------------------------------------
+    | Tokens are minted by an internal admin. Tenant self-service is deferred.
+    */
+    Route::middleware('user.authorize:api_token_manage')->group(function () {
+        Route::get('/admin/api-tokens', [ApiTokenController::class, 'index'])
+            ->name('api.v1.admin.api-tokens.index');
+
+        Route::post('/admin/api-tokens', [ApiTokenController::class, 'store'])
+            ->name('api.v1.admin.api-tokens.store');
+
+        Route::delete('/admin/api-tokens/{token_id}', [ApiTokenController::class, 'destroy'])
+            ->name('api.v1.admin.api-tokens.destroy');
+    });
 });

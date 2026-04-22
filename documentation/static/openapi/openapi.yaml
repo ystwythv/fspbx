@@ -5130,6 +5130,485 @@ paths:
         required: true
         schema:
           type: string
+  '/api/v1/domains/{domain_uuid}/cdr/calls':
+    get:
+      summary: 'List call detail records (CDRs)'
+      operationId: listCdrs
+      description: "Returns CDRs for the specified domain within a bounded date window.\n\nAccess rules:\n- Tenant token: must match the `domain_uuid` in the URL. Requests against a different domain return `forbidden_domain`.\n- Global token: may access any domain.\n- Caller must have the `cdr_api_read` permission.\n\nWindow rules:\n- `date_from` and `date_to` are required, ISO 8601 UTC.\n- The window may not exceed 30 days (`window_too_large`).\n- `date_from` must be within the last 90 days (`window_too_old`).\n\nPagination (cursor-based):\n- Default `limit` is 25, max 100. Order is by `xml_cdr_uuid`.\n- Pass `starting_after` equal to the last item's `xml_cdr_uuid` from the previous page."
+      parameters:
+        -
+          in: query
+          name: date_from
+          description: 'ISO 8601 start of window (UTC).'
+          example: '2026-04-01T00:00:00Z'
+          required: true
+          schema: { type: string }
+        -
+          in: query
+          name: date_to
+          description: 'ISO 8601 end of window (UTC).'
+          example: '2026-04-15T00:00:00Z'
+          required: true
+          schema: { type: string }
+        -
+          in: query
+          name: direction
+          description: 'inbound, outbound, or local.'
+          required: false
+          schema: { type: string, enum: [inbound, outbound, local] }
+        -
+          in: query
+          name: status
+          description: 'Normalized call status.'
+          required: false
+          schema: { type: string, enum: [answered, missed, voicemail, abandoned, busy, no_answer, failed] }
+        -
+          in: query
+          name: hangup_cause
+          description: 'FreeSWITCH hangup cause (e.g. NORMAL_CLEARING, USER_BUSY).'
+          required: false
+          schema: { type: string }
+        -
+          in: query
+          name: extension_uuid
+          required: false
+          schema: { type: string }
+        -
+          in: query
+          name: queue_uuid
+          required: false
+          schema: { type: string }
+        -
+          in: query
+          name: caller_number
+          description: 'Substring match on caller_id_number.'
+          required: false
+          schema: { type: string }
+        -
+          in: query
+          name: destination_number
+          description: 'Substring match on destination_number / caller_destination.'
+          required: false
+          schema: { type: string }
+        -
+          in: query
+          name: min_duration
+          required: false
+          schema: { type: integer }
+        -
+          in: query
+          name: max_duration
+          required: false
+          schema: { type: integer }
+        -
+          in: query
+          name: min_mos
+          description: 'Inbound RTP audio MOS floor, 1.0–5.0.'
+          required: false
+          schema: { type: number, format: float }
+        -
+          in: query
+          name: has_recording
+          required: false
+          schema: { type: boolean }
+        -
+          in: query
+          name: limit
+          description: 'Page size (1–100, default 25).'
+          required: false
+          schema: { type: integer }
+        -
+          in: query
+          name: starting_after
+          description: 'Last xml_cdr_uuid from the previous page.'
+          required: false
+          schema: { type: string }
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  object: list
+                  url: /api/v1/domains/4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b/cdr/calls
+                  has_more: true
+                  data:
+                    -
+                      xml_cdr_uuid: 9a8b0f6e-1d83-4b9d-b2a5-7f8e1e3e9b01
+                      object: cdr_call
+                      domain_uuid: 4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b
+                      direction: outbound
+                      status: answered
+                      caller_id_name: 'Alice Jones'
+                      caller_id_number: '+441234567890'
+                      destination_number: '+442079460000'
+                      caller_destination: null
+                      start_time: '2026-04-02T09:14:03Z'
+                      answer_time: '2026-04-02T09:14:07Z'
+                      end_time: '2026-04-02T09:17:12Z'
+                      duration: 189
+                      billsec: 185
+                      hangup_cause: NORMAL_CLEARING
+                      hangup_cause_q850: 16
+                      sip_hangup_disposition: recv_bye
+                      extension_uuid: 5bcb68c3-7c1f-4a36-a8f0-7d1d6c3b0b22
+                      queue_uuid: null
+                      mos_inbound: 4.3
+                      cost: null
+                      cost_currency: null
+                      has_recording: true
+                      recording_url: null
+                      sip_call_id: 'abc123@example.com'
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+        422: { $ref: '#/components/responses/WindowValidation' }
+      tags:
+        - CDR
+    parameters:
+      -
+        in: path
+        name: domain_uuid
+        description: 'The domain UUID.'
+        example: 4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b
+        required: true
+        schema: { type: string }
+  '/api/v1/domains/{domain_uuid}/cdr/calls/{xml_cdr_uuid}':
+    get:
+      summary: 'Retrieve a CDR'
+      operationId: getCdr
+      description: "Returns a single CDR including FreeSWITCH call_flow JSON, related legs, and a 30-minute signed recording URL when available.\n\nAccess rules identical to the list endpoint."
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  xml_cdr_uuid: 9a8b0f6e-1d83-4b9d-b2a5-7f8e1e3e9b01
+                  object: cdr_call
+                  domain_uuid: 4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b
+                  direction: outbound
+                  status: answered
+                  caller_id_name: 'Alice Jones'
+                  caller_id_number: '+441234567890'
+                  destination_number: '+442079460000'
+                  start_time: '2026-04-02T09:14:03Z'
+                  answer_time: '2026-04-02T09:14:07Z'
+                  end_time: '2026-04-02T09:17:12Z'
+                  duration: 189
+                  billsec: 185
+                  hangup_cause: NORMAL_CLEARING
+                  hangup_cause_q850: 16
+                  sip_hangup_disposition: recv_bye
+                  extension_uuid: 5bcb68c3-7c1f-4a36-a8f0-7d1d6c3b0b22
+                  queue_uuid: null
+                  mos_inbound: 4.3
+                  mos_outbound: null
+                  jitter_ms: null
+                  packet_loss: null
+                  cost: null
+                  cost_currency: null
+                  has_recording: true
+                  recording_url: 'https://s3.eu-west-2.amazonaws.com/...?X-Amz-Expires=1800&...'
+                  sip_call_id: 'abc123@example.com'
+                  pdd_ms: 2140
+                  read_codec: PCMU
+                  read_rate: 8000
+                  write_codec: PCMU
+                  write_rate: 8000
+                  remote_media_ip: '203.0.113.42'
+                  network_addr: '198.51.100.17'
+                  accountcode: null
+                  call_flow: null
+                  related_legs: []
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+        404: { $ref: '#/components/responses/ResourceMissing' }
+      tags:
+        - CDR
+    parameters:
+      -
+        in: path
+        name: domain_uuid
+        required: true
+        schema: { type: string }
+      -
+        in: path
+        name: xml_cdr_uuid
+        required: true
+        schema: { type: string }
+  '/api/v1/domains/{domain_uuid}/cdr/stats/summary':
+    get:
+      summary: 'CDR summary statistics'
+      operationId: cdrStatsSummary
+      description: "Aggregate counts, duration, ASR and ACD for the given domain + window. Rate-limited at 30 req/min (`cdr-stats` bucket)."
+      parameters:
+        - { $ref: '#/components/parameters/CdrDateFrom' }
+        - { $ref: '#/components/parameters/CdrDateTo' }
+        - { $ref: '#/components/parameters/CdrDirection' }
+        - { $ref: '#/components/parameters/CdrStatus' }
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  object: cdr_stats_summary
+                  domain_uuid: 4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b
+                  window:
+                    from: '2026-04-01T00:00:00Z'
+                    to: '2026-04-15T00:00:00Z'
+                  totals:
+                    calls: 4821
+                    answered: 3905
+                    missed: 412
+                    voicemail: 88
+                    abandoned: 27
+                    busy: 203
+                    no_answer: 97
+                    failed: 89
+                  duration:
+                    total_sec: 892341
+                    total_billsec: 871002
+                    avg_sec: 185
+                  rates:
+                    asr: 0.902
+                    acd_sec: 223
+                  cost:
+                    total: null
+                    currency: null
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+        422: { $ref: '#/components/responses/WindowValidation' }
+      tags:
+        - CDR
+    parameters:
+      -
+        in: path
+        name: domain_uuid
+        required: true
+        schema: { type: string }
+  '/api/v1/domains/{domain_uuid}/cdr/stats/by-direction':
+    get:
+      summary: 'CDR summary grouped by direction'
+      operationId: cdrStatsByDirection
+      description: "Same shape as `/stats/summary`, one row per direction value (inbound / outbound / local)."
+      parameters:
+        - { $ref: '#/components/parameters/CdrDateFrom' }
+        - { $ref: '#/components/parameters/CdrDateTo' }
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  object: cdr_stats_by_direction
+                  domain_uuid: 4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b
+                  window:
+                    from: '2026-04-01T00:00:00Z'
+                    to: '2026-04-15T00:00:00Z'
+                  data:
+                    -
+                      direction: inbound
+                      totals: { calls: 2100, answered: 1800, missed: 200, voicemail: 70, abandoned: 15, busy: 10, no_answer: 5, failed: 0 }
+                      duration: { total_sec: 410000, total_billsec: 400000, avg_sec: 195 }
+                      rates: { asr: 0.988, acd_sec: 222 }
+                      cost: { total: null, currency: null }
+                    -
+                      direction: outbound
+                      totals: { calls: 2700, answered: 2100, missed: 210, voicemail: 18, abandoned: 12, busy: 193, no_answer: 92, failed: 75 }
+                      duration: { total_sec: 480000, total_billsec: 470000, avg_sec: 178 }
+                      rates: { asr: 0.853, acd_sec: 224 }
+                      cost: { total: null, currency: null }
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+        422: { $ref: '#/components/responses/WindowValidation' }
+      tags:
+        - CDR
+    parameters:
+      -
+        in: path
+        name: domain_uuid
+        required: true
+        schema: { type: string }
+  '/api/v1/domains/{domain_uuid}/cdr/stats/by-hangup-cause':
+    get:
+      summary: 'CDR breakdown by hangup cause'
+      operationId: cdrStatsByHangupCause
+      description: "Primary failure-analysis endpoint. Rows are grouped on `hangup_cause`, `hangup_cause_q850`, and `sip_hangup_disposition`, ordered by call count descending."
+      parameters:
+        - { $ref: '#/components/parameters/CdrDateFrom' }
+        - { $ref: '#/components/parameters/CdrDateTo' }
+        - { $ref: '#/components/parameters/CdrDirection' }
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  object: cdr_stats_by_hangup_cause
+                  domain_uuid: 4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b
+                  window:
+                    from: '2026-04-01T00:00:00Z'
+                    to: '2026-04-15T00:00:00Z'
+                  data:
+                    -
+                      hangup_cause: NORMAL_CLEARING
+                      hangup_cause_q850: 16
+                      sip_hangup_disposition: recv_bye
+                      calls: 4205
+                      pct_of_total: 0.8722
+                      total_duration_sec: 845000
+                      total_billsec: 830000
+                      avg_duration_sec: 201
+                    -
+                      hangup_cause: USER_BUSY
+                      hangup_cause_q850: 17
+                      sip_hangup_disposition: send_refuse
+                      calls: 203
+                      pct_of_total: 0.0421
+                      total_duration_sec: 0
+                      total_billsec: 0
+                      avg_duration_sec: 0
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+        422: { $ref: '#/components/responses/WindowValidation' }
+      tags:
+        - CDR
+    parameters:
+      -
+        in: path
+        name: domain_uuid
+        required: true
+        schema: { type: string }
+  /api/v1/admin/api-tokens:
+    get:
+      summary: 'List API tokens'
+      operationId: listApiTokens
+      description: "Lists all Sanctum personal access tokens. Requires the `api_token_manage` permission.\n\nTokens with a non-null `domain_uuid` are tenant-scoped; `null` means global."
+      parameters:
+        -
+          in: query
+          name: limit
+          required: false
+          schema: { type: integer }
+        -
+          in: query
+          name: starting_after
+          required: false
+          schema: { type: string }
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  object: list
+                  url: /api/v1/admin/api-tokens
+                  has_more: false
+                  data:
+                    -
+                      object: api_token
+                      id: 0b8f1c2a-3d4e-5f67-89ab-cdef01234567
+                      name: 'Voxra dashboards'
+                      type: global
+                      domain_uuid: null
+                      abilities: [cdr:read, cdr:all-domains]
+                      last_used_at: '2026-04-22T10:01:02Z'
+                      expires_at: null
+                      created_at: '2026-04-10T08:00:00Z'
+        401: { $ref: '#/components/responses/Unauthenticated' }
+      tags:
+        - 'Admin API Tokens'
+    post:
+      summary: 'Create an API token'
+      operationId: createApiToken
+      description: "Creates a new Sanctum personal access token. Requires the `api_token_manage` permission.\n\nThe plain-text token is returned once in `token` and is unrecoverable afterwards."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, type]
+              properties:
+                name:
+                  type: string
+                  example: 'BluePeak tenant dashboard'
+                type:
+                  type: string
+                  enum: [global, tenant]
+                  example: tenant
+                domain_uuid:
+                  type: string
+                  description: 'Required when type=tenant; forbidden when type=global.'
+                  example: 4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b
+                expires_at:
+                  type: string
+                  description: 'Optional ISO 8601 expiry.'
+                  example: '2027-04-22T00:00:00Z'
+                abilities:
+                  type: array
+                  items: { type: string }
+                  example: [cdr:read]
+      responses:
+        201:
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  object: api_token
+                  id: 0b8f1c2a-3d4e-5f67-89ab-cdef01234567
+                  name: 'BluePeak tenant dashboard'
+                  type: tenant
+                  domain_uuid: 4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b
+                  abilities: [cdr:read]
+                  expires_at: '2027-04-22T00:00:00Z'
+                  created_at: '2026-04-22T17:30:00Z'
+                  token: '1|abcdefghijklmnopqrstuvwxyz0123456789'
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        422: { $ref: '#/components/responses/WindowValidation' }
+      tags:
+        - 'Admin API Tokens'
+  '/api/v1/admin/api-tokens/{token_id}':
+    delete:
+      summary: 'Revoke an API token'
+      operationId: revokeApiToken
+      description: "Permanently deletes the token. Requires the `api_token_manage` permission."
+      responses:
+        200:
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  object: api_token
+                  id: 0b8f1c2a-3d4e-5f67-89ab-cdef01234567
+                  deleted: true
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        404: { $ref: '#/components/responses/ResourceMissing' }
+      tags:
+        - 'Admin API Tokens'
+    parameters:
+      -
+        in: path
+        name: token_id
+        required: true
+        schema: { type: string }
 tags:
   -
     name: Domains
@@ -5146,12 +5625,91 @@ tags:
   -
     name: Voicemails
     description: ''
+  -
+    name: CDR
+    description: 'Call Detail Records — reporting, diagnostics, quality.'
+  -
+    name: 'Admin API Tokens'
+    description: 'Mint and revoke API tokens (internal admin only).'
 components:
   securitySchemes:
     default:
       type: http
       scheme: bearer
       description: 'You can retrieve your token by visiting your dashboard and clicking <b>Generate API token</b>.'
+  parameters:
+    CdrDateFrom:
+      in: query
+      name: date_from
+      description: 'ISO 8601 start of window (UTC). Required. Must not be older than 90 days.'
+      example: '2026-04-01T00:00:00Z'
+      required: true
+      schema: { type: string }
+    CdrDateTo:
+      in: query
+      name: date_to
+      description: 'ISO 8601 end of window (UTC). Required. Window must not exceed 30 days from date_from.'
+      example: '2026-04-15T00:00:00Z'
+      required: true
+      schema: { type: string }
+    CdrDirection:
+      in: query
+      name: direction
+      required: false
+      schema: { type: string, enum: [inbound, outbound, local] }
+    CdrStatus:
+      in: query
+      name: status
+      required: false
+      schema: { type: string, enum: [answered, missed, voicemail, abandoned, busy, no_answer, failed] }
+  responses:
+    Unauthenticated:
+      description: Unauthenticated
+      content:
+        application/json:
+          schema:
+            type: object
+            example:
+              error:
+                type: authentication_error
+                message: Unauthenticated.
+                code: unauthenticated
+    ForbiddenDomain:
+      description: 'Forbidden (token not permitted for this domain)'
+      content:
+        application/json:
+          schema:
+            type: object
+            example:
+              error:
+                type: invalid_request_error
+                message: 'This token is not permitted to access that domain.'
+                code: forbidden_domain
+                param: domain_uuid
+    WindowValidation:
+      description: 'Date window validation failure'
+      content:
+        application/json:
+          schema:
+            type: object
+            example:
+              error:
+                type: invalid_request_error
+                message: 'Window exceeds the maximum of 30 days.'
+                code: window_too_large
+                param: date_to
+    ResourceMissing:
+      description: 'Resource not found'
+      content:
+        application/json:
+          schema:
+            type: object
+            example:
+              error:
+                type: invalid_request_error
+                message: 'CDR not found.'
+                code: resource_missing
+                param: xml_cdr_uuid
 security:
   -
     default: []

@@ -53,6 +53,13 @@ class AppServiceProvider extends ServiceProvider
     public function register()
     {
         Sanctum::ignoreMigrations();
+
+        $this->app->singleton(\App\Services\Cdr\CdrApiFilterParser::class, function ($app) {
+            return new \App\Services\Cdr\CdrApiFilterParser(
+                maxWindowSeconds: (int) config('cdr.api_max_window_seconds', 30 * 86400),
+                maxAgeSeconds: (int) config('cdr.api_max_age_seconds', 90 * 86400),
+            );
+        });
     }
 
     /**
