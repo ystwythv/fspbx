@@ -9,4 +9,7 @@ return [
 
     // Signed recording URL TTL (seconds).
     'recording_url_ttl' => env('CDR_RECORDING_URL_TTL', 1800),
+
+    // Maximum rows written to a single CSV export before truncation.
+    'csv_max_rows' => env('CDR_CSV_MAX_ROWS', 250000),
 ];

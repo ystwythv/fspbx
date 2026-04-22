@@ -168,6 +168,10 @@ Route::middleware(['auth:sanctum', 'api.token.auth', 'throttle:api'])->group(fun
         Route::get('/domains/{domain_uuid}/cdr/calls/{xml_cdr_uuid}', [CdrCallController::class, 'show'])
             ->name('api.v1.cdr.calls.show');
 
+        Route::get('/domains/{domain_uuid}/cdr/calls.csv', [CdrCallController::class, 'exportCsv'])
+            ->middleware('throttle:cdr-export')
+            ->name('api.v1.cdr.calls.export');
+
         Route::middleware('throttle:cdr-stats')->group(function () {
             Route::get('/domains/{domain_uuid}/cdr/stats/summary', [CdrStatsController::class, 'summary'])
                 ->name('api.v1.cdr.stats.summary');
@@ -202,6 +206,10 @@ Route::middleware(['auth:sanctum', 'api.token.auth', 'throttle:api'])->group(fun
     Route::middleware(['cdr.scope:global', 'user.authorize:cdr_api_read_all_domains'])->group(function () {
         Route::get('/cdr/calls', [CdrCallController::class, 'globalIndex'])
             ->name('api.v1.cdr.global.calls.index');
+
+        Route::get('/cdr/calls.csv', [CdrCallController::class, 'globalExportCsv'])
+            ->middleware('throttle:cdr-export')
+            ->name('api.v1.cdr.global.calls.export');
 
         Route::middleware('throttle:cdr-stats')->group(function () {
             Route::get('/cdr/stats/summary', [CdrStatsController::class, 'globalSummary'])
