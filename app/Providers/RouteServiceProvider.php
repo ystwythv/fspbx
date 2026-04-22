@@ -78,5 +78,11 @@ class RouteServiceProvider extends ServiceProvider
             $key = $request->bearerToken() ?: (optional($request->user())->id ?: $request->ip());
             return Limit::perMinute(30)->by('cdr-stats:' . $key);
         });
+
+        // CSV exports stream many rows — very tight limit, keyed by token.
+        RateLimiter::for('cdr-export', function (Request $request) {
+            $key = $request->bearerToken() ?: (optional($request->user())->id ?: $request->ip());
+            return Limit::perMinute(5)->by('cdr-export:' . $key);
+        });
     }
 }

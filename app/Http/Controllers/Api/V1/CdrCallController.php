@@ -13,6 +13,7 @@ use App\Services\Cdr\CallStatusResolver;
 use App\Services\Cdr\CdrApiFilterParser;
 use App\Services\Cdr\CdrQueryService;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CdrCallController extends Controller
 {
@@ -214,6 +215,119 @@ class CdrCallController extends Controller
             recording_url: null, // detail endpoint returns this; list stays light
             sip_call_id: $cdr->sip_call_id,
         );
+    }
+
+    /**
+     * Stream CDRs as a CSV file.
+     *
+     * Honors the same filters + window rules as the JSON list endpoint, but
+     * streams rows row-by-row (no pagination) to keep memory flat on large
+     * exports. Capped at the server-configured max export rows.
+     *
+     * @group CDR
+     * @authenticated
+     */
+    public function exportCsv(Request $request, string $domain_uuid)
+    {
+        $this->assertUuid($domain_uuid, 'domain_uuid');
+        $filters = $this->filterParser->fromRequest($request);
+        return $this->streamCsv($domain_uuid, $filters);
+    }
+
+    /**
+     * Global (cross-domain) CSV export. Reachable via cdr.scope:global routes
+     * only; accepts optional `?domain_uuid=` filter.
+     *
+     * @group CDR
+     * @authenticated
+     */
+    public function globalExportCsv(Request $request)
+    {
+        $filters = $this->filterParser->fromRequest($request);
+        $domainUuid = trim((string) $request->query('domain_uuid', '')) ?: null;
+        if ($domainUuid !== null) {
+            $this->assertUuid($domainUuid, 'domain_uuid');
+        }
+        return $this->streamCsv($domainUuid, $filters);
+    }
+
+    private function streamCsv(?string $domainUuid, \App\Data\Api\V1\Cdr\CdrFilterData $filters): StreamedResponse
+    {
+        $query = $this->queries->baseQuery($domainUuid, $filters->dateFromEpoch, $filters->dateToEpoch);
+        $this->queries->applyFilters($query, $filters);
+        $query->orderBy('start_epoch');
+
+        $maxRows = (int) config('cdr.csv_max_rows', 250000);
+        $filename = sprintf(
+            'cdrs-%s-%s-to-%s.csv',
+            $domainUuid ?? 'all',
+            gmdate('Ymd', $filters->dateFromEpoch),
+            gmdate('Ymd', $filters->dateToEpoch),
+        );
+
+        $resolver = $this->statusResolver;
+
+        $callback = function () use ($query, $maxRows, $resolver) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, [
+                'xml_cdr_uuid', 'domain_uuid', 'direction', 'status',
+                'caller_id_name', 'caller_id_number', 'destination_number',
+                'start_time', 'answer_time', 'end_time',
+                'duration_sec', 'billsec_sec',
+                'hangup_cause', 'hangup_cause_q850', 'sip_hangup_disposition',
+                'extension_uuid', 'queue_uuid',
+                'mos_inbound', 'mos_outbound', 'jitter_ms', 'packet_loss',
+                'has_recording', 'sip_call_id',
+            ]);
+
+            $written = 0;
+            foreach ($query->lazyById(1000, 'xml_cdr_uuid') as $cdr) {
+                fputcsv($out, [
+                    (string) $cdr->xml_cdr_uuid,
+                    (string) $cdr->domain_uuid,
+                    $cdr->direction,
+                    $resolver->resolve($cdr)->value,
+                    $cdr->caller_id_name,
+                    $cdr->caller_id_number,
+                    $cdr->destination_number,
+                    $cdr->start_epoch ? gmdate('Y-m-d\TH:i:s\Z', (int) $cdr->start_epoch) : '',
+                    $cdr->answer_epoch ? gmdate('Y-m-d\TH:i:s\Z', (int) $cdr->answer_epoch) : '',
+                    $cdr->end_epoch ? gmdate('Y-m-d\TH:i:s\Z', (int) $cdr->end_epoch) : '',
+                    $cdr->duration,
+                    $cdr->billsec,
+                    $cdr->hangup_cause,
+                    $cdr->hangup_cause_q850,
+                    $cdr->sip_hangup_disposition,
+                    $cdr->extension_uuid,
+                    $cdr->call_center_queue_uuid,
+                    $cdr->rtp_audio_in_mos,
+                    $cdr->rtp_audio_out_mos ?? null,
+                    $cdr->rtp_audio_in_jitter_ms ?? null,
+                    $cdr->rtp_audio_in_packet_loss ?? null,
+                    empty($cdr->record_name) ? 'false' : 'true',
+                    $cdr->sip_call_id,
+                ]);
+
+                if (++$written >= $maxRows) {
+                    fputcsv($out, ['# Export truncated at ' . $maxRows . ' rows']);
+                    break;
+                }
+
+                if ($written % 500 === 0 && function_exists('ob_flush')) {
+                    @ob_flush();
+                    @flush();
+                }
+            }
+
+            fclose($out);
+        };
+
+        return response()->stream($callback, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'X-Accel-Buffering' => 'no',
+            'Cache-Control' => 'no-store',
+        ]);
     }
 
     /**

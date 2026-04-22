@@ -5274,6 +5274,50 @@ paths:
         example: 4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b
         required: true
         schema: { type: string }
+  '/api/v1/domains/{domain_uuid}/cdr/calls.csv':
+    get:
+      summary: 'Export CDRs as CSV'
+      operationId: exportCdrCsv
+      description: "Streams the CDR list as a CSV attachment. Accepts the same filters and window rules as the JSON list endpoint, but is not paginated. Capped at 250,000 rows (configurable). Heavily rate-limited (5 req/min)."
+      parameters:
+        - { $ref: '#/components/parameters/CdrDateFrom' }
+        - { $ref: '#/components/parameters/CdrDateTo' }
+        - { $ref: '#/components/parameters/CdrDirection' }
+        - { $ref: '#/components/parameters/CdrStatus' }
+      responses:
+        200:
+          description: 'CSV stream'
+          content:
+            'text/csv':
+              schema: { type: string, format: binary }
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+        422: { $ref: '#/components/responses/WindowValidation' }
+      tags: [CDR]
+    parameters:
+      - { in: path, name: domain_uuid, required: true, schema: { type: string } }
+  /api/v1/cdr/calls.csv:
+    get:
+      summary: 'Export CDRs as CSV (global admin)'
+      operationId: exportCdrCsvGlobal
+      description: "Fleet-wide CSV export. Requires a global admin token + `cdr_api_read_all_domains`. Optional `?domain_uuid=` to target one tenant."
+      parameters:
+        - { $ref: '#/components/parameters/CdrDateFrom' }
+        - { $ref: '#/components/parameters/CdrDateTo' }
+        -
+          in: query
+          name: domain_uuid
+          required: false
+          schema: { type: string }
+      responses:
+        200:
+          description: 'CSV stream'
+          content:
+            'text/csv':
+              schema: { type: string, format: binary }
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        422: { $ref: '#/components/responses/WindowValidation' }
+      tags: [CDR]
   '/api/v1/domains/{domain_uuid}/cdr/calls/{xml_cdr_uuid}':
     get:
       summary: 'Retrieve a CDR'

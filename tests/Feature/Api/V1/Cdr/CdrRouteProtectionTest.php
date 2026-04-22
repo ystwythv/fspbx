@@ -97,4 +97,16 @@ class CdrRouteProtectionTest extends TestCase
             'name' => 'test',
         ])->assertStatus(401);
     }
+
+    public function test_csv_export_requires_authentication(): void
+    {
+        $this->get('/api/v1/domains/' . self::DOMAIN . '/cdr/calls.csv')
+            ->assertStatus(401);
+    }
+
+    public function test_global_csv_export_requires_authentication(): void
+    {
+        $this->get('/api/v1/cdr/calls.csv')
+            ->assertStatus(401);
+    }
 }
