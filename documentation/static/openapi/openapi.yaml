@@ -5546,9 +5546,9 @@ paths:
                   window: { from: '2026-04-01T00:00:00Z', to: '2026-04-15T00:00:00Z' }
                   samples: 3905
                   mos_inbound: { avg: 4.21, min: 2.1, max: 4.5, p50: 4.3, p95: 4.5 }
-                  mos_outbound: null
-                  jitter_ms: null
-                  packet_loss: null
+                  mos_outbound: { avg: 4.18, min: 2.3, max: 4.5 }
+                  jitter_ms: { avg: 12.400, max: 85.200 }
+                  packet_loss: { avg: 0.42, max: 3.10 }
                   distribution: { excellent_4_3_plus: 2801, good_4_0_4_3: 702, fair_3_6_4_0: 301, poor_below_3_6: 101 }
                   poor_threshold: 4.0
                   poor_calls_count: 402
