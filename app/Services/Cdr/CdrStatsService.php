@@ -184,6 +184,13 @@ class CdrStatsService
                 'MAX(rtp_audio_in_mos) AS mos_max, ' .
                 'PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rtp_audio_in_mos) AS mos_p50, ' .
                 'PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY rtp_audio_in_mos) AS mos_p95, ' .
+                'AVG(rtp_audio_out_mos) AS mos_out_avg, ' .
+                'MIN(rtp_audio_out_mos) AS mos_out_min, ' .
+                'MAX(rtp_audio_out_mos) AS mos_out_max, ' .
+                'AVG(rtp_audio_in_jitter_ms) AS jitter_avg, ' .
+                'MAX(rtp_audio_in_jitter_ms) AS jitter_max, ' .
+                'AVG(rtp_audio_in_packet_loss) AS loss_avg, ' .
+                'MAX(rtp_audio_in_packet_loss) AS loss_max, ' .
                 'SUM(CASE WHEN rtp_audio_in_mos >= 4.3 THEN 1 ELSE 0 END) AS excellent, ' .
                 'SUM(CASE WHEN rtp_audio_in_mos >= 4.0 AND rtp_audio_in_mos < 4.3 THEN 1 ELSE 0 END) AS good, ' .
                 'SUM(CASE WHEN rtp_audio_in_mos >= 3.6 AND rtp_audio_in_mos < 4.0 THEN 1 ELSE 0 END) AS fair, ' .
@@ -194,7 +201,7 @@ class CdrStatsService
             ->first();
 
         $samples = (int) ($row->samples ?? 0);
-        $roundOr = fn ($v) => $v === null ? null : round((float) $v, 2);
+        $roundOr = fn ($v, int $dp = 2) => $v === null ? null : round((float) $v, $dp);
 
         return [
             'samples' => $samples,
@@ -205,9 +212,19 @@ class CdrStatsService
                 'p50' => $roundOr($row->mos_p50 ?? null),
                 'p95' => $roundOr($row->mos_p95 ?? null),
             ],
-            'mos_outbound' => null,
-            'jitter_ms' => null,
-            'packet_loss' => null,
+            'mos_outbound' => [
+                'avg' => $roundOr($row->mos_out_avg ?? null),
+                'min' => $roundOr($row->mos_out_min ?? null),
+                'max' => $roundOr($row->mos_out_max ?? null),
+            ],
+            'jitter_ms' => [
+                'avg' => $roundOr($row->jitter_avg ?? null, 3),
+                'max' => $roundOr($row->jitter_max ?? null, 3),
+            ],
+            'packet_loss' => [
+                'avg' => $roundOr($row->loss_avg ?? null),
+                'max' => $roundOr($row->loss_max ?? null),
+            ],
             'distribution' => [
                 'excellent_4_3_plus' => (int) ($row->excellent ?? 0),
                 'good_4_0_4_3' => (int) ($row->good ?? 0),
