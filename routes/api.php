@@ -229,6 +229,8 @@ Route::group(['middleware' => ['auth:sanctum', 'api.cookie.auth']], function () 
     Route::post('ai-agents/item-options', [AiAgentController::class, 'getItemOptions'])->name('ai-agents.item.options');
     Route::post('ai-agents/bulk-delete', [AiAgentController::class, 'bulkDelete'])->name('ai-agents.bulk.delete');
     Route::post('ai-agents/select-all', [AiAgentController::class, 'selectAll'])->name('ai-agents.select.all');
+    Route::post('ai-agents/{ai_agent}/kb-documents', [AiAgentController::class, 'storeKbDocument'])->name('ai-agents.kb.store');
+    Route::delete('ai-agents/{ai_agent}/kb-documents/{kb_document}', [AiAgentController::class, 'deleteKbDocument'])->name('ai-agents.kb.delete');
 
     // Virtual Receptionist
     Route::post('virtual-receptionists', [VirtualReceptionistController::class, 'store'])->name('virtual-receptionists.store');

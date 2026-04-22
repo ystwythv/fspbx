@@ -583,7 +583,9 @@ class ExtensionsController extends Controller
                 ->get([
                     'destination_uuid',
                     'destination_number',
+                    'destination_prefix',
                     'destination_description',
+                    'domain_uuid',
                 ])
                 ->each->append('label', 'destination_number_e164')
                 ->map(function ($destination) {
@@ -814,8 +816,10 @@ class ExtensionsController extends Controller
             ->get([
                 'destination_uuid',
                 'destination_number',
+                'destination_prefix',
                 'destination_enabled',
                 'destination_description',
+                'domain_uuid',
                 DB::raw("coalesce(destination_description, 'n/a') as destination_description"),
             ])
             ->sortBy('destination_description')
@@ -833,18 +837,9 @@ class ExtensionsController extends Controller
             );
         }
 
-        $destinations = $destinations->map(function ($destination) use ($countryCode, $currentCallerIdE164) {
-            $formattedNumber = formatPhoneNumber(
-                $destination->destination_number,
-                $countryCode,
-                PhoneNumberFormat::NATIONAL
-            );
-
-            $destinationE164 = formatPhoneNumber(
-                $destination->destination_number,
-                $countryCode,
-                PhoneNumberFormat::E164
-            );
+        $destinations = $destinations->map(function ($destination) use ($currentCallerIdE164) {
+            $formattedNumber = $destination->destination_number_formatted;
+            $destinationE164 = $destination->destination_number_e164;
 
             return [
                 'destination_uuid' => $destination->destination_uuid,
@@ -890,14 +885,8 @@ class ExtensionsController extends Controller
         CauserResolver::setCauser($extension);
 
         try {
-            $countryCode = get_domain_setting('country', $extension->domain_uuid) ?? 'US';
-
             if ($request->set === true || $request->set === 'true') {
-                $extension->outbound_caller_id_number = formatPhoneNumber(
-                    $destination->destination_number,
-                    $countryCode,
-                    PhoneNumberFormat::E164
-                );
+                $extension->outbound_caller_id_number = $destination->destination_number_e164;
             } else {
                 $extension->outbound_caller_id_number = null;
             }

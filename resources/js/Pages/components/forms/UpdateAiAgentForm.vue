@@ -97,6 +97,75 @@
                                     </div>
                                 </template>
                             </Vueform>
+
+                            <div v-if="!loading" class="mt-6 space-y-4 text-gray-600 bg-gray-50 px-4 py-6 sm:p-6 shadow sm:rounded-md">
+                                <div>
+                                    <h4 class="text-base font-semibold text-gray-900">Knowledge Base</h4>
+                                    <p class="text-sm text-gray-500">Upload files, add URLs, or paste text. The agent will be able to reference these in conversations.</p>
+                                </div>
+
+                                <div v-if="kbDocsList.length > 0" class="border border-gray-200 rounded-md divide-y divide-gray-200 bg-white">
+                                    <div v-for="doc in kbDocsList" :key="doc.kb_document_uuid"
+                                        class="flex items-center justify-between px-3 py-2 text-sm">
+                                        <div class="flex items-center space-x-3 min-w-0">
+                                            <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset"
+                                                :class="{
+                                                    'bg-blue-50 text-blue-700 ring-blue-700/10': doc.document_type === 'file',
+                                                    'bg-green-50 text-green-700 ring-green-700/10': doc.document_type === 'url',
+                                                    'bg-amber-50 text-amber-700 ring-amber-700/10': doc.document_type === 'text',
+                                                }">{{ doc.document_type }}</span>
+                                            <div class="min-w-0">
+                                                <div class="font-medium text-gray-900 truncate">{{ doc.name }}</div>
+                                                <div v-if="doc.url" class="text-xs text-gray-500 truncate">{{ doc.url }}</div>
+                                                <div v-else-if="doc.file_size" class="text-xs text-gray-500">{{ formatBytes(doc.file_size) }}</div>
+                                            </div>
+                                        </div>
+                                        <button type="button" @click="deleteKbDoc(doc)"
+                                            class="ml-3 text-rose-600 hover:text-rose-800 disabled:opacity-50"
+                                            :disabled="kbBusy">
+                                            <TrashIcon class="h-5 w-5" />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div v-else class="text-sm text-gray-500 italic">No knowledge base documents yet.</div>
+
+                                <div class="border-t border-gray-200 pt-4">
+                                    <div class="flex space-x-2 mb-3">
+                                        <button type="button" v-for="t in ['file','url','text']" :key="t"
+                                            @click="kbType = t"
+                                            class="px-3 py-1 text-sm rounded-md ring-1 ring-inset"
+                                            :class="kbType === t ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-gray-700 ring-gray-300 hover:bg-gray-50'">
+                                            {{ t === 'file' ? 'Upload file' : t === 'url' ? 'Add URL' : 'Add text' }}
+                                        </button>
+                                    </div>
+
+                                    <div class="space-y-2">
+                                        <input type="text" v-model="kbName" placeholder="Display name"
+                                            class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm" />
+
+                                        <input v-if="kbType === 'file'" type="file" ref="kbFileInput"
+                                            accept=".pdf,.txt,.docx,.html,.htm,.epub,.md"
+                                            class="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100" />
+
+                                        <input v-if="kbType === 'url'" type="url" v-model="kbUrl"
+                                            placeholder="https://example.com/help.html"
+                                            class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm" />
+
+                                        <textarea v-if="kbType === 'text'" v-model="kbText" rows="4"
+                                            placeholder="Paste the text snippet the agent should know about..."
+                                            class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm" />
+
+                                        <div v-if="kbError" class="text-sm text-rose-600">{{ kbError }}</div>
+
+                                        <div class="flex justify-end">
+                                            <button type="button" @click="addKbDoc" :disabled="kbBusy"
+                                                class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50">
+                                                {{ kbBusy ? 'Adding…' : 'Add to knowledge base' }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </DialogPanel>
                     </TransitionChild>
                 </div>
@@ -106,9 +175,10 @@
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
+import axios from "axios";
 import { Dialog, DialogPanel, DialogTitle, TransitionChild, TransitionRoot } from '@headlessui/vue'
-import { XMarkIcon } from "@heroicons/vue/24/solid";
+import { XMarkIcon, TrashIcon } from "@heroicons/vue/24/solid";
 
 const props = defineProps({
     show: Boolean,
@@ -208,5 +278,103 @@ const handleError = (error, details, form$) => {
 
 const handleClose = () => {
     emit('close');
+};
+
+// ----- Knowledge Base -----
+const kbDocsList = ref([]);
+const kbType = ref('file');
+const kbName = ref('');
+const kbUrl = ref('');
+const kbText = ref('');
+const kbFileInput = ref(null);
+const kbBusy = ref(false);
+const kbError = ref(null);
+
+watch(() => props.options?.kb_documents, (docs) => {
+    kbDocsList.value = Array.isArray(docs) ? [...docs] : [];
+}, { immediate: true });
+
+const formatBytes = (bytes) => {
+    if (!bytes) return '';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let i = 0;
+    let n = bytes;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+    return n.toFixed(n >= 10 || i === 0 ? 0 : 1) + ' ' + units[i];
+};
+
+const addKbDoc = async () => {
+    kbError.value = null;
+
+    if (!kbName.value.trim()) {
+        kbError.value = 'Please enter a display name.';
+        return;
+    }
+
+    const storeRoute = props.options?.routes?.kb_store_route;
+    if (!storeRoute) {
+        kbError.value = 'Knowledge base endpoint not available.';
+        return;
+    }
+
+    const fd = new FormData();
+    fd.append('document_type', kbType.value);
+    fd.append('name', kbName.value);
+
+    if (kbType.value === 'file') {
+        const file = kbFileInput.value?.files?.[0];
+        if (!file) {
+            kbError.value = 'Please choose a file.';
+            return;
+        }
+        fd.append('file', file);
+    } else if (kbType.value === 'url') {
+        if (!kbUrl.value.trim()) {
+            kbError.value = 'Please enter a URL.';
+            return;
+        }
+        fd.append('url', kbUrl.value);
+    } else {
+        if (!kbText.value.trim()) {
+            kbError.value = 'Please enter some text.';
+            return;
+        }
+        fd.append('text', kbText.value);
+    }
+
+    kbBusy.value = true;
+    try {
+        const res = await axios.post(storeRoute, fd, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        kbDocsList.value.unshift(res.data.kb_document);
+        kbName.value = '';
+        kbUrl.value = '';
+        kbText.value = '';
+        if (kbFileInput.value) kbFileInput.value.value = '';
+        emit('success', 'success', res.data.messages);
+    } catch (err) {
+        const msg = err.response?.data?.errors?.server?.[0]
+            || err.response?.data?.message
+            || err.message
+            || 'Failed to add knowledge base document.';
+        kbError.value = msg;
+    } finally {
+        kbBusy.value = false;
+    }
+};
+
+const deleteKbDoc = async (doc) => {
+    if (!confirm('Remove "' + doc.name + '" from the knowledge base?')) return;
+    kbBusy.value = true;
+    try {
+        await axios.delete(doc.delete_route);
+        kbDocsList.value = kbDocsList.value.filter(d => d.kb_document_uuid !== doc.kb_document_uuid);
+        emit('success', 'success', { success: ['Knowledge base document removed.'] });
+    } catch (err) {
+        emit('error', err);
+    } finally {
+        kbBusy.value = false;
+    }
 };
 </script>

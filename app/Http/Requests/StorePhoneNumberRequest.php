@@ -144,18 +144,26 @@ class StorePhoneNumberRequest extends FormRequest
 
     public function prepareForValidation(): void
     {
-        $phone = $this->get('destination_number');
-        $prefix = $this->get('destination_prefix');
+        $phone = (string) $this->get('destination_number');
+        $prefix = preg_replace('/\D/', '', (string) $this->get('destination_prefix'));
+        $digits = preg_replace('/\D/', '', $phone);
 
-        try {
-            $this->merge([
-                'destination_number' => str_replace('+1', '', (new PhoneNumber($phone, "US"))->formatE164()),
-            ]);
-        } catch (NumberParseException $e) {
-            $this->merge([
-                'destination_number' => $phone
-            ]);
+        // If the user included the country code in the phone field, strip it
+        // so the two fields stay consistent (prefix + national significant number).
+        if ($prefix !== '' && str_starts_with($digits, $prefix)) {
+            $digits = substr($digits, strlen($prefix));
         }
+
+        // UK/EU national numbers carry a leading trunk 0 — strip it so the
+        // stored NSN is carrier-agnostic (the dialplan regex handles both forms).
+        if ($digits !== '' && $digits[0] === '0') {
+            $digits = ltrim($digits, '0');
+        }
+
+        $this->merge([
+            'destination_prefix' => $prefix !== '' ? $prefix : null,
+            'destination_number' => $digits,
+        ]);
 
         if ($this->has('destination_conditions')) {
             $destinationConditions = [];

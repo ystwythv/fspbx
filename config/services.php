@@ -76,6 +76,14 @@ return [
         'api_key'  => env('ELEVENLABS_API_KEY', ''),
         'base_url' => env('ELEVENLABS_BASE_URL', 'https://api.elevenlabs.io'),
         'timeout'  => (int) env('ELEVENLABS_TIMEOUT', 60),
+        // Comma-separated list of public IPv4/CIDR blocks that ElevenLabs should
+        // accept inbound SIP INVITEs from. This must contain the egress IP that
+        // ElevenLabs sees on the wire — i.e. the host's public IP on bare-metal/
+        // Linode, or the NAT-egress IP if the PBX sits behind NAT.
+        'sip_allowed_addresses' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('ELEVENLABS_SIP_ALLOWED_ADDRESSES', ''))
+        ))),
     ],
 
     'keygen' => [

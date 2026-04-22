@@ -170,6 +170,25 @@ class Extensions extends Model
         return formatPhoneNumber($this->outbound_caller_id_number, 'US', PhoneNumberFormat::E164);
     }
 
+    public function setOutboundCallerIdNumberAttribute($value)
+    {
+        $this->attributes['outbound_caller_id_number'] = $this->normalizeCallerIdNumber($value);
+    }
+
+    public function setEmergencyCallerIdNumberAttribute($value)
+    {
+        $this->attributes['emergency_caller_id_number'] = $this->normalizeCallerIdNumber($value);
+    }
+
+    protected function normalizeCallerIdNumber($value)
+    {
+        if ($value === null || $value === '') {
+            return $value;
+        }
+        // FusionPBX OUTBOUND_CALLER_ID dialplan validates with /^\d{6,25}$/ — '+' breaks it.
+        return ltrim((string) $value, '+');
+    }
+
     /**
      * This gets you “all possible” voicemails where ID matches extension, regardless of domain.
      * Further filtering by domain is REQUIRED to avoid false positives and PERFORMANCE ISSUES  
