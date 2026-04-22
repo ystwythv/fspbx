@@ -11,4 +11,12 @@ class PersonalAccessToken extends SanctumPersonalAccessToken
     use \App\Models\Traits\TraitUuid;
     protected $primaryKey = "id";
     protected $keyType = "string";
+
+    protected $fillable = [
+        'name',
+        'token',
+        'abilities',
+        'expires_at',
+        'domain_uuid',
+    ];
 }

@@ -72,5 +72,11 @@ class RouteServiceProvider extends ServiceProvider
                     return response('', 429);
                 });
         });
+
+        // CDR stats endpoints are expensive — tighter limiter, keyed by token.
+        RateLimiter::for('cdr-stats', function (Request $request) {
+            $key = $request->bearerToken() ?: (optional($request->user())->id ?: $request->ip());
+            return Limit::perMinute(30)->by('cdr-stats:' . $key);
+        });
     }
 }

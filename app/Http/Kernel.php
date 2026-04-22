@@ -71,5 +71,6 @@ class Kernel extends HttpKernel
         'api.cookie.auth' => \App\Http\Middleware\RequireCookieAuthForSpaRequests::class,
         'api.token.auth' => \App\Http\Middleware\RequireBearerToken::class,
         'user.authorize' => \App\Http\Middleware\AuthorizeUser::class,
+        'cdr.scope' => \App\Http\Middleware\ResolveCdrScope::class,
     ];
 }
