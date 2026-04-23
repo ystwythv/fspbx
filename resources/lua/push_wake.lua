@@ -97,6 +97,15 @@ local curl_cmd = string.format(
 os.execute(curl_cmd)
 log("INFO", "dispatched incoming_call webhook for " .. aor)
 
+-- Force the outbound B-leg (iOS endpoint) to use the A-leg channel UUID as
+-- its SIP Call-ID, matching the value already in the push payload's
+-- `call_uuid`. Without this, mod_sofia mints a fresh Call-ID and CallKit's
+-- answer UUID (from push) doesn't align with CallManager's callUUID (from
+-- INVITE), so the answer guard fails and the call is BYE'd.
+if call_uuid ~= "" then
+    session:execute("export", "nolocal:sip_invite_call_id=" .. call_uuid)
+end
+
 if not session:ready() then return end
 session:preAnswer()
 
