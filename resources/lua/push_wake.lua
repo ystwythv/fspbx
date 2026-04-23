@@ -37,7 +37,11 @@ local function api_value(cmd)
     local v = api:executeString(cmd)
     if not v then return "" end
     v = v:gsub("%s+$", "")
-    if v == "" or v:match("^%-ERR") or v == "_undef_" then return "" end
+    -- Treat sofia's user-not-registered response (and related error/* strings)
+    -- as "no value" — otherwise api_value returns the error text verbatim and
+    -- the sofia_contact poll loop mistakes it for a valid contact URI,
+    -- exiting before the push-woken app has re-registered.
+    if v == "" or v:match("^%-ERR") or v:match("^error/") or v == "_undef_" then return "" end
     return v
 end
 
