@@ -66,7 +66,7 @@ if apns_token == "" then
     return
 end
 
-local extension_uuid = api_value("user_data " .. aor .. " attr id")
+local extension_uuid = api_value("user_data " .. aor .. " var extension_uuid")
 
 local payload = json.encode({
     event = "incoming_call",
