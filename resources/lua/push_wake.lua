@@ -66,6 +66,14 @@ if apns_token == "" then
     return
 end
 
+-- Flush any existing WebRTC registration for this extension before waking the
+-- app. When iOS force-quits, the WSS dies but the sofia registration persists
+-- until expiry — local_extension would then bridge the INVITE to the dead
+-- contact, the caller hears endless ringback and the pushed app gets no SIP
+-- INVITE (so no SDP → answer guard fails). Clearing first forces the woken
+-- app to register fresh; any foreground session briefly reconnects.
+api:executeString("sofia profile webrtc flush_inbound_reg " .. aor .. " reboot")
+
 local extension_uuid = api_value("user_data " .. aor .. " var extension_uuid")
 
 local payload = json.encode({
