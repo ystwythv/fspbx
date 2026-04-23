@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\VoicemailController;
 use App\Http\Controllers\Api\V1\PhoneNumberController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\AiAgentController;
+use App\Http\Controllers\Api\V1\CallFlowSimulationController;
 use App\Http\Controllers\Api\V1\CdrCallController;
 use App\Http\Controllers\Api\V1\CdrStatsController;
 use App\Http\Controllers\Api\V1\TenantApiTokenController;
@@ -221,6 +222,29 @@ Route::middleware(['auth:sanctum', 'api.token.auth', 'throttle:api'])->group(fun
             Route::get('/cdr/stats/by-hangup-cause', [CdrStatsController::class, 'globalByHangupCause'])
                 ->name('api.v1.cdr.global.stats.by-hangup-cause');
         });
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Call Flow Simulation — domain-scoped, read-only
+    |--------------------------------------------------------------------------
+    | Reuses the CDR scope middleware (it enforces tenant-vs-global scope on
+    | any {domain_uuid}-bearing route; name is historical). Separate limiter
+    | because simulation walks several tables per call.
+    */
+    Route::middleware(['cdr.scope:tenant', 'user.authorize:call_flow_simulate', 'throttle:call-flow-simulate'])->group(function () {
+        Route::get('/domains/{domain_uuid}/call-flow/simulate', [CallFlowSimulationController::class, 'simulate'])
+            ->name('api.v1.call-flow.simulate');
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Call Flow Simulation — global (cross-domain)
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware(['cdr.scope:global', 'user.authorize:call_flow_simulate_all_domains', 'throttle:call-flow-simulate'])->group(function () {
+        Route::get('/call-flow/simulate', [CallFlowSimulationController::class, 'globalSimulate'])
+            ->name('api.v1.call-flow.global.simulate');
     });
 
     /*
