@@ -10,15 +10,20 @@
 -- no-op and normal dialplan flow is unchanged.
 --
 -- Flow:
---   1. Resolve extension_uuid and apns_voip_token via user_data API.
+--   1. Resolve extension_uuid and apns_voip_token via direct DB query to
+--      v_extensions (the column is not exposed via FreeSWITCH user_data).
 --   2. If no token, return — this is a regular SIP phone; nothing to do.
---   3. Fire-and-forget HTTP POST to voxra webhook with event=incoming_call,
+--   3. Snapshot the current sofia_contact so we can detect the *new* wake-up
+--      registration later (on FMC deployments a reg-bot-controller is always
+--      registered at the private VLAN IP, so a non-empty contact alone does
+--      not mean the real device is online).
+--   4. Fire-and-forget HTTP POST to voxra webhook with event=incoming_call,
 --      which triggers SendIncomingCallPushJob → ApnsPushService.
---   4. pre_answer the inbound leg so the caller hears early media (ringback)
+--   5. pre_answer the inbound leg so the caller hears early media (ringback)
 --      while we wait for the phone to wake and re-register.
---   5. Poll sofia_contact every 500ms for up to PUSH_WAKE_TIMEOUT_MS; return
---      as soon as a contact appears (local_extension bridge will succeed),
---      or at timeout (falls through to forward_user_not_registered).
+--   6. Poll sofia_contact every 500ms for up to PUSH_WAKE_TIMEOUT_MS; return
+--      as soon as a *new* (different) contact appears, or at timeout
+--      (falls through to forward_user_not_registered).
 
 local SCRIPT_NAME = "[push_wake.lua]"
 local WEBHOOK_URL = "http://127.0.0.1/webhook/freeswitch"
@@ -27,6 +32,7 @@ local PUSH_WAKE_TIMEOUT_MS = 15000
 local PUSH_WAKE_POLL_MS = 500
 
 local json = require "resources.functions.lunajson"
+local Database = require "resources.functions.database"
 local api = freeswitch.API()
 
 local function log(level, msg)
@@ -61,12 +67,27 @@ end
 
 local aor = destination_number .. "@" .. domain_name
 
-local apns_token = api_value("user_data " .. aor .. " var apns_voip_token")
+-- Look up apns_voip_token and extension_uuid directly from v_extensions —
+-- fspbx stores these on the extensions table and does not expose
+-- apns_voip_token as a FreeSWITCH user variable.
+local dbh = Database.new("system")
+local apns_token, extension_uuid = "", ""
+local lookup_sql = [[
+    SELECT e.extension_uuid, COALESCE(e.apns_voip_token, '') AS apns_voip_token
+      FROM v_extensions e
+      JOIN v_domains d ON d.domain_uuid = e.domain_uuid
+     WHERE d.domain_name = :domain_name
+       AND e.extension = :extension
+     LIMIT 1
+]]
+dbh:query(lookup_sql, { domain_name = domain_name, extension = destination_number }, function(row)
+    extension_uuid = row.extension_uuid or ""
+    apns_token = row.apns_voip_token or ""
+end)
+
 if apns_token == "" then
     return
 end
-
-local extension_uuid = api_value("user_data " .. aor .. " attr id")
 
 local payload = json.encode({
     event = "incoming_call",
@@ -80,6 +101,11 @@ local payload = json.encode({
         call_uuid = call_uuid,
     },
 })
+
+-- Snapshot the pre-push contact so we can detect a *new* registration later.
+-- On FMC deployments a reg-bot-controller is always registered against the
+-- AOR, so any contact is present from the start.
+local contact_before = api_value("sofia_contact */" .. aor)
 
 local hmac_cmd = string.format(
     "printf %%s %s | openssl dgst -sha256 -hmac %s | awk '{print $NF}'",
@@ -105,8 +131,8 @@ local attempt = 0
 while attempt < deadline_attempts do
     if not session:ready() then return end
     local contact = api_value("sofia_contact */" .. aor)
-    if contact ~= "" then
-        log("INFO", string.format("registered after %dms — handing off to local_extension", attempt * PUSH_WAKE_POLL_MS))
+    if contact ~= "" and contact ~= contact_before then
+        log("INFO", string.format("new registration after %dms — handing off to local_extension", attempt * PUSH_WAKE_POLL_MS))
         return
     end
     session:sleep(PUSH_WAKE_POLL_MS)
