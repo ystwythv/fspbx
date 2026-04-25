@@ -96,6 +96,15 @@ api:executeString("sofia profile webrtc flush_inbound_reg " .. aor .. " reboot")
 
 local extension_uuid = api_value("user_data " .. aor .. " var extension_uuid")
 
+-- ring_target controls which device class(es) actually ring this call.
+-- Sourced from v_extensions.ring_target via the directory.lua patch in
+-- iqm-ansible's voxra/push-wake-dialplan.yml role. Defaults to "both" when
+-- the column is null/missing or the patch hasn't yet exposed it.
+local ring_target = api_value("user_data " .. aor .. " var ring_target")
+if ring_target ~= "app" and ring_target ~= "fmc" and ring_target ~= "both" then
+    ring_target = "both"
+end
+
 local payload = json.encode({
     event = "incoming_call",
     timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
@@ -108,6 +117,7 @@ local payload = json.encode({
         call_uuid = call_uuid,
         did_prefix = did_prefix,
         did_e164 = destination_number,
+        ring_target = ring_target,
     },
 })
 

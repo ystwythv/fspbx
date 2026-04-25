@@ -37,6 +37,9 @@ class SendIncomingCallPushJob implements ShouldQueue
         $callUuid = $this->data['call_uuid'] ?? '';
         $didPrefix = $this->data['did_prefix'] ?? '';
         $didE164 = $this->data['did_e164'] ?? '';
+        // ring_target may be passed in by the dialplan (push_wake.lua) once
+        // directory.lua exposes it; fall back to the extension column.
+        $ringTargetHint = $this->data['ring_target'] ?? null;
 
         $extension = null;
         if ($extensionUuid) {
@@ -67,6 +70,15 @@ class SendIncomingCallPushJob implements ShouldQueue
             ? $crm->lookupByPhone($callerIdNumber, $domainName)
             : null;
 
+        $ringTarget = in_array($ringTargetHint, ['app', 'fmc', 'both'], true)
+            ? $ringTargetHint
+            : (in_array($extension->ring_target, ['app', 'fmc', 'both'], true) ? $extension->ring_target : 'both');
+
+        // Phase 1: always send VoIP push regardless of ring_target. Once the
+        // iOS app gains a regular-APNs handler we'll switch to 'alert' when
+        // ring_target = 'fmc' so the iPhone enriches caller-ID without ringing.
+        $pushType = 'voip';
+
         $success = $apns->sendIncomingCallPush(
             $extension->apns_voip_token,
             $callerIdName,
@@ -75,6 +87,8 @@ class SendIncomingCallPushJob implements ShouldQueue
             $didPrefix,
             $didE164,
             $enrichment,
+            $ringTarget,
+            $pushType,
         );
 
         if (!$success) {

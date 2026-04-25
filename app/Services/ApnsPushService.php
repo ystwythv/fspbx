@@ -9,6 +9,7 @@ class ApnsPushService
     private string $keyId;
     private string $teamId;
     private string $bundleId;
+    private string $alertTopic;
     private string $keyPath;
     private bool $production;
 
@@ -17,6 +18,7 @@ class ApnsPushService
         $this->keyId = config('apns.key_id', 'ZC66ADWFF5');
         $this->teamId = config('apns.team_id', 'WU7W6PB5M8');
         $this->bundleId = config('apns.bundle_id', 'com.iqmobile.IQCRMApp');
+        $this->alertTopic = config('apns.alert_topic', 'com.iqmobile.IQCRMApp');
         $this->keyPath = config('apns.key_path', storage_path('app/apns/AuthKey_ZC66ADWFF5.p8'));
         $this->production = config('apns.production', false);
     }
@@ -39,12 +41,15 @@ class ApnsPushService
         string $didPrefix = '',
         string $didE164 = '',
         ?array $enrichment = null,
+        string $ringTarget = 'both',
+        string $pushType = 'voip',
     ): bool {
         $payload = [
             'aps' => [],
             'caller_id_name' => $callerIdName,
             'caller_id_number' => $callerIdNumber,
             'call_uuid' => $callUuid,
+            'ring_target' => $ringTarget,
         ];
         if ($didPrefix !== '') {
             $payload['did_prefix'] = $didPrefix;
@@ -64,7 +69,7 @@ class ApnsPushService
             }
         }
 
-        return $this->send($deviceToken, $payload, 'voip');
+        return $this->send($deviceToken, $payload, $pushType);
     }
 
     /**
@@ -85,11 +90,17 @@ class ApnsPushService
         $url = "{$host}/3/device/{$deviceToken}";
         $body = json_encode($payload);
 
+        $isVoip = $pushType === 'voip';
+        $topic = $isVoip ? "{$this->bundleId}.voip" : $this->alertTopic;
+        // VoIP must be priority 10. Alert/background pushes use 5 to allow
+        // APNs throttling for non-time-critical delivery.
+        $priority = $isVoip ? 10 : 5;
+
         $headers = [
             "authorization: bearer {$jwt}",
-            "apns-topic: {$this->bundleId}.voip",
-            "apns-push-type: voip",
-            "apns-priority: 10",
+            "apns-topic: {$topic}",
+            "apns-push-type: {$pushType}",
+            "apns-priority: {$priority}",
             "apns-expiration: 0",
             "content-type: application/json",
         ];
