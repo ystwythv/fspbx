@@ -96,6 +96,15 @@ return [
             'api_url' => env('POLYCOM_API_URL', 'https://api.ztp.poly.com/v1'),
         ]
     ],
+    'iqcrm' => [
+        'base_url' => env('IQCRM_API_BASE', 'https://crm.iqmobile.biz'),
+        'api_key'  => env('IQCRM_API_KEY', ''),
+        // Hard cap so a slow CRM lookup can't bust the APNs VoIP push wake
+        // budget (we already have a tight 20s deadline before iOS kills the
+        // app). 1.5s is plenty for an internal Postgres lookup; tune via env.
+        'timeout'  => (float) env('IQCRM_LOOKUP_TIMEOUT', 1.5),
+    ],
+
     'ceretax' => [
         'env' => env('CERETAX_ENV', 'sandbox'),
         'sandbox_url' => env('CERETAX_SANDBOX_URL', "https://calc.cert.ceretax.net/"),

@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Domain;
 use App\Models\Extensions;
 use App\Services\ApnsPushService;
+use App\Services\CrmLookupService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -26,7 +27,7 @@ class SendIncomingCallPushJob implements ShouldQueue
         $this->onQueue('notifications');
     }
 
-    public function handle(ApnsPushService $apns): void
+    public function handle(ApnsPushService $apns, CrmLookupService $crm): void
     {
         $extensionUuid = $this->data['extension_uuid'] ?? null;
         $extensionNumber = $this->data['extension_number'] ?? null;
@@ -60,6 +61,12 @@ class SendIncomingCallPushJob implements ShouldQueue
             return;
         }
 
+        // Best-effort CRM enrichment. Returns null on miss / timeout — never
+        // blocks the push beyond IQCRM_LOOKUP_TIMEOUT (default 1.5s).
+        $enrichment = $callerIdNumber !== ''
+            ? $crm->lookupByPhone($callerIdNumber, $domainName)
+            : null;
+
         $success = $apns->sendIncomingCallPush(
             $extension->apns_voip_token,
             $callerIdName,
@@ -67,6 +74,7 @@ class SendIncomingCallPushJob implements ShouldQueue
             $callUuid,
             $didPrefix,
             $didE164,
+            $enrichment,
         );
 
         if (!$success) {

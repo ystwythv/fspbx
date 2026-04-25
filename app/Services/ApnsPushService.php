@@ -25,9 +25,11 @@ class ApnsPushService
      * Send a VoIP push notification for an incoming call.
      *
      * `didPrefix` is the per-DID caller-id prefix configured in FreeSWITCH
-     * (e.g. "SUPPORT", "SALES"); `didE164` is the called DID. Both are
-     * optional — clients that don't read them degrade to caller_id_name +
-     * caller_id_number behaviour.
+     * (e.g. "SUPPORT", "SALES"); `didE164` is the called DID. `enrichment`
+     * is an optional associative array of CRM-lookup fields (person_id,
+     * display_name, company_name, is_vip, last_interaction_at,
+     * note_preview) merged into the payload when present. All are optional
+     * — clients that don't read them degrade gracefully.
      */
     public function sendIncomingCallPush(
         string $deviceToken,
@@ -36,6 +38,7 @@ class ApnsPushService
         string $callUuid,
         string $didPrefix = '',
         string $didE164 = '',
+        ?array $enrichment = null,
     ): bool {
         $payload = [
             'aps' => [],
@@ -48,6 +51,17 @@ class ApnsPushService
         }
         if ($didE164 !== '') {
             $payload['did_e164'] = $didE164;
+        }
+
+        // APNs VoIP payload cap is 5KB. The iOS parser (`EnrichedCall`) only
+        // reads this allow-list, so anything else would just bloat the JSON.
+        $allowed = ['person_id', 'display_name', 'company_name', 'is_vip', 'last_interaction_at', 'note_preview'];
+        if (is_array($enrichment)) {
+            foreach ($allowed as $k) {
+                if (array_key_exists($k, $enrichment) && $enrichment[$k] !== null && $enrichment[$k] !== '') {
+                    $payload[$k] = $enrichment[$k];
+                }
+            }
         }
 
         return $this->send($deviceToken, $payload, 'voip');
