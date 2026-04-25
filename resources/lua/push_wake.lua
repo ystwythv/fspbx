@@ -81,20 +81,8 @@ end
 
 local aor = destination_number .. "@" .. domain_name
 
-local apns_token = api_value("user_data " .. aor .. " var apns_voip_token")
-if apns_token == "" then
-    return
-end
-
--- Flush any existing WebRTC registration for this extension before waking the
--- app. When iOS force-quits, the WSS dies but the sofia registration persists
--- until expiry — local_extension would then bridge the INVITE to the dead
--- contact, the caller hears endless ringback and the pushed app gets no SIP
--- INVITE (so no SDP → answer guard fails). Clearing first forces the woken
--- app to register fresh; any foreground session briefly reconnects.
-api:executeString("sofia profile webrtc flush_inbound_reg " .. aor .. " reboot")
-
 local extension_uuid = api_value("user_data " .. aor .. " var extension_uuid")
+local apns_token = api_value("user_data " .. aor .. " var apns_voip_token")
 
 -- ring_target controls which device class(es) actually ring this call.
 -- Sourced from v_extensions.ring_target via the directory.lua patch in
@@ -105,61 +93,183 @@ if ring_target ~= "app" and ring_target ~= "fmc" and ring_target ~= "both" then
     ring_target = "both"
 end
 
-local payload = json.encode({
-    event = "incoming_call",
-    timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
-    data = {
-        extension_uuid = extension_uuid,
-        extension_number = destination_number,
-        domain_name = domain_name,
-        caller_id_name = caller_id_name,
-        caller_id_number = caller_id_number,
-        call_uuid = call_uuid,
-        did_prefix = did_prefix,
-        did_e164 = destination_number,
-        ring_target = ring_target,
-    },
-})
+local app_in_ring_set = (ring_target == "app" or ring_target == "both")
 
-local hmac_cmd = string.format(
-    "printf %%s %s | openssl dgst -sha256 -hmac %s | awk '{print $NF}'",
-    shell_quote(payload), shell_quote(WEBHOOK_SECRET)
-)
-local hmac_handle = io.popen(hmac_cmd)
-local signature = hmac_handle and hmac_handle:read("*a") or ""
-if hmac_handle then hmac_handle:close() end
-signature = signature:gsub("%s+", "")
-
-local curl_cmd = string.format(
-    "(curl -k -s -m 5 -X POST -H 'Content-Type: application/json' -H 'Signature: %s' -d %s %s >/dev/null 2>&1) &",
-    signature, shell_quote(payload), shell_quote(WEBHOOK_URL)
-)
-os.execute(curl_cmd)
-log("INFO", "dispatched incoming_call webhook for " .. aor)
-
--- Force the outbound B-leg (iOS endpoint) to use the A-leg channel UUID as
--- its SIP Call-ID, matching the value already in the push payload's
--- `call_uuid`. Without this, mod_sofia mints a fresh Call-ID and CallKit's
--- answer UUID (from push) doesn't align with CallManager's callUUID (from
--- INVITE), so the answer guard fails and the call is BYE'd.
-if call_uuid ~= "" then
-    session:execute("export", "nolocal:sip_invite_call_id=" .. call_uuid)
+-- Classify a registered contact by device class, using the URI parameter
+-- emitted at REGISTER time. Falls back to user-agent sniffing for FMC during
+-- the transition window before iqm-reg-bot adopts ;device=fmc.
+local function classify_contact(contact_uri, user_agent)
+    contact_uri = contact_uri or ""
+    if contact_uri:match("[;<]device=app") then return "app" end
+    if contact_uri:match("[;<]device=fmc") then return "fmc" end
+    local ua = (user_agent or ""):lower()
+    if ua:match("iqmobile") then return "fmc" end
+    return "other"
 end
 
-if not session:ready() then return end
-session:preAnswer()
+-- Enumerate sip_registrations for this AOR via the FS core DB. Each row is
+-- {profile, contact, ua, class}. Empty list if mod_sofia hasn't observed any
+-- registrations for this user (likely the extension is new or the WebRTC
+-- flush below has just cleared the iPhone's contact).
+local function query_contacts()
+    local rows = {}
+    local dbh = freeswitch.Dbh("core")
+    if not dbh then return rows end
+    local safe_user = destination_number:gsub("'", "''")
+    local safe_host = domain_name:gsub("'", "''")
+    local sql = string.format(
+        "SELECT profile_name, contact, user_agent FROM sip_registrations WHERE sip_user='%s' AND sip_host='%s'",
+        safe_user, safe_host
+    )
+    dbh:query(sql, function(row)
+        table.insert(rows, {
+            profile = row.profile_name,
+            contact = row.contact or "",
+            ua = row.user_agent or "",
+            class = classify_contact(row.contact, row.user_agent),
+        })
+    end)
+    dbh:release()
+    return rows
+end
 
-local deadline_attempts = math.floor(PUSH_WAKE_TIMEOUT_MS / PUSH_WAKE_POLL_MS)
-local attempt = 0
-while attempt < deadline_attempts do
-    if not session:ready() then return end
-    local contact = api_value("sofia_contact */" .. aor)
-    if contact ~= "" then
-        log("INFO", string.format("registered after %dms — handing off to local_extension", attempt * PUSH_WAKE_POLL_MS))
-        return
+-- Build a sofia bridge URI from a registration row. Strips the `sip:` /
+-- angle-bracket wrapping mod_sofia stores in `contact` and prefixes with
+-- `sofia/<profile>/` so the bridge dial-string addresses the right profile.
+local function bridge_uri(row)
+    local stripped = row.contact
+    stripped = stripped:gsub("^<", ""):gsub(">$", "")
+    stripped = stripped:gsub("^sips:", ""):gsub("^sip:", "")
+    return "sofia/" .. row.profile .. "/" .. stripped
+end
+
+-- Wake the iPhone only when the app is in the ring set AND has a push
+-- token. For ring_target=fmc we skip the WebRTC flush + APNs push + early
+-- media entirely — the FMC registration takes the call without the iPhone
+-- being woken. For legacy SIP-only extensions (no apns_token) on
+-- ring_target=both, fall through to local_extension as today.
+if app_in_ring_set and apns_token ~= "" then
+    -- Flush any existing WebRTC registration for this extension before waking
+    -- the app. When iOS force-quits, the WSS dies but the sofia registration
+    -- persists until expiry — bridge would then target the dead contact, the
+    -- caller hears endless ringback and the pushed app gets no SIP INVITE
+    -- (answer guard fails). Clearing first forces the woken app to register
+    -- fresh; any foreground session briefly reconnects.
+    api:executeString("sofia profile webrtc flush_inbound_reg " .. aor .. " reboot")
+
+    local payload = json.encode({
+        event = "incoming_call",
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+        data = {
+            extension_uuid = extension_uuid,
+            extension_number = destination_number,
+            domain_name = domain_name,
+            caller_id_name = caller_id_name,
+            caller_id_number = caller_id_number,
+            call_uuid = call_uuid,
+            did_prefix = did_prefix,
+            did_e164 = destination_number,
+            ring_target = ring_target,
+        },
+    })
+
+    local hmac_cmd = string.format(
+        "printf %%s %s | openssl dgst -sha256 -hmac %s | awk '{print $NF}'",
+        shell_quote(payload), shell_quote(WEBHOOK_SECRET)
+    )
+    local hmac_handle = io.popen(hmac_cmd)
+    local signature = hmac_handle and hmac_handle:read("*a") or ""
+    if hmac_handle then hmac_handle:close() end
+    signature = signature:gsub("%s+", "")
+
+    local curl_cmd = string.format(
+        "(curl -k -s -m 5 -X POST -H 'Content-Type: application/json' -H 'Signature: %s' -d %s %s >/dev/null 2>&1) &",
+        signature, shell_quote(payload), shell_quote(WEBHOOK_URL)
+    )
+    os.execute(curl_cmd)
+    log("INFO", "dispatched incoming_call webhook for " .. aor)
+
+    -- Force the outbound B-leg (iOS endpoint) to use the A-leg channel UUID as
+    -- its SIP Call-ID, matching the push payload's `call_uuid`. Without this,
+    -- mod_sofia mints a fresh Call-ID and CallKit's answer UUID (from push)
+    -- doesn't align with CallManager's callUUID (from INVITE), so the answer
+    -- guard fails and the call is BYE'd.
+    if call_uuid ~= "" then
+        session:execute("export", "nolocal:sip_invite_call_id=" .. call_uuid)
     end
-    session:sleep(PUSH_WAKE_POLL_MS)
-    attempt = attempt + 1
+
+    if not session:ready() then return end
+    session:preAnswer()
+
+    -- Poll specifically for an `app`-class contact, not just any contact.
+    -- A deskphone or FMC registration that survived the WebRTC flush would
+    -- short-circuit the old "any contact" check and we'd bridge to the wrong
+    -- device before the iPhone has woken.
+    local function has_app_contact()
+        for _, row in ipairs(query_contacts()) do
+            if row.class == "app" then return true end
+        end
+        return false
+    end
+
+    local deadline_attempts = math.floor(PUSH_WAKE_TIMEOUT_MS / PUSH_WAKE_POLL_MS)
+    local attempt = 0
+    while attempt < deadline_attempts do
+        if not session:ready() then return end
+        if has_app_contact() then
+            log("INFO", string.format("app re-registered after %dms", attempt * PUSH_WAKE_POLL_MS))
+            break
+        end
+        session:sleep(PUSH_WAKE_POLL_MS)
+        attempt = attempt + 1
+    end
+elseif ring_target == "both" and apns_token == "" then
+    -- Legacy SIP-only extension on default ring_target → today's behaviour:
+    -- let local_extension take over (no wake to do, no filter to apply).
+    return
 end
 
-log("NOTICE", "push_wake timeout for " .. aor .. " — falling through to forward_user_not_registered")
+-- ring_target=both: fall through to local_extension which bridges to the
+-- first registered contact (today's behaviour after wake). The picker
+-- defaults here so existing setups are unchanged.
+if ring_target == "both" then
+    return
+end
+
+-- ring_target=app|fmc → enumerate contacts, build sequential bridge with the
+-- chosen device class first and everything else as fallback. FreeSWITCH's
+-- comma-separated bridge tries each in order and rolls forward on
+-- USER_NOT_REGISTERED / NO_ANSWER / NO_ROUTE_DESTINATION etc.
+local contacts = query_contacts()
+local primary, fallback = {}, {}
+for _, row in ipairs(contacts) do
+    if row.class == ring_target then
+        table.insert(primary, bridge_uri(row))
+    else
+        table.insert(fallback, bridge_uri(row))
+    end
+end
+
+if #primary == 0 and #fallback == 0 then
+    log("NOTICE", string.format("ring_target=%s but no contacts for %s — fall through", ring_target, aor))
+    return
+end
+
+local seq = {}
+for _, u in ipairs(primary) do table.insert(seq, u) end
+for _, u in ipairs(fallback) do table.insert(seq, u) end
+local bridge_str = table.concat(seq, ",")
+
+log("INFO", string.format("ring_target=%s primary=%d fallback=%d bridge=%s",
+    ring_target, #primary, #fallback, bridge_str))
+
+session:execute("set", "continue_on_fail=USER_BUSY,NO_ANSWER,USER_NOT_REGISTERED,NO_ROUTE_DESTINATION,UNALLOCATED_NUMBER,RECOVERY_ON_TIMER_EXPIRE,CALL_REJECTED")
+session:execute("set", "hangup_after_bridge=true")
+session:execute("bridge", bridge_str)
+
+-- Defensive: hang up explicitly so the dialplan engine doesn't continue to
+-- local_extension after we've handled the call. The push_wake_hook extension
+-- has continue="true" — without an explicit hangup we'd ring twice.
+if session:ready() then
+    session:hangup("NORMAL_CLEARING")
+end
