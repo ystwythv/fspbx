@@ -23,12 +23,19 @@ class ApnsPushService
 
     /**
      * Send a VoIP push notification for an incoming call.
+     *
+     * `didPrefix` is the per-DID caller-id prefix configured in FreeSWITCH
+     * (e.g. "SUPPORT", "SALES"); `didE164` is the called DID. Both are
+     * optional — clients that don't read them degrade to caller_id_name +
+     * caller_id_number behaviour.
      */
     public function sendIncomingCallPush(
         string $deviceToken,
         string $callerIdName,
         string $callerIdNumber,
         string $callUuid,
+        string $didPrefix = '',
+        string $didE164 = '',
     ): bool {
         $payload = [
             'aps' => [],
@@ -36,6 +43,12 @@ class ApnsPushService
             'caller_id_number' => $callerIdNumber,
             'call_uuid' => $callUuid,
         ];
+        if ($didPrefix !== '') {
+            $payload['did_prefix'] = $didPrefix;
+        }
+        if ($didE164 !== '') {
+            $payload['did_e164'] = $didE164;
+        }
 
         return $this->send($deviceToken, $payload, 'voip');
     }

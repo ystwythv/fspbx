@@ -34,6 +34,8 @@ class SendIncomingCallPushJob implements ShouldQueue
         $callerIdName = $this->data['caller_id_name'] ?? 'Unknown';
         $callerIdNumber = $this->data['caller_id_number'] ?? '';
         $callUuid = $this->data['call_uuid'] ?? '';
+        $didPrefix = $this->data['did_prefix'] ?? '';
+        $didE164 = $this->data['did_e164'] ?? '';
 
         $extension = null;
         if ($extensionUuid) {
@@ -63,6 +65,8 @@ class SendIncomingCallPushJob implements ShouldQueue
             $callerIdName,
             $callerIdNumber,
             $callUuid,
+            $didPrefix,
+            $didE164,
         );
 
         if (!$success) {
