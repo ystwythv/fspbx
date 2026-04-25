@@ -1098,6 +1098,31 @@ public function store(StoreExtensionRequest $request)
     }
 
     /**
+     * Update the regular (non-VoIP) APNs alert token for an extension. Used to
+     * deliver caller-ID enrichment notifications when ring_target=fmc — the
+     * VoIP topic ringtones CallKit, which we don't want when the iPhone isn't
+     * the ringing device.
+     */
+    public function updateAlertPushToken(Request $request, $extension_uuid)
+    {
+        try {
+            $request->validate(['token' => 'required|string']);
+
+            $extension = Extensions::whereKey($extension_uuid)->firstOrFail();
+            $extension->apns_alert_token = $request->input('token');
+            $extension->save();
+
+            return response()->json(['success' => true]);
+        } catch (\Throwable $e) {
+            logger('ExtensionsController@updateAlertPushToken error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'errors' => ['error' => [$e->getMessage()]],
+            ], 500);
+        }
+    }
+
+    /**
      * Resolve an extension number + domain name to their fspbx UUIDs.
      * Used by external integrations (e.g. iqcrm) so they can populate
      * fspbxExtensionUuid / fspbxDomainUuid without manual entry.

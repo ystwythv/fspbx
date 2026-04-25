@@ -57,8 +57,27 @@ class SendIncomingCallPushJob implements ShouldQueue
             Log::warning('[IncomingCallPush] Extension not found', $this->data);
             return;
         }
-        if (!$extension->apns_voip_token) {
-            Log::info('[IncomingCallPush] No push token for extension', [
+        $ringTarget = in_array($ringTargetHint, ['app', 'fmc', 'both'], true)
+            ? $ringTargetHint
+            : (in_array($extension->ring_target, ['app', 'fmc', 'both'], true) ? $extension->ring_target : 'both');
+
+        // Pick the APNs path: VoIP push (rings CallKit) when the app is in
+        // the ring set, regular alert push (caller-ID enrichment only) when
+        // ring_target=fmc and the iPhone isn't ringing this call. Falls back
+        // to the other token if the preferred one isn't registered yet.
+        if ($ringTarget === 'fmc' && $extension->apns_alert_token) {
+            $pushType = 'alert';
+            $deviceToken = $extension->apns_alert_token;
+        } elseif ($extension->apns_voip_token) {
+            $pushType = 'voip';
+            $deviceToken = $extension->apns_voip_token;
+        } elseif ($extension->apns_alert_token) {
+            // No VoIP token but an alert token is registered — best-effort
+            // enrichment delivery without ringing CallKit.
+            $pushType = 'alert';
+            $deviceToken = $extension->apns_alert_token;
+        } else {
+            Log::info('[IncomingCallPush] No push tokens for extension', [
                 'extension_uuid' => $extension->extension_uuid,
             ]);
             return;
@@ -70,17 +89,8 @@ class SendIncomingCallPushJob implements ShouldQueue
             ? $crm->lookupByPhone($callerIdNumber, $domainName)
             : null;
 
-        $ringTarget = in_array($ringTargetHint, ['app', 'fmc', 'both'], true)
-            ? $ringTargetHint
-            : (in_array($extension->ring_target, ['app', 'fmc', 'both'], true) ? $extension->ring_target : 'both');
-
-        // Phase 1: always send VoIP push regardless of ring_target. Once the
-        // iOS app gains a regular-APNs handler we'll switch to 'alert' when
-        // ring_target = 'fmc' so the iPhone enriches caller-ID without ringing.
-        $pushType = 'voip';
-
         $success = $apns->sendIncomingCallPush(
-            $extension->apns_voip_token,
+            $deviceToken,
             $callerIdName,
             $callerIdNumber,
             $callUuid,

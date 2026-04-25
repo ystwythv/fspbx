@@ -421,4 +421,6 @@ Route::group(['middleware' => ['auth:sanctum', 'api.token.auth']], function () {
         ->name('integrations.extensions.lookup');
     Route::post('/integrations/extensions/{extension}/push-token', [ExtensionsController::class, 'updatePushToken'])
         ->name('integrations.extensions.push.token');
+    Route::post('/integrations/extensions/{extension}/alert-push-token', [ExtensionsController::class, 'updateAlertPushToken'])
+        ->name('integrations.extensions.alert.push.token');
 });

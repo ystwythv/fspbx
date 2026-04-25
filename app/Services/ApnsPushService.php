@@ -44,8 +44,18 @@ class ApnsPushService
         string $ringTarget = 'both',
         string $pushType = 'voip',
     ): bool {
+        // VoIP pushes carry an empty `aps` (CallKit reads the custom fields).
+        // Alert pushes need an actual notification shape OR a silent
+        // background marker. We choose silent (`content-available: 1`) so the
+        // iOS app can update caller-ID UI without surfacing a visible banner —
+        // the in-app caller-ID toast is owned by RemoteNotificationService,
+        // not the system. APNs requires `apns-priority: 5` for silent pushes
+        // (set in send()).
+        $aps = $pushType === 'voip' ? [] : [
+            'content-available' => 1,
+        ];
         $payload = [
-            'aps' => [],
+            'aps' => $aps,
             'caller_id_name' => $callerIdName,
             'caller_id_number' => $callerIdNumber,
             'call_uuid' => $callUuid,
