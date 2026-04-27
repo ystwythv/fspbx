@@ -265,41 +265,55 @@ end
 
 -- ring_target=both → ring every registered contact (app + fmc + other) in
 --                    parallel; first to answer wins.
--- ring_target=app|fmc → ring the matching device class first, with anything
---                       else as fallback.
--- The bridge string is comma-separated; in FreeSWITCH bridge syntax that's
--- a parallel hunt across all destinations (continue_on_fail below is a
--- harmless no-op on a parallel bridge).
-local contacts = query_contacts()
-local primary, fallback = {}, {}
-for _, row in ipairs(contacts) do
-    if ring_target == "both" or row.class == ring_target then
-        table.insert(primary, bridge_uri(row))
-    else
-        table.insert(fallback, bridge_uri(row))
+-- ring_target=fmc  → ring ONLY the FMC reg-bot's contact (the SIM leg).
+--                    No app/webrtc legs — on no answer, voicemail.
+-- ring_target=app  → ring ONLY device=app webrtc contact(s). No SIM leg —
+--                    on no answer, voicemail.
+-- The bridge string is comma-separated = parallel hunt; continue_on_fail
+-- lets the script run the voicemail handler below when the bridge fails.
+
+-- Drop the caller into the user's voicemail box. We do this directly rather
+-- than letting push_wake_hook's `continue="true"` fall through to
+-- local_extension (which would re-bridge the same contacts).
+local function goto_voicemail(reason)
+    log("INFO", string.format("%s for %s — going to voicemail", reason, aor))
+    if not session:ready() then return end
+    if session:getVariable("call_answered") ~= "true" then
+        session:answer()
+    end
+    session:execute("set", "voicemail_authorized=true")
+    session:execute("voicemail", "default " .. domain_name .. " " .. destination_number)
+    if session:ready() then
+        session:hangup("NORMAL_CLEARING")
     end
 end
 
-if #primary == 0 and #fallback == 0 then
-    log("NOTICE", string.format("ring_target=%s but no contacts for %s — fall through", ring_target, aor))
+local contacts = query_contacts()
+local matched = {}
+for _, row in ipairs(contacts) do
+    if ring_target == "both" or row.class == ring_target then
+        table.insert(matched, bridge_uri(row))
+    end
+end
+
+if #matched == 0 then
+    goto_voicemail(string.format("ring_target=%s with no matching contacts", ring_target))
     return
 end
 
-local seq = {}
-for _, u in ipairs(primary) do table.insert(seq, u) end
-for _, u in ipairs(fallback) do table.insert(seq, u) end
-local bridge_str = table.concat(seq, ",")
+local bridge_str = table.concat(matched, ",")
 
-log("INFO", string.format("ring_target=%s primary=%d fallback=%d bridge=%s",
-    ring_target, #primary, #fallback, bridge_str))
+log("INFO", string.format("ring_target=%s contacts=%d bridge=%s",
+    ring_target, #matched, bridge_str))
 
 session:execute("set", "continue_on_fail=USER_BUSY,NO_ANSWER,USER_NOT_REGISTERED,NO_ROUTE_DESTINATION,UNALLOCATED_NUMBER,RECOVERY_ON_TIMER_EXPIRE,CALL_REJECTED")
 session:execute("set", "hangup_after_bridge=true")
 session:execute("bridge", bridge_str)
 
--- Defensive: hang up explicitly so the dialplan engine doesn't continue to
--- local_extension after we've handled the call. The push_wake_hook extension
--- has continue="true" — without an explicit hangup we'd ring twice.
+-- After bridge: if a leg answered the bridge succeeds and the channel is
+-- gone (session no longer ready). If the bridge failed for any of the
+-- continue_on_fail reasons (no answer / busy / not registered / etc.) the
+-- channel is still alive — drop the caller into voicemail.
 if session:ready() then
-    session:hangup("NORMAL_CLEARING")
+    goto_voicemail("bridge failed")
 end
