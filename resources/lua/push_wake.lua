@@ -201,13 +201,21 @@ if app_in_ring_set and apns_token ~= "" then
     if not session:ready() then return end
     session:preAnswer()
 
-    -- Poll specifically for an `app`-class contact, not just any contact.
-    -- A deskphone or FMC registration that survived the WebRTC flush would
-    -- short-circuit the old "any contact" check and we'd bridge to the wrong
-    -- device before the iPhone has woken.
-    local function has_app_contact()
+    -- For ring_target=app the only acceptable contact is the freshly-woken
+    -- iPhone — a deskphone or FMC registration that survived the WebRTC
+    -- flush would short-circuit and we'd bridge to the wrong device before
+    -- the app has registered.
+    -- For ring_target=both we exit on *any* contact: the FMC reg-bot is
+    -- typically already registered on the internal profile (the flush
+    -- only clears webrtc), so SIM ringing starts within one poll tick
+    -- while the iPhone continues to wake in parallel. If the app
+    -- registers before the bridge is built it joins the parallel ring;
+    -- otherwise SIM rings alone.
+    local function ready_to_bridge()
         for _, row in ipairs(query_contacts()) do
-            if row.class == "app" then return true end
+            if row.class == "app" or ring_target == "both" then
+                return true
+            end
         end
         return false
     end
@@ -216,8 +224,9 @@ if app_in_ring_set and apns_token ~= "" then
     local attempt = 0
     while attempt < deadline_attempts do
         if not session:ready() then return end
-        if has_app_contact() then
-            log("INFO", string.format("app re-registered after %dms", attempt * PUSH_WAKE_POLL_MS))
+        if ready_to_bridge() then
+            log("INFO", string.format("contact ready after %dms (ring_target=%s)",
+                attempt * PUSH_WAKE_POLL_MS, ring_target))
             break
         end
         session:sleep(PUSH_WAKE_POLL_MS)
