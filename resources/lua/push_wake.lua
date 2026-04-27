@@ -113,23 +113,33 @@ end
 -- flush below has just cleared the iPhone's contact).
 local function query_contacts()
     local rows = {}
-    local dbh = freeswitch.Dbh("core")
-    if not dbh then return rows end
+    -- Each sofia profile maintains its own sqlite registration DB at
+    -- /dev/shm/sofia_reg_<profile>.db (configured via `odbc-dsn` in
+    -- v_sip_profile_settings). The legacy `freeswitch.Dbh("core")` path
+    -- opens an unrelated empty core.db and silently returns 0 rows, which
+    -- caused the poll loop to exhaust its full 15s timeout on every call
+    -- and fall through to local_extension with no parallel-fork bridge.
+    -- Iterate the profiles we care about and aggregate.
     local safe_user = destination_number:gsub("'", "''")
     local safe_host = domain_name:gsub("'", "''")
     local sql = string.format(
-        "SELECT profile_name, contact, user_agent FROM sip_registrations WHERE sip_user='%s' AND sip_host='%s'",
+        "SELECT contact, user_agent FROM sip_registrations WHERE sip_user='%s' AND sip_host='%s'",
         safe_user, safe_host
     )
-    dbh:query(sql, function(row)
-        table.insert(rows, {
-            profile = row.profile_name,
-            contact = row.contact or "",
-            ua = row.user_agent or "",
-            class = classify_contact(row.contact, row.user_agent),
-        })
-    end)
-    dbh:release()
+    for _, profile in ipairs({"internal", "external", "webrtc"}) do
+        local dbh = freeswitch.Dbh("sqlite:///dev/shm/sofia_reg_" .. profile .. ".db")
+        if dbh then
+            dbh:query(sql, function(row)
+                table.insert(rows, {
+                    profile = profile,
+                    contact = row.contact or "",
+                    ua = row.user_agent or "",
+                    class = classify_contact(row.contact, row.user_agent),
+                })
+            end)
+            dbh:release()
+        end
+    end
     return rows
 end
 
