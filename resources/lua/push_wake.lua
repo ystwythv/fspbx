@@ -143,14 +143,18 @@ local function query_contacts()
     return rows
 end
 
--- Build a sofia bridge URI from a registration row. Strips the `sip:` /
--- angle-bracket wrapping mod_sofia stores in `contact` and prefixes with
--- `sofia/<profile>/` so the bridge dial-string addresses the right profile.
+-- Build a sofia bridge URI from a registration row. mod_sofia stores
+-- `contact` in name-addr form, e.g. `"" <sip:user@host;params>` (with an
+-- empty display-name) or sometimes bare `<sip:user@host>`. The previous
+-- naive strip of leading `<` / trailing `>` left the display-name and a
+-- truncated URI in the bridge string; FreeSWITCH then refused the bridge
+-- and the call was hung up with NO_USER_RESPONSE / send_refuse. Match the
+-- URI between the angle brackets explicitly, then strip the scheme so we
+-- can prefix with `sofia/<profile>/`.
 local function bridge_uri(row)
-    local stripped = row.contact
-    stripped = stripped:gsub("^<", ""):gsub(">$", "")
-    stripped = stripped:gsub("^sips:", ""):gsub("^sip:", "")
-    return "sofia/" .. row.profile .. "/" .. stripped
+    local uri = row.contact:match("<([^>]+)>") or row.contact
+    uri = uri:gsub("^sips:", ""):gsub("^sip:", "")
+    return "sofia/" .. row.profile .. "/" .. uri
 end
 
 -- Wake the iPhone only when the app is in the ring set AND has a push
