@@ -155,7 +155,18 @@ if app_in_ring_set and apns_token ~= "" then
     -- caller hears endless ringback and the pushed app gets no SIP INVITE
     -- (answer guard fails). Clearing first forces the woken app to register
     -- fresh; any foreground session briefly reconnects.
-    api:executeString("sofia profile webrtc flush_inbound_reg " .. aor .. " reboot")
+    --
+    -- Only for ring_target=app: empirically `sofia profile webrtc
+    -- flush_inbound_reg <aor> reboot` also evicts the FMC reg-bot's
+    -- registration on the internal profile (the reboot NOTIFY is delivered
+    -- AOR-wide, not profile-scoped), leaving the bridge with no SIM leg
+    -- until the reg-bot's next periodic re-register (~180s). For
+    -- ring_target=both we'd rather skip the flush — the FMC reg-bot is the
+    -- safety net that always rings the SIM, and a stale WebRTC contact
+    -- joining the parallel bridge fails silently while the FMC leg rings.
+    if ring_target == "app" then
+        api:executeString("sofia profile webrtc flush_inbound_reg " .. aor .. " reboot")
+    end
 
     local payload = json.encode({
         event = "incoming_call",
