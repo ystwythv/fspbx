@@ -229,21 +229,17 @@ elseif ring_target == "both" and apns_token == "" then
     return
 end
 
--- ring_target=both: fall through to local_extension which bridges to the
--- first registered contact (today's behaviour after wake). The picker
--- defaults here so existing setups are unchanged.
-if ring_target == "both" then
-    return
-end
-
--- ring_target=app|fmc → enumerate contacts, build sequential bridge with the
--- chosen device class first and everything else as fallback. FreeSWITCH's
--- comma-separated bridge tries each in order and rolls forward on
--- USER_NOT_REGISTERED / NO_ANSWER / NO_ROUTE_DESTINATION etc.
+-- ring_target=both → ring every registered contact (app + fmc + other) in
+--                    parallel; first to answer wins.
+-- ring_target=app|fmc → ring the matching device class first, with anything
+--                       else as fallback.
+-- The bridge string is comma-separated; in FreeSWITCH bridge syntax that's
+-- a parallel hunt across all destinations (continue_on_fail below is a
+-- harmless no-op on a parallel bridge).
 local contacts = query_contacts()
 local primary, fallback = {}, {}
 for _, row in ipairs(contacts) do
-    if row.class == ring_target then
+    if ring_target == "both" or row.class == ring_target then
         table.insert(primary, bridge_uri(row))
     else
         table.insert(fallback, bridge_uri(row))
