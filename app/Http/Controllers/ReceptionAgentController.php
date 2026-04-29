@@ -175,6 +175,7 @@ PROMPT;
             }
 
             $this->generateFeatureCodeDialPlan($agent);
+            $this->generateBindMetaAppDialPlan($agent);
 
             DB::commit();
 
@@ -258,6 +259,61 @@ PROMPT;
             $dialPlan->dialplan_enabled = $agent->agent_enabled;
             $dialPlan->update_date      = date('Y-m-d H:i:s');
             $dialPlan->update_user      = session('user_uuid');
+        }
+
+        $dialPlan->save();
+
+        FusionCache::clear('dialplan.' . session('domain_name'));
+    }
+
+    /**
+     * Per-domain pre-flight dialplan that arms `bind_meta_app=9 ab s …` on
+     * every call traversing the domain context, so users can press *9 mid-bridge
+     * to summon the reception agent without putting the peer on hold. Falls
+     * through (`continue="true"`) so it never affects normal routing.
+     */
+    private function generateBindMetaAppDialPlan(AiAgent $agent): void
+    {
+        if (!$agent->bind_dialplan_uuid) {
+            $agent->bind_dialplan_uuid = (string) Str::uuid();
+            $agent->save();
+        }
+
+        $xml = trim(view('layouts.xml.reception-agent-bind-meta-app-template', [
+            'agent' => $agent,
+        ])->render());
+
+        $dom = new \DOMDocument();
+        $dom->preserveWhiteSpace = false;
+        $dom->loadXML($xml);
+        $dom->formatOutput = true;
+        $xml = $dom->saveXML($dom->documentElement);
+
+        $dialPlan = Dialplans::where('dialplan_uuid', $agent->bind_dialplan_uuid)->first();
+
+        if (!$dialPlan) {
+            $dialPlan = new Dialplans();
+            $dialPlan->dialplan_uuid     = $agent->bind_dialplan_uuid;
+            $dialPlan->app_uuid          = 'b2c48e1a-7f3d-4a1e-9c5b-8d6e7f1a2b3c';
+            $dialPlan->domain_uuid       = $agent->domain_uuid;
+            $dialPlan->dialplan_context  = session('domain_name');
+            $dialPlan->dialplan_name     = $agent->agent_name . ' bind_meta_app';
+            $dialPlan->dialplan_number   = '';
+            $dialPlan->dialplan_continue = 'true';
+            $dialPlan->dialplan_xml      = $xml;
+            // Order 5 — runs before local_extension (order 100 in fspbx) so the
+            // bind is armed before any bridge happens.
+            $dialPlan->dialplan_order    = 5;
+            $dialPlan->dialplan_enabled  = $agent->agent_enabled;
+            $dialPlan->dialplan_description = 'Reception Agent: arm *9 mid-call binding';
+            $dialPlan->insert_date       = date('Y-m-d H:i:s');
+            $dialPlan->insert_user       = session('user_uuid');
+        } else {
+            $dialPlan->dialplan_xml      = $xml;
+            $dialPlan->dialplan_name     = $agent->agent_name . ' bind_meta_app';
+            $dialPlan->dialplan_enabled  = $agent->agent_enabled;
+            $dialPlan->update_date       = date('Y-m-d H:i:s');
+            $dialPlan->update_user       = session('user_uuid');
         }
 
         $dialPlan->save();

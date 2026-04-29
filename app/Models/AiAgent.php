@@ -33,6 +33,7 @@ class AiAgent extends Model
         'mode',
         'tools_enabled',
         'feature_code',
+        'bind_dialplan_uuid',
         'insert_date',
         'insert_user',
         'update_date',
