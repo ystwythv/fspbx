@@ -360,6 +360,105 @@ class FreeswitchEslService
         return $result;
     }
 
+    public function transfer(string $uuid, string $extension, string $dialplan = 'XML', string $context = 'default')
+    {
+        return $this->executeCommand(sprintf('uuid_transfer %s %s %s %s', $uuid, $extension, $dialplan, $context));
+    }
+
+    public function bridge(string $aLeg, string $bLeg)
+    {
+        return $this->executeCommand(sprintf('uuid_bridge %s %s', $aLeg, $bLeg));
+    }
+
+    public function setVar(string $uuid, string $name, string $value)
+    {
+        return $this->executeCommand(sprintf('uuid_setvar %s %s %s', $uuid, $name, $value));
+    }
+
+    public function bindMetaApp(string $uuid, string $key, string $action, string $leg = 'a')
+    {
+        return $this->executeCommand(sprintf("uuid_bind_meta_app %s %s %s s %s", $uuid, $key, $leg, $action));
+    }
+
+    public function originate(string $endpoint, string $extension, string $context = 'default', array $vars = [])
+    {
+        $varStr = '';
+        if (!empty($vars)) {
+            $pairs = [];
+            foreach ($vars as $k => $v) {
+                $pairs[] = $k . "='" . str_replace("'", "\\'", $v) . "'";
+            }
+            $varStr = '{' . implode(',', $pairs) . '}';
+        }
+        return $this->executeCommand(sprintf('bgapi originate %s%s %s XML %s', $varStr, $endpoint, $extension, $context));
+    }
+
+    public function confMute(string $conf, $memberId)
+    {
+        return $this->executeCommand(sprintf('conference %s mute %s', $conf, $memberId));
+    }
+
+    public function confUnmute(string $conf, $memberId)
+    {
+        return $this->executeCommand(sprintf('conference %s unmute %s', $conf, $memberId));
+    }
+
+    public function confDeaf(string $conf, $memberId)
+    {
+        return $this->executeCommand(sprintf('conference %s deaf %s', $conf, $memberId));
+    }
+
+    public function confKick(string $conf, $memberId)
+    {
+        return $this->executeCommand(sprintf('conference %s kick %s', $conf, $memberId));
+    }
+
+    /**
+     * List members of a conference. Returns array of:
+     *   ['member_id' => int, 'channel_name' => string, 'uuid' => string, 'caller_id_number' => string, 'flags' => string]
+     */
+    public function confList(string $conf): array
+    {
+        $body = $this->executeCommand(sprintf('conference %s list', $conf));
+        if (!is_string($body) || trim($body) === '' || stripos($body, 'No active conferences') !== false) {
+            return [];
+        }
+
+        $members = [];
+        foreach (preg_split('/\R/', $body) as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+            $cols = explode(';', $line);
+            if (count($cols) < 5) {
+                continue;
+            }
+            $members[] = [
+                'member_id'        => (int) $cols[0],
+                'channel_name'     => $cols[1] ?? '',
+                'uuid'             => $cols[2] ?? '',
+                'caller_id_name'   => $cols[3] ?? '',
+                'caller_id_number' => $cols[4] ?? '',
+                'flags'            => $cols[5] ?? '',
+            ];
+        }
+        return $members;
+    }
+
+    /**
+     * Find a conference member's id by channel uuid. Returns null if not found.
+     */
+    public function findMemberId(string $conf, string $channelUuid): ?int
+    {
+        foreach ($this->confList($conf) as $m) {
+            if ($m['uuid'] === $channelUuid) {
+                return $m['member_id'];
+            }
+        }
+        return null;
+    }
+
 
     public function subscribeToEvents($eventType, $events)
     {

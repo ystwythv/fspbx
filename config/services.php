@@ -72,10 +72,25 @@ return [
         'webhook_header_value' => env('ASSEMBLYAI_WEBHOOK_SECRET', ''),
     ],
 
+    'voxra_internal' => [
+        // Shared HMAC secret used by FreeSWITCH Lua scripts to call back into
+        // Laravel for synchronous orchestration (e.g. summoning the reception
+        // agent into a 3-way conference). Mirrors the legacy hard-coded value
+        // baked into the existing Lua webhook scripts; override via env.
+        'secret' => env('VOXRA_INTERNAL_SECRET', 'tH0FXyxfG6Kh36*VHYdE4G!gwfE3Pf'),
+    ],
+
     'elevenlabs' => [
         'api_key'  => env('ELEVENLABS_API_KEY', ''),
         'base_url' => env('ELEVENLABS_BASE_URL', 'https://api.elevenlabs.io'),
         'timeout'  => (int) env('ELEVENLABS_TIMEOUT', 60),
+        // HMAC secret for verifying tool-call webhooks coming FROM ElevenLabs
+        // back to Laravel. Configured per-installation; surfaced to ElevenLabs
+        // when the agent's tool definitions are registered.
+        'tool_webhook_secret' => env('ELEVENLABS_TOOL_WEBHOOK_SECRET', ''),
+        // Public base URL used when registering tool webhooks with ElevenLabs.
+        // Falls back to APP_URL.
+        'tool_webhook_base_url' => env('ELEVENLABS_TOOL_WEBHOOK_BASE_URL', env('APP_URL', '')),
         // Comma-separated list of public IPv4/CIDR blocks that ElevenLabs should
         // accept inbound SIP INVITEs from. This must contain the egress IP that
         // ElevenLabs sees on the wire — i.e. the host's public IP on bare-metal/

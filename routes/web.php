@@ -87,6 +87,19 @@ Route::webhooks('/webhook/freeswitch', 'freeswitch');
 Route::webhooks('/webhook/stripe', 'stripe');
 Route::webhooks('/webhook/assemblyai', 'assemblyai');
 
+// FreeSWITCH Lua → Laravel synchronous orchestration for the *9 reception agent.
+Route::post('/internal/voxra/reception-agent/summon', [
+    \App\Http\Controllers\Internal\ReceptionAgentSummonController::class, 'summon',
+])->middleware(\App\Http\Middleware\VerifyVoxraInternalSignature::class);
+Route::post('/internal/voxra/reception-agent/announced-settle', [
+    \App\Http\Controllers\Internal\ReceptionAgentSummonController::class, 'announcedSettle',
+])->middleware(\App\Http\Middleware\VerifyVoxraInternalSignature::class);
+
+// ElevenLabs Conversational AI tool callbacks (transfer, lookup_user, etc).
+Route::post('/webhooks/voxra/reception-agent/tool', [
+    \App\Http\Controllers\Webhooks\ReceptionAgentToolController::class, 'handle',
+])->middleware(\App\Http\Middleware\VerifyElevenLabsSignature::class);
+
 // Routes for 2FA email challenge. Used as a backup when 2FA is not enabled.
 Route::get('/email-challenge', [App\Http\Controllers\Auth\EmailChallengeController::class, 'create'])->name('email-challenge.login');
 Route::put('/email-challenge', [App\Http\Controllers\Auth\EmailChallengeController::class, 'update'])
@@ -191,6 +204,9 @@ Route::group(['middleware' => 'auth'], function () {
 
     // AI Agents
     Route::get('ai-agents', [AiAgentController::class, 'index'])->name('ai-agents.index');
+
+    // Reception Agent (singular per domain)
+    Route::get('reception-agent', [\App\Http\Controllers\ReceptionAgentController::class, 'index'])->name('reception-agent.index');
 
     // Virtual Receptionist
     Route::get('virtual-receptionists', [VirtualReceptionistController::class, 'index'])->name('virtual-receptionists.index');

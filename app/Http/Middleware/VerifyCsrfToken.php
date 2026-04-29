@@ -25,6 +25,8 @@ class VerifyCsrfToken extends Middleware
         'webhook/assemblyai',
         'webhook/apidaze/sms',
         'webhook/bulkvs/sms',
-        'webhook/voipms/sms'
+        'webhook/voipms/sms',
+        'internal/voxra/*',
+        'webhooks/voxra/*',
     ];
 }

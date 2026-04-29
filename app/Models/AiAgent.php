@@ -30,11 +30,31 @@ class AiAgent extends Model
         'language',
         'agent_enabled',
         'description',
+        'mode',
+        'tools_enabled',
+        'feature_code',
         'insert_date',
         'insert_user',
         'update_date',
         'update_user',
     ];
+
+    protected $casts = [
+        'tools_enabled' => 'array',
+    ];
+
+    public const MODE_DIRECT = 'direct';
+    public const MODE_RECEPTION = 'reception';
+
+    public function scopeReception($query)
+    {
+        return $query->where('mode', self::MODE_RECEPTION);
+    }
+
+    public function scopeForDomain($query, string $domainUuid)
+    {
+        return $query->where('domain_uuid', $domainUuid);
+    }
 
     public function domain()
     {

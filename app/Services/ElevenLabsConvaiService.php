@@ -307,6 +307,126 @@ class ElevenLabsConvaiService
         return $response->json();
     }
 
+    /**
+     * Register/update the tool surface for a reception-mode AI agent. Tools
+     * map to the single dispatch endpoint /webhooks/voxra/reception-agent/tool;
+     * which tools are advertised to ElevenLabs is controlled by the agent's
+     * `tools_enabled` flag map (set in the admin UI).
+     *
+     * Idempotent — call on every save.
+     */
+    public function syncReceptionAgentTools(\App\Models\AiAgent $agent): array
+    {
+        if (!$agent->elevenlabs_agent_id) {
+            throw new RuntimeException('Agent has no ElevenLabs id; create the agent first');
+        }
+
+        $base = rtrim((string) config('services.elevenlabs.tool_webhook_base_url', config('app.url') ?? ''), '/');
+        if ($base === '') {
+            throw new RuntimeException('ELEVENLABS_TOOL_WEBHOOK_BASE_URL or APP_URL must be set');
+        }
+        $url = $base . '/webhooks/voxra/reception-agent/tool';
+
+        $tools = $this->buildReceptionAgentToolDefinitions($url, (array) ($agent->tools_enabled ?? []));
+
+        $body = [
+            'conversation_config' => [
+                'agent' => [
+                    'prompt' => [
+                        'tools' => $tools,
+                    ],
+                ],
+            ],
+        ];
+
+        $response = $this->http()->patch("v1/convai/agents/{$agent->elevenlabs_agent_id}", $body);
+
+        if (!$response->successful()) {
+            logger('ElevenLabs sync reception tools error: ' . $response->body());
+            throw new RuntimeException('Failed to sync reception agent tools: ' . ($response->json('detail.message') ?? $response->body()));
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildReceptionAgentToolDefinitions(string $webhookUrl, array $enabled): array
+    {
+        $defs = [];
+        $headers = [
+            ['name' => 'Content-Type', 'value' => 'application/json'],
+        ];
+
+        $make = function (string $name, string $description, array $properties, array $required = []) use ($webhookUrl, $headers) {
+            return [
+                'type' => 'webhook',
+                'name' => $name,
+                'description' => $description,
+                'api_schema' => [
+                    'url' => $webhookUrl,
+                    'method' => 'POST',
+                    'request_headers' => $headers,
+                    'request_body_schema' => [
+                        'type' => 'object',
+                        'properties' => array_merge([
+                            'tool_name' => ['type' => 'string', 'enum' => [$name]],
+                            'conversation_id' => ['type' => 'string'],
+                        ], $properties),
+                        'required' => array_values(array_unique(array_merge(['tool_name', 'conversation_id'], $required))),
+                    ],
+                ],
+            ];
+        };
+
+        if ($enabled['lookup_user'] ?? true) {
+            $defs[] = $make('lookup_user', 'Find a colleague by name in the directory; returns extension and full name.', [
+                'query' => ['type' => 'string', 'description' => 'Person name or extension to search for'],
+            ], ['query']);
+        }
+        if ($enabled['transfer_call'] ?? true) {
+            $defs[] = $make('transfer_call', 'Blind-transfer the held call to an extension and exit.', [
+                'extension' => ['type' => 'string', 'description' => 'Target extension number'],
+            ], ['extension']);
+        }
+        if ($enabled['announced_transfer'] ?? true) {
+            $defs[] = $make('announced_transfer', 'Announced transfer: ring the target, intro the call to them, then drop yourself when the summoner hangs up so the original caller is connected.', [
+                'extension' => ['type' => 'string', 'description' => 'Target extension number'],
+            ], ['extension']);
+        }
+        if ($enabled['park_call'] ?? true) {
+            $defs[] = $make('park_call', 'Park the held call to a parking slot and read back the slot number.', []);
+        }
+        if ($enabled['bring_back'] ?? true) {
+            $defs[] = $make('bring_back', 'Retrieve a previously parked call by slot number.', [
+                'slot' => ['type' => 'string', 'description' => 'Park slot number to retrieve'],
+            ], ['slot']);
+        }
+        if ($enabled['three_way_add'] ?? true) {
+            $defs[] = $make('three_way_add', 'Add another extension to the current call as a three-way participant.', [
+                'extension' => ['type' => 'string', 'description' => 'Extension to add to the call'],
+            ], ['extension']);
+        }
+        if ($enabled['complete_and_exit'] ?? true) {
+            $defs[] = $make('complete_and_exit', 'Call this once you have completed the user\'s request to leave the call cleanly.', [
+                'message' => ['type' => 'string', 'description' => 'Optional final spoken message before exiting'],
+            ]);
+        }
+        if ($enabled['get_time_in_city'] ?? true) {
+            $defs[] = $make('get_time_in_city', 'Get the current local time in a named city.', [
+                'city' => ['type' => 'string', 'description' => 'City name (e.g. New York, Tokyo)'],
+            ], ['city']);
+        }
+        if ($enabled['get_weather'] ?? true) {
+            $defs[] = $make('get_weather', 'Get the current weather in a named city.', [
+                'city' => ['type' => 'string', 'description' => 'City name'],
+            ], ['city']);
+        }
+
+        return $defs;
+    }
+
     private function httpMultipart(): \Illuminate\Http\Client\PendingRequest
     {
         return Http::baseUrl($this->baseUrl . '/')

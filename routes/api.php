@@ -232,6 +232,11 @@ Route::group(['middleware' => ['auth:sanctum', 'api.cookie.auth']], function () 
     Route::post('ai-agents/{ai_agent}/kb-documents', [AiAgentController::class, 'storeKbDocument'])->name('ai-agents.kb.store');
     Route::delete('ai-agents/{ai_agent}/kb-documents/{kb_document}', [AiAgentController::class, 'deleteKbDocument'])->name('ai-agents.kb.delete');
 
+    // Reception Agent (singular per domain)
+    Route::get('reception-agent', [\App\Http\Controllers\ReceptionAgentController::class, 'show'])->name('reception-agent.show');
+    Route::put('reception-agent', [\App\Http\Controllers\ReceptionAgentController::class, 'update'])->name('reception-agent.update');
+    Route::post('reception-agent/test', [\App\Http\Controllers\ReceptionAgentController::class, 'testInvoke'])->name('reception-agent.test');
+
     // Virtual Receptionist
     Route::post('virtual-receptionists', [VirtualReceptionistController::class, 'store'])->name('virtual-receptionists.store');
     Route::put('virtual-receptionists/{virtual_receptionist}', [VirtualReceptionistController::class, 'update'])->name('virtual-receptionists.update');
