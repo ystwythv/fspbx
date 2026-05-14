@@ -25,6 +25,14 @@ local WEBHOOK_URL = "http://127.0.0.1/webhook/freeswitch"
 local WEBHOOK_SECRET = "tH0FXyxfG6Kh36*VHYdE4G!gwfE3Pf"
 local PUSH_WAKE_TIMEOUT_MS = 15000
 local PUSH_WAKE_POLL_MS = 500
+-- ring_target=both: hold the bridge for up to this long waiting for the
+-- iPhone's webrtc contact to (re-)appear after the APNs push, even though a
+-- pre-existing FMC contact would otherwise satisfy `ready_to_bridge`. Without
+-- this window the bridge is often built before the woken app has re-registered
+-- and the iPhone never receives a SIP INVITE — CallKit shows the push UI but
+-- sliding green is a local-only no-op while the SIM (or a sibling ring-group
+-- leg) actually owns the call (ystwythv/iqm-ansible#19).
+local PUSH_WAKE_BOTH_APP_WAIT_MS = 3000
 
 local json = require "resources.functions.lunajson"
 local Database = require "resources.functions.database"
@@ -251,28 +259,49 @@ if app_in_ring_set and apns_token ~= "" then
     -- iPhone — a deskphone or FMC registration that survived the WebRTC
     -- flush would short-circuit and we'd bridge to the wrong device before
     -- the app has registered.
-    -- For ring_target=both we exit on *any* contact: the FMC reg-bot is
-    -- typically already registered on the internal profile (the flush
-    -- only clears webrtc), so SIM ringing starts within one poll tick
-    -- while the iPhone continues to wake in parallel. If the app
-    -- registers before the bridge is built it joins the parallel ring;
-    -- otherwise SIM rings alone.
-    local function ready_to_bridge()
+    -- For ring_target=both we'd like to ring the SIM as soon as possible
+    -- (FMC reg-bot is usually already registered) BUT we have to leave a
+    -- short head-start for the iPhone to re-register, otherwise the bridge
+    -- is built without the app contact: CallKit then shows the push UI but
+    -- there's no SIP INVITE on the WSS for sliding green to act on, the
+    -- call lives on FMC / a sibling ring-group leg, and "first answer
+    -- wins" silently runs in the opposite direction from what the user
+    -- saw on their wrist. See ystwythv/iqm-ansible#19.
+    local function has_app_contact()
         for _, row in ipairs(query_contacts()) do
-            if row.class == "app" or ring_target == "both" then
-                return true
-            end
+            if row.class == "app" then return true end
         end
         return false
     end
+    local function has_any_contact()
+        return #query_contacts() > 0
+    end
 
     local deadline_attempts = math.floor(PUSH_WAKE_TIMEOUT_MS / PUSH_WAKE_POLL_MS)
+    local both_app_wait_attempts = math.floor(PUSH_WAKE_BOTH_APP_WAIT_MS / PUSH_WAKE_POLL_MS)
     local attempt = 0
     while attempt < deadline_attempts do
         if not session:ready() then return end
-        if ready_to_bridge() then
-            log("INFO", string.format("contact ready after %dms (ring_target=%s)",
-                attempt * PUSH_WAKE_POLL_MS, ring_target))
+        local ready = false
+        if ring_target == "app" then
+            -- Wait the full window — only the freshly-woken iPhone is acceptable.
+            ready = has_app_contact()
+        elseif ring_target == "both" then
+            -- Prefer to wait for the app, but never delay the SIM by more
+            -- than PUSH_WAKE_BOTH_APP_WAIT_MS once a non-app contact is up.
+            if has_app_contact() then
+                ready = true
+            elseif attempt >= both_app_wait_attempts and has_any_contact() then
+                ready = true
+            end
+        else
+            -- ring_target=fmc shouldn't reach this branch (apns_token check
+            -- gates the whole block), but be defensive.
+            ready = has_any_contact()
+        end
+        if ready then
+            log("INFO", string.format("contact ready after %dms (ring_target=%s, app_contact=%s)",
+                attempt * PUSH_WAKE_POLL_MS, ring_target, tostring(has_app_contact())))
             break
         end
         session:sleep(PUSH_WAKE_POLL_MS)
