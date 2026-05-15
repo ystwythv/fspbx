@@ -22,11 +22,21 @@ use Illuminate\Support\Facades\DB;
  */
 class OutboundCallerIdFixer
 {
+    // Matches the inner action block of the `^\d{6,25}$` condition — whether
+    // it's the stock no-op set OR an earlier patched form that omitted '+' on
+    // the E.164 CLI. Replacing the whole inner block keeps the patcher
+    // idempotent across rule shape changes.
     public const BROKEN_ACTION_PATTERN =
         '/(<condition field="\$\{outbound_caller_id_number\}" expression="\^\\\\d\{6,25\}\$" break="never">\s*\n)'
-        . '(\s*)<action application="set" data="outbound_caller_id_number=\$\{outbound_caller_id_number\}" inline="true"\/>/';
+        // [^\n]* — action data attributes can contain literal '>' (e.g. <sip:…>),
+        // so we must not stop at the first '>'. Each <action …/> sits on one line.
+        . '((?:[ \t]*<action [^\n]*\/>\s*\n)+)'
+        . '(\s*<\/condition>)/';
 
-    public const REPLACEMENT_FORMAT = "%s%s<action application=\"set\" data=\"effective_caller_id_number=\${outbound_caller_id_number}\" inline=\"true\"/>\n%s<action application=\"set\" data=\"effective_caller_id_name=\${outbound_caller_id_name}\" inline=\"true\"/>\n%s<action application=\"export\" data=\"sip_h_P-Asserted-Identity=<sip:\${outbound_caller_id_number}@\${domain_name}>\"/>";
+    // The dialplan regex (^\d{6,25}$) guarantees digits-only, so prepending
+    // '+' here always produces clean E.164 — Magrathea and similar UK carriers
+    // require the leading '+' or they substitute the default trunk CLI.
+    public const REPLACEMENT_FORMAT = "%s%s<action application=\"set\" data=\"effective_caller_id_number=+\${outbound_caller_id_number}\" inline=\"true\"/>\n%s<action application=\"set\" data=\"effective_caller_id_name=\${outbound_caller_id_name}\" inline=\"true\"/>\n%s<action application=\"export\" data=\"sip_h_P-Asserted-Identity=<sip:+\${outbound_caller_id_number}@\${domain_name}>\"/>\n%s";
 
     /**
      * @return array{dialplans_patched: int, gateways_patched: int}
@@ -54,15 +64,22 @@ class OutboundCallerIdFixer
                 continue;
             }
 
-            // Already patched — effective_caller_id_number assignment is present.
-            if (strpos($xml, 'effective_caller_id_number=${outbound_caller_id_number}') !== false) {
+            // Already on the current target — '+' prefix is present on the CLI export.
+            if (strpos($xml, 'sip_h_P-Asserted-Identity=<sip:+${outbound_caller_id_number}@') !== false) {
                 continue;
             }
 
             $count = 0;
             $newXml = preg_replace_callback(
                 self::BROKEN_ACTION_PATTERN,
-                fn ($m) => sprintf(self::REPLACEMENT_FORMAT, $m[1], $m[2], $m[2], $m[2]),
+                function ($m) {
+                    // Use the indent of the first inner action for new lines.
+                    $indent = '';
+                    if (preg_match('/^([ \t]+)</m', $m[2], $im)) {
+                        $indent = $im[1];
+                    }
+                    return sprintf(self::REPLACEMENT_FORMAT, $m[1], $indent, $indent, $indent, $m[3]);
+                },
                 $xml,
                 -1,
                 $count,
