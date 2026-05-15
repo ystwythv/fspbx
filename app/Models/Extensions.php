@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Spatie\Activitylog\LogOptions;
 use libphonenumber\PhoneNumberFormat;
+use libphonenumber\PhoneNumberUtil;
+use libphonenumber\NumberParseException;
 use Illuminate\Database\Eloquent\Model;
 use App\Services\CallRoutingOptionsService;
 use Spatie\Activitylog\Traits\LogsActivity;
@@ -159,17 +161,17 @@ class Extensions extends Model
 
     public function getOutboundCallerIdNumberFormattedAttribute()
     {
-        return formatPhoneNumber($this->outbound_caller_id_number, 'US', PhoneNumberFormat::NATIONAL);
+        return $this->formatStoredCallerId($this->outbound_caller_id_number, PhoneNumberFormat::NATIONAL);
     }
 
     public function getEmergencyCallerIdNumberE164Attribute()
     {
-        return formatPhoneNumber($this->emergency_caller_id_number, 'US', PhoneNumberFormat::E164);
+        return $this->formatStoredCallerId($this->emergency_caller_id_number, PhoneNumberFormat::E164);
     }
 
     public function getOutboundCallerIdNumberE164Attribute()
     {
-        return formatPhoneNumber($this->outbound_caller_id_number, 'US', PhoneNumberFormat::E164);
+        return $this->formatStoredCallerId($this->outbound_caller_id_number, PhoneNumberFormat::E164);
     }
 
     public function setOutboundCallerIdNumberAttribute($value)
@@ -189,6 +191,30 @@ class Extensions extends Model
         }
         // FusionPBX OUTBOUND_CALLER_ID dialplan validates with /^\d{6,25}$/ — '+' breaks it.
         return ltrim((string) $value, '+');
+    }
+
+    // The setter strips '+' before persisting, so stored values are E.164-without-the-plus.
+    // Re-add '+' here so libphonenumber can parse the number without a hard-coded region.
+    protected function formatStoredCallerId($raw, int $format)
+    {
+        if ($raw === null || $raw === '') {
+            return $raw;
+        }
+        $digits = ltrim((string) $raw, '+');
+        if (!preg_match('/^\d{6,}$/', $digits)) {
+            return $raw;
+        }
+        $e164Candidate = '+' . $digits;
+        try {
+            $util = PhoneNumberUtil::getInstance();
+            $obj  = $util->parse($e164Candidate, null);
+            if ($util->isValidNumber($obj)) {
+                return $util->format($obj, $format);
+            }
+        } catch (NumberParseException $e) {
+            // fall through
+        }
+        return $format === PhoneNumberFormat::E164 ? $e164Candidate : $raw;
     }
 
     /**
