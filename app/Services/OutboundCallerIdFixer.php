@@ -53,9 +53,11 @@ class OutboundCallerIdFixer
     {
         $rows = DB::table('v_dialplans')
             ->where('dialplan_name', 'OUTBOUND_CALLER_ID')
-            ->get(['dialplan_uuid', 'dialplan_xml']);
+            ->get(['dialplan_uuid', 'dialplan_xml', 'domain_uuid']);
 
         $patched = 0;
+        $patchedDomainUuids = [];
+        $patchedGlobal = false;
 
         foreach ($rows as $row) {
             $xml = $row->dialplan_xml;
@@ -93,14 +95,45 @@ class OutboundCallerIdFixer
                         'update_date' => date('Y-m-d H:i:s'),
                     ]);
                 $patched++;
+                if ($row->domain_uuid) {
+                    $patchedDomainUuids[$row->domain_uuid] = true;
+                } else {
+                    // A global OUTBOUND_CALLER_ID rule is reused by every domain,
+                    // so all per-domain dialplan caches need invalidation.
+                    $patchedGlobal = true;
+                }
             }
         }
 
         if ($patched > 0) {
-            FusionCache::clear('dialplan:public');
+            // FusionPBX renders OUTBOUND_CALLER_ID into the per-domain dialplan
+            // cache file (/var/cache/fusionpbx/dialplan.<domain>), not into
+            // dialplan.public.* — the cache must be cleared by domain name or
+            // the stale XML keeps serving and the DB write looks like a no-op.
+            $domainNames = $this->resolveDomainNames(
+                $patchedGlobal ? null : array_keys($patchedDomainUuids)
+            );
+            foreach ($domainNames as $domainName) {
+                FusionCache::clear('dialplan:' . $domainName);
+            }
         }
 
         return $patched;
+    }
+
+    /**
+     * @param array<int, string>|null $domainUuids null = all domains
+     * @return array<int, string>
+     */
+    protected function resolveDomainNames(?array $domainUuids): array
+    {
+        // No enabled-filter: we're just deleting cache files. Even if a domain
+        // is disabled, evicting its stale cache is safe and the rebuild lazy.
+        $q = DB::table('v_domains');
+        if ($domainUuids !== null) {
+            $q->whereIn('domain_uuid', $domainUuids);
+        }
+        return $q->pluck('domain_name')->all();
     }
 
     protected function patchGateways(): int
