@@ -94,13 +94,20 @@ class ApnsPushService
      * that actually answered ignores it — so it is safe to fan this out to
      * every member that was pushed for the call.
      */
-    public function sendCallCancelledPush(string $deviceToken, string $callUuid): bool
+    public function sendCallCancelledPush(string $deviceToken, string $callUuid, ?string $reason = null): bool
     {
         $payload = [
             'aps' => ['content-available' => 1],
             'type' => 'call_cancelled',
             'call_uuid' => $callUuid,
         ];
+
+        // Optional reason lets the app classify the CallKit Recents entry:
+        // "answered_elsewhere"/"declined_elsewhere" clears the missed-call badge,
+        // "caller_cancelled" stays missed. Absent = legacy missed behaviour.
+        if ($reason !== null && $reason !== '') {
+            $payload['reason'] = $reason;
+        }
 
         return $this->send($deviceToken, $payload, 'alert');
     }
