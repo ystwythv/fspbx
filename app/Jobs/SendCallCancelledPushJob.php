@@ -44,6 +44,10 @@ class SendCallCancelledPushJob implements ShouldQueue
         $callUuid = $this->data['call_uuid'] ?? '';
         $domainName = $this->data['domain_name'] ?? null;
         $extensions = $this->data['extensions'] ?? [];
+        // Why the call was cancelled: "answered_elsewhere" (a sibling member or
+        // the SIM answered) lets the app log it as handled-elsewhere instead of
+        // missed; "caller_cancelled" stays missed. Optional / may be absent.
+        $reason = $this->data['reason'] ?? null;
 
         if ($callUuid === '' || !$domainName || !is_array($extensions) || empty($extensions)) {
             Log::warning('[CallCancelledPush] Invalid payload', $this->data);
@@ -76,7 +80,7 @@ class SendCallCancelledPushJob implements ShouldQueue
                 continue;
             }
 
-            $apns->sendCallCancelledPush($deviceToken, $callUuid);
+            $apns->sendCallCancelledPush($deviceToken, $callUuid, $reason);
         }
     }
 }
