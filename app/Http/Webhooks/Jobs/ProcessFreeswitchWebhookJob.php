@@ -4,6 +4,7 @@ namespace App\Http\Webhooks\Jobs;
 
 use App\Jobs\CreateVoicemailEscalationNotificationsJob;
 use App\Jobs\HandleVoicemailEscalationAttemptEventJob;
+use App\Jobs\SendCallCancelledPushJob;
 use App\Jobs\SendIncomingCallPushJob;
 use App\Jobs\SendNewVoicemailNotificationByEmail;
 use App\Jobs\SendNewVoicemailNotificationBySms;
@@ -131,6 +132,10 @@ class ProcessFreeswitchWebhookJob extends SpatieProcessWebhookJob
 
                     case 'incoming_call':
                         SendIncomingCallPushJob::dispatch($data);
+                        break;
+
+                    case 'call_cancelled':
+                        SendCallCancelledPushJob::dispatch($data);
                         break;
 
                     case 'transcribe_call':

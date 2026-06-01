@@ -83,6 +83,29 @@ class ApnsPushService
     }
 
     /**
+     * Send a "call cancelled" background push so the iOS app dismisses a
+     * CallKit call it was woken for by an earlier incoming-call push.
+     *
+     * Delivered on the alert channel (silent `content-available`, NOT VoIP) on
+     * purpose: a VoIP push obliges the app to report a call to CallKit or iOS
+     * terminates it, which is the opposite of what we want here. The app
+     * switches on `type` in RemoteNotificationService and only dismisses the
+     * call when the matching `call_uuid` is still ringing-from-push — a device
+     * that actually answered ignores it — so it is safe to fan this out to
+     * every member that was pushed for the call.
+     */
+    public function sendCallCancelledPush(string $deviceToken, string $callUuid): bool
+    {
+        $payload = [
+            'aps' => ['content-available' => 1],
+            'type' => 'call_cancelled',
+            'call_uuid' => $callUuid,
+        ];
+
+        return $this->send($deviceToken, $payload, 'alert');
+    }
+
+    /**
      * Send a push notification via APNs HTTP/2 API.
      */
     private function send(string $deviceToken, array $payload, string $pushType = 'voip'): bool
