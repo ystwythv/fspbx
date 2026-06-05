@@ -91,5 +91,14 @@ class RouteServiceProvider extends ServiceProvider
             $key = $request->bearerToken() ?: (optional($request->user())->id ?: $request->ip());
             return Limit::perMinute(10)->by('call-flow-simulate:' . $key);
         });
+
+        // Machine-to-machine integration endpoints (e.g. the extension lookup)
+        // are an enumeration oracle (404 vs 200). Cap them so a leaked token
+        // can't be used to brute-force the extension/domain space. Keyed by
+        // bearer token, falling back to client IP.
+        RateLimiter::for('integrations', function (Request $request) {
+            $key = $request->bearerToken() ?: $request->ip();
+            return Limit::perMinute(30)->by('integrations:' . $key);
+        });
     }
 }
