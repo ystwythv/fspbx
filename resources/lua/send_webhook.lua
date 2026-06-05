@@ -10,8 +10,19 @@ function debug_log(level, message)
 end
 
 local payload = argv[1] or ""
-local url = "http://127.0.0.1/webhook/freeswitch"
-local secret = "tH0FXyxfG6Kh36*VHYdE4G!gwfE3Pf"
+
+-- Webhook endpoint + HMAC secret come from FreeSWITCH global vars (vars.xml);
+-- the secret must match FREESWITCH_WEBHOOK_SECRET in the Laravel .env.
+local api = freeswitch.API()
+local url = api:executeString("global_getvar push_webhook_url")
+if not url or url == "" then
+    url = "http://127.0.0.1/webhook/freeswitch"
+end
+local secret = api:executeString("global_getvar push_webhook_secret")
+if not secret or secret == "" then
+    debug_log("ERR", "[notify_webhook.lua] push_webhook_secret not set — skipping webhook\n")
+    return
+end
 
 if payload == "" then
     debug_log("ERR", "Payload required!\n")

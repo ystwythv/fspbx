@@ -21,8 +21,6 @@
 --      or at timeout (falls through to forward_user_not_registered).
 
 local SCRIPT_NAME = "[push_wake.lua]"
-local WEBHOOK_URL = "http://127.0.0.1/webhook/freeswitch"
-local WEBHOOK_SECRET = "tH0FXyxfG6Kh36*VHYdE4G!gwfE3Pf"
 local PUSH_WAKE_TIMEOUT_MS = 15000
 local PUSH_WAKE_POLL_MS = 500
 -- ring_target=both: hold the bridge for up to this long waiting for the
@@ -37,6 +35,23 @@ local PUSH_WAKE_BOTH_APP_WAIT_MS = 3000
 local json = require "resources.functions.lunajson"
 local Database = require "resources.functions.database"
 local api = freeswitch.API()
+
+-- Webhook endpoint + HMAC secret come from FreeSWITCH global vars (vars.xml):
+--   <X-PRE-PROCESS cmd="set" data="push_webhook_url=..."/>
+--   <X-PRE-PROCESS cmd="set" data="push_webhook_secret=..."/>
+-- The secret must match FREESWITCH_WEBHOOK_SECRET in the Laravel .env.
+local WEBHOOK_URL = api:executeString("global_getvar push_webhook_url")
+if not WEBHOOK_URL or WEBHOOK_URL == "" then
+    WEBHOOK_URL = "http://127.0.0.1/webhook/freeswitch"
+end
+
+local WEBHOOK_SECRET = api:executeString("global_getvar push_webhook_secret")
+if not WEBHOOK_SECRET or WEBHOOK_SECRET == "" then
+    -- No secret configured — bail. Without HMAC the webhook handler will
+    -- reject the request anyway.
+    freeswitch.consoleLog("WARNING", SCRIPT_NAME .. " push_webhook_secret not set — skipping push\n")
+    return
+end
 
 -- Returns true if v_voicemails.voicemail_enabled='true' for this mailbox, or
 -- nil on lookup failure / no row (caller must default safely). Used by the

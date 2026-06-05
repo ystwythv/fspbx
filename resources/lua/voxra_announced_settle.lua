@@ -13,7 +13,15 @@
 
 local SCRIPT_NAME = "[voxra_announced_settle.lua]"
 local URL    = "http://127.0.0.1/internal/voxra/reception-agent/announced-settle"
-local SECRET = "tH0FXyxfG6Kh36*VHYdE4G!gwfE3Pf"
+
+-- HMAC secret from FreeSWITCH global vars (vars.xml); must match
+-- VOXRA_INTERNAL_SECRET in the Laravel .env.
+local api = freeswitch.API()
+local SECRET = api:executeString("global_getvar voxra_internal_secret")
+if not SECRET or SECRET == "" then
+    freeswitch.consoleLog("ERR", SCRIPT_NAME .. " voxra_internal_secret not set — aborting\n")
+    return
+end
 
 local function log(level, msg)
     freeswitch.consoleLog(level, SCRIPT_NAME .. " " .. tostring(msg) .. "\n")

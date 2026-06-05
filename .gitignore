@@ -19,3 +19,6 @@ modules_statuses.json
 
 # Scribe generated docs/cache
 .scribe/
+
+# Claude Code agent worktrees
+.claude/worktrees/
