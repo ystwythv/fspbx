@@ -75,9 +75,9 @@ return [
     'voxra_internal' => [
         // Shared HMAC secret used by FreeSWITCH Lua scripts to call back into
         // Laravel for synchronous orchestration (e.g. summoning the reception
-        // agent into a 3-way conference). Mirrors the legacy hard-coded value
-        // baked into the existing Lua webhook scripts; override via env.
-        'secret' => env('VOXRA_INTERNAL_SECRET', 'tH0FXyxfG6Kh36*VHYdE4G!gwfE3Pf'),
+        // agent into a 3-way conference). The Lua scripts read the same value
+        // from the voxra_internal_secret FreeSWITCH global var (vars.xml).
+        'secret' => env('VOXRA_INTERNAL_SECRET', ''),
     ],
 
     'elevenlabs' => [

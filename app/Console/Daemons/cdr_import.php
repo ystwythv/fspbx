@@ -1009,8 +1009,20 @@ if (!class_exists('cdr_import')) {
                     //notify transcription service
 						if (isset($record_path) && isset($record_name) && file_exists($record_path.'/'.$record_name)) {
 
-                            $url  = 'https://127.0.0.1/webhook/freeswitch';
-                            $secret = 'tH0FXyxfG6Kh36*VHYdE4G!gwfE3Pf';
+                            $url  = getenv('FREESWITCH_WEBHOOK_URL') ?: 'https://127.0.0.1/webhook/freeswitch';
+                            // This daemon does not boot Laravel, so fall back to
+                            // reading the shared secret straight from the app .env.
+                            $secret = getenv('FREESWITCH_WEBHOOK_SECRET') ?: '';
+                            if ($secret === '') {
+                                $env_file = dirname(__DIR__, 3) . '/.env';
+                                if (is_readable($env_file) && preg_match('/^FREESWITCH_WEBHOOK_SECRET=(.*)$/m', file_get_contents($env_file), $env_match)) {
+                                    $secret = trim($env_match[1], " \t\"'\r");
+                                }
+                            }
+                            if ($secret === '') {
+                                echo "FREESWITCH_WEBHOOK_SECRET not configured - skipping transcribe_call webhook\n";
+                            }
+                            else {
                             $payload = [
                                 'event'      => 'transcribe_call',
                                 'timestamp'  => gmdate('c'),
@@ -1045,6 +1057,7 @@ if (!class_exists('cdr_import')) {
 
                             echo $response;
                             echo curl_error($ch);
+                            }
                         }
 
 					//debug
