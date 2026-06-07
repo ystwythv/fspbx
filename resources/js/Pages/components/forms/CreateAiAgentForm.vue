@@ -56,6 +56,19 @@
 
                                             <HiddenElement name="agent_enabled" :meta="true" default="true" />
 
+                                            <SelectElement name="provider" :items="providerOptions"
+                                                :native="false" label="Provider"
+                                                :can-clear="false" :can-deselect="false"
+                                                description="Platform that runs this AI agent."
+                                                :columns="{ sm: { container: 6 } }" />
+
+                                            <SelectElement name="model" :items="telnyxModelOptions"
+                                                :search="true" :native="false" label="Model"
+                                                input-type="search" autocomplete="off"
+                                                placeholder="Choose a model"
+                                                :conditions="[['provider', 'telnyx']]"
+                                                :columns="{ sm: { container: 6 } }" />
+
                                             <TextElement name="agent_name" label="Name"
                                                 placeholder="e.g. Customer Support Agent"
                                                 :columns="{ sm: { container: 6 } }" />
@@ -80,6 +93,14 @@
                                                 :search="true" :native="false" label="Voice"
                                                 input-type="search" autocomplete="off"
                                                 placeholder="Choose a voice"
+                                                :conditions="[['provider', 'elevenlabs']]"
+                                                :columns="{ sm: { container: 6 } }" />
+
+                                            <SelectElement name="telnyx_voice_id" :items="telnyxVoiceOptions"
+                                                :search="true" :native="false" label="Voice"
+                                                input-type="search" autocomplete="off"
+                                                placeholder="Choose a voice"
+                                                :conditions="[['provider', 'telnyx']]"
                                                 :columns="{ sm: { container: 6 } }" />
 
                                             <SelectElement name="language" :items="languageOptions"
@@ -128,6 +149,28 @@ const voiceOptions = computed(() => {
     }, {});
 });
 
+const providerOptions = computed(() => {
+    const providers = props.options?.providers ?? [{ value: 'elevenlabs', label: 'ElevenLabs' }];
+    return providers.reduce((acc, p) => {
+        acc[p.value] = p.label;
+        return acc;
+    }, {});
+});
+
+const telnyxVoiceOptions = computed(() => {
+    return (props.options?.telnyx_voices ?? []).reduce((acc, voice) => {
+        acc[voice.value] = voice.label;
+        return acc;
+    }, {});
+});
+
+const telnyxModelOptions = computed(() => {
+    return (props.options?.telnyx_models ?? []).reduce((acc, model) => {
+        acc[model.value] = model.label;
+        return acc;
+    }, {});
+});
+
 const languageOptions = computed(() => {
     return (props.options?.languages ?? []).reduce((acc, lang) => {
         acc[lang.value] = lang.label;
@@ -140,9 +183,12 @@ const defaultFormData = computed(() => ({
     agent_extension: props.options?.item?.agent_extension ?? '',
     description: props.options?.item?.description ?? '',
     agent_enabled: props.options?.item?.agent_enabled ?? 'true',
+    provider: props.options?.item?.provider ?? (props.options?.providers?.[0]?.value ?? 'elevenlabs'),
+    model: props.options?.item?.model ?? null,
     system_prompt: props.options?.item?.system_prompt ?? '',
     first_message: props.options?.item?.first_message ?? '',
     voice_id: props.options?.item?.voice_id ?? null,
+    telnyx_voice_id: null,
     language: props.options?.item?.language ?? 'en',
 }));
 

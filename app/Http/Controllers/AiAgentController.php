@@ -14,7 +14,9 @@ use Illuminate\Support\Facades\Storage;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 use App\Services\CallRoutingOptionsService;
+use App\Services\Convai\ConvaiProviderRegistry;
 use App\Services\ElevenLabsConvaiService;
+use App\Services\TelnyxConvaiService;
 use App\Services\Tts\ElevenLabsTtsService;
 use App\Http\Requests\StoreAiAgentRequest;
 use App\Http\Requests\UpdateAiAgentRequest;
@@ -67,6 +69,7 @@ class AiAgentController extends Controller
                 'agent_name',
                 'agent_extension',
                 'agent_enabled',
+                'provider',
                 'description',
             ])
             ->allowedFilters([
@@ -97,46 +100,19 @@ class AiAgentController extends Controller
         try {
             DB::beginTransaction();
 
-            $convaiService = app(ElevenLabsConvaiService::class);
+            $provider = app(ConvaiProviderRegistry::class)->resolve($inputs['provider'] ?? null);
+            $inputs = $this->normalizeProviderInputs($provider->name(), $inputs);
 
-            // Create the agent in ElevenLabs
-            $agentResponse = $convaiService->createAgent(
-                $inputs['agent_name'],
-                $inputs['system_prompt'] ?? null,
-                $inputs['first_message'] ?? null,
-                $inputs['voice_id'] ?? null,
-                $inputs['language'] ?? 'en',
-            );
-
-            $elevenlabsAgentId = $agentResponse['agent_id'] ?? null;
-            $elevenlabsPhoneNumberId = null;
-
-            // Create SIP trunk phone number and assign agent
-            if ($elevenlabsAgentId) {
-                try {
-                    $phoneResponse = $convaiService->createSipTrunkPhoneNumber(
-                        'Voxra Agent: ' . $inputs['agent_name'],
-                        $inputs['agent_extension'],
-                        config('services.elevenlabs.sip_allowed_addresses', []),
-                    );
-                    $elevenlabsPhoneNumberId = $phoneResponse['phone_number_id'] ?? null;
-
-                    if ($elevenlabsPhoneNumberId) {
-                        $convaiService->assignAgentToPhoneNumber($elevenlabsPhoneNumberId, $elevenlabsAgentId);
-                    }
-                } catch (\Exception $e) {
-                    logger('ElevenLabs SIP phone number setup warning: ' . $e->getMessage());
-                }
-            }
+            // Create the agent on the provider's platform
+            $providerAttributes = $provider->provisionAgent($inputs);
 
             $instance = $this->model;
-            $instance->fill([
+            $instance->fill(array_merge([
                 'domain_uuid' => session('domain_uuid'),
                 'dialplan_uuid' => Str::uuid(),
                 'agent_name' => $inputs['agent_name'],
                 'agent_extension' => $inputs['agent_extension'],
-                'elevenlabs_agent_id' => $elevenlabsAgentId,
-                'elevenlabs_phone_number_id' => $elevenlabsPhoneNumberId,
+                'provider' => $provider->name(),
                 'system_prompt' => $inputs['system_prompt'] ?? null,
                 'first_message' => $inputs['first_message'] ?? null,
                 'voice_id' => $inputs['voice_id'] ?? null,
@@ -145,7 +121,7 @@ class AiAgentController extends Controller
                 'description' => $inputs['description'] ?? null,
                 'insert_date' => date('Y-m-d H:i:s'),
                 'insert_user' => session('user_uuid'),
-            ]);
+            ], $providerAttributes));
 
             $instance->save();
 
@@ -181,22 +157,10 @@ class AiAgentController extends Controller
 
             $instance = $this->model::where('ai_agent_uuid', $inputs['ai_agent_uuid'])->firstOrFail();
 
-            // Update ElevenLabs agent if relevant fields changed
-            if ($instance->elevenlabs_agent_id) {
-                $convaiService = app(ElevenLabsConvaiService::class);
-                try {
-                    $convaiService->updateAgent(
-                        $instance->elevenlabs_agent_id,
-                        $inputs['agent_name'],
-                        $inputs['system_prompt'] ?? null,
-                        $inputs['first_message'] ?? null,
-                        $inputs['voice_id'] ?? null,
-                        $inputs['language'] ?? 'en',
-                    );
-                } catch (\Exception $e) {
-                    logger('ElevenLabs update agent warning: ' . $e->getMessage());
-                }
-            }
+            // Push updated settings to the agent's provider platform
+            $provider = app(ConvaiProviderRegistry::class)->resolve($instance->provider);
+            $inputs = $this->normalizeProviderInputs($provider->name(), $inputs);
+            $provider->updateAgent($instance, $inputs);
 
             $instance->fill([
                 'agent_name' => $inputs['agent_name'],
@@ -204,6 +168,7 @@ class AiAgentController extends Controller
                 'system_prompt' => $inputs['system_prompt'] ?? null,
                 'first_message' => $inputs['first_message'] ?? null,
                 'voice_id' => $inputs['voice_id'] ?? null,
+                'model' => $inputs['model'] ?? $instance->model,
                 'language' => $inputs['language'] ?? 'en',
                 'agent_enabled' => $inputs['agent_enabled'],
                 'description' => $inputs['description'] ?? null,
@@ -240,23 +205,17 @@ class AiAgentController extends Controller
         try {
             DB::beginTransaction();
 
-            $items = $this->model::whereIn('ai_agent_uuid', request('items'))
-                ->get(['ai_agent_uuid', 'dialplan_uuid', 'elevenlabs_agent_id', 'elevenlabs_phone_number_id']);
+            $items = $this->model::whereIn('ai_agent_uuid', request('items'))->get();
 
-            $convaiService = null;
-            try {
-                $convaiService = app(ElevenLabsConvaiService::class);
-            } catch (\Exception $e) {
-                logger('ElevenLabs service unavailable during delete: ' . $e->getMessage());
-            }
+            $registry = app(ConvaiProviderRegistry::class);
 
             foreach ($items as $item) {
                 // Clean up KB documents (ElevenLabs + local files + DB rows)
                 $kbDocs = AiAgentKbDocument::where('ai_agent_uuid', $item->ai_agent_uuid)->get();
                 foreach ($kbDocs as $kbDoc) {
-                    if ($convaiService && $kbDoc->elevenlabs_documentation_id) {
+                    if ($kbDoc->elevenlabs_documentation_id) {
                         try {
-                            $convaiService->deleteKbDocument($kbDoc->elevenlabs_documentation_id);
+                            app(ElevenLabsConvaiService::class)->deleteKbDocument($kbDoc->elevenlabs_documentation_id);
                         } catch (\Exception $e) {
                             logger('ElevenLabs KB cleanup warning: ' . $e->getMessage());
                         }
@@ -267,18 +226,11 @@ class AiAgentController extends Controller
                     $kbDoc->delete();
                 }
 
-                // Clean up ElevenLabs resources
-                if ($convaiService) {
-                    try {
-                        if ($item->elevenlabs_phone_number_id) {
-                            $convaiService->deletePhoneNumber($item->elevenlabs_phone_number_id);
-                        }
-                        if ($item->elevenlabs_agent_id) {
-                            $convaiService->deleteAgent($item->elevenlabs_agent_id);
-                        }
-                    } catch (\Exception $e) {
-                        logger('ElevenLabs cleanup warning: ' . $e->getMessage());
-                    }
+                // Clean up provider-side resources
+                try {
+                    $registry->resolve($item->provider)->deleteAgent($item);
+                } catch (\Exception $e) {
+                    logger('Convai provider cleanup warning: ' . $e->getMessage());
                 }
 
                 // Delete dialplan
@@ -306,14 +258,28 @@ class AiAgentController extends Controller
         }
     }
 
+    /**
+     * Map provider-specific form fields onto the canonical input keys.
+     */
+    private function normalizeProviderInputs(string $providerName, array $inputs): array
+    {
+        if ($providerName === AiAgent::PROVIDER_TELNYX && !empty($inputs['telnyx_voice_id'])) {
+            $inputs['voice_id'] = $inputs['telnyx_voice_id'];
+        }
+
+        return $inputs;
+    }
+
     private function generateDialPlanXML(AiAgent $agent): void
     {
-        $data = [
+        $provider = app(ConvaiProviderRegistry::class)->resolve($agent->provider);
+
+        $data = array_merge([
             'agent' => $agent,
             'dialplan_continue' => 'false',
-        ];
+        ], $provider->dialplanData($agent));
 
-        $xml = trim(view('layouts.xml.ai-agent-dial-plan-template', $data)->render());
+        $xml = trim(view($provider->dialplanView(), $data)->render());
 
         $dom = new \DOMDocument();
         $dom->preserveWhiteSpace = false;
@@ -387,6 +353,19 @@ class AiAgentController extends Controller
                 logger('Failed to fetch ElevenLabs voices: ' . $e->getMessage());
             }
 
+            // Get Telnyx voices and models (only when the API key is configured)
+            $telnyxVoices = [];
+            $telnyxModels = [];
+            if ((string) config('services.telnyx.api_key', '') !== '') {
+                try {
+                    $telnyxService = app(TelnyxConvaiService::class);
+                    $telnyxVoices = $telnyxService->getVoices();
+                    $telnyxModels = $telnyxService->getModels();
+                } catch (\Exception $e) {
+                    logger('Failed to fetch Telnyx voices/models: ' . $e->getMessage());
+                }
+            }
+
             if ($itemUuid) {
                 $agent = $this->model::where('domain_uuid', $domainUuid)
                     ->where('ai_agent_uuid', $itemUuid)
@@ -428,6 +407,8 @@ class AiAgentController extends Controller
                 $agent->agent_name = '';
                 $agent->agent_extension = $agent->generateUniqueSequenceNumber();
                 $agent->description = '';
+                $agent->provider = AiAgent::PROVIDER_ELEVENLABS;
+                $agent->model = null;
                 $agent->system_prompt = '';
                 $agent->first_message = '';
                 $agent->voice_id = null;
@@ -462,7 +443,10 @@ class AiAgentController extends Controller
                 'permissions' => $permissions,
                 'routes' => $routes,
                 'routing_types' => $routingTypes,
+                'providers' => app(ConvaiProviderRegistry::class)->available(),
                 'voices' => $voices,
+                'telnyx_voices' => $telnyxVoices,
+                'telnyx_models' => $telnyxModels,
                 'languages' => $languages,
                 'kb_documents' => $kbDocuments,
             ]);

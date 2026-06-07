@@ -101,6 +101,22 @@ return [
         ))),
     ],
 
+    'telnyx' => [
+        'api_key'  => env('TELNYX_API_KEY', ''),
+        'base_url' => env('TELNYX_BASE_URL', 'https://api.telnyx.com'),
+        'timeout'  => (int) env('TELNYX_TIMEOUT', 60),
+        // SIP attach: Telnyx derives the registration AOR/realm from the proxy
+        // host, so attach_domain must be a FusionPBX directory domain whose
+        // name matches the proxy host below (it is auto-created on first use).
+        // Leave both empty to disable SIP attach; agents then use the public
+        // assistant subdomain bridge only.
+        // e.g. TELNYX_ATTACH_DOMAIN=172.236.17.39
+        'attach_domain' => env('TELNYX_ATTACH_DOMAIN', ''),
+        // Proxy advertised to Telnyx for UAC registration, host[:port].
+        // Must resolve to / be this PBX. e.g. TELNYX_ATTACH_PROXY=172.236.17.39:5060
+        'attach_proxy' => env('TELNYX_ATTACH_PROXY', ''),
+    ],
+
     'keygen' => [
         'api_url' => env('KEYGEN_API_URL', 'https://api.keygen.sh'),
         'account_id' => env('KEYGEN_ACCOUNT_ID', 'f2ca6242-a55c-4949-9529-d7d591d3271a'),

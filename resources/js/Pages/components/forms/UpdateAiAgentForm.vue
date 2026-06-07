@@ -55,9 +55,20 @@
                                                 description="Configure the settings for this AI agent." />
 
                                             <HiddenElement name="ai_agent_uuid" />
+                                            <HiddenElement name="provider" :meta="true" />
 
                                             <ToggleElement name="agent_enabled" label="Enabled"
                                                 true-value="true" false-value="false" />
+
+                                            <StaticElement name="provider_label" tag="p"
+                                                :content="'Provider: ' + providerLabel" />
+
+                                            <SelectElement name="model" :items="telnyxModelOptions"
+                                                :search="true" :native="false" label="Model"
+                                                input-type="search" autocomplete="off"
+                                                placeholder="Choose a model"
+                                                :conditions="[['provider', 'telnyx']]"
+                                                :columns="{ sm: { container: 6 } }" />
 
                                             <TextElement name="agent_name" label="Name"
                                                 placeholder="e.g. Customer Support Agent"
@@ -83,6 +94,14 @@
                                                 :search="true" :native="false" label="Voice"
                                                 input-type="search" autocomplete="off"
                                                 placeholder="Choose a voice"
+                                                :conditions="[['provider', 'elevenlabs']]"
+                                                :columns="{ sm: { container: 6 } }" />
+
+                                            <SelectElement name="telnyx_voice_id" :items="telnyxVoiceOptions"
+                                                :search="true" :native="false" label="Voice"
+                                                input-type="search" autocomplete="off"
+                                                placeholder="Choose a voice"
+                                                :conditions="[['provider', 'telnyx']]"
                                                 :columns="{ sm: { container: 6 } }" />
 
                                             <SelectElement name="language" :items="languageOptions"
@@ -98,7 +117,7 @@
                                 </template>
                             </Vueform>
 
-                            <div v-if="!loading" class="mt-6 space-y-4 text-gray-600 bg-gray-50 px-4 py-6 sm:p-6 shadow sm:rounded-md">
+                            <div v-if="!loading && props.options?.item?.provider !== 'telnyx'" class="mt-6 space-y-4 text-gray-600 bg-gray-50 px-4 py-6 sm:p-6 shadow sm:rounded-md">
                                 <div>
                                     <h4 class="text-base font-semibold text-gray-900">Knowledge Base</h4>
                                     <p class="text-sm text-gray-500">Upload files, add URLs, or paste text. The agent will be able to reference these in conversations.</p>
@@ -201,6 +220,26 @@ const voiceOptions = computed(() => {
     }, {});
 });
 
+const providerLabel = computed(() => {
+    const provider = props.options?.item?.provider ?? 'elevenlabs';
+    const match = (props.options?.providers ?? []).find(p => p.value === provider);
+    return match?.label ?? provider;
+});
+
+const telnyxVoiceOptions = computed(() => {
+    return (props.options?.telnyx_voices ?? []).reduce((acc, voice) => {
+        acc[voice.value] = voice.label;
+        return acc;
+    }, {});
+});
+
+const telnyxModelOptions = computed(() => {
+    return (props.options?.telnyx_models ?? []).reduce((acc, model) => {
+        acc[model.value] = model.label;
+        return acc;
+    }, {});
+});
+
 const languageOptions = computed(() => {
     return (props.options?.languages ?? []).reduce((acc, lang) => {
         acc[lang.value] = lang.label;
@@ -208,17 +247,26 @@ const languageOptions = computed(() => {
     }, {});
 });
 
-const defaultFormData = computed(() => ({
-    ai_agent_uuid: props.options?.item?.ai_agent_uuid ?? '',
-    agent_name: props.options?.item?.agent_name ?? '',
-    agent_extension: props.options?.item?.agent_extension ?? '',
-    description: props.options?.item?.description ?? '',
-    agent_enabled: props.options?.item?.agent_enabled ?? 'true',
-    system_prompt: props.options?.item?.system_prompt ?? '',
-    first_message: props.options?.item?.first_message ?? '',
-    voice_id: props.options?.item?.voice_id ?? null,
-    language: props.options?.item?.language ?? 'en',
-}));
+const defaultFormData = computed(() => {
+    const provider = props.options?.item?.provider ?? 'elevenlabs';
+    const voiceId = props.options?.item?.voice_id ?? null;
+
+    return {
+        ai_agent_uuid: props.options?.item?.ai_agent_uuid ?? '',
+        agent_name: props.options?.item?.agent_name ?? '',
+        agent_extension: props.options?.item?.agent_extension ?? '',
+        description: props.options?.item?.description ?? '',
+        agent_enabled: props.options?.item?.agent_enabled ?? 'true',
+        provider: provider,
+        model: props.options?.item?.model ?? null,
+        system_prompt: props.options?.item?.system_prompt ?? '',
+        first_message: props.options?.item?.first_message ?? '',
+        // voice_id column stores whichever provider's voice is in use
+        voice_id: provider === 'telnyx' ? null : voiceId,
+        telnyx_voice_id: provider === 'telnyx' ? voiceId : null,
+        language: props.options?.item?.language ?? 'en',
+    };
+});
 
 const submitForm = async (FormData, form$) => {
     const requestData = form$.requestData;
