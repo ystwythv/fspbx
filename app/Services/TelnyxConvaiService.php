@@ -189,7 +189,9 @@ class TelnyxConvaiService
         }
 
         return collect($response->json('data', []))
-            ->filter(fn ($m) => !empty($m['id']))
+            // /v2/ai/models also lists models the assistants API rejects
+            // ("Model X is not available for AI Assistants")
+            ->filter(fn ($m) => !empty($m['id']) && ($m['recommended_for_assistants'] ?? false))
             ->map(fn ($m) => ['value' => $m['id'], 'label' => $m['id']])
             ->values()
             ->toArray();
