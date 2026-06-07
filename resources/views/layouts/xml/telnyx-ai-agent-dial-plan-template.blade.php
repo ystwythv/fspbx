@@ -4,6 +4,9 @@
         <action application="answer" data="" />
         <action application="sleep" data="1000" />
         <action application="set" data="hangup_after_bridge=true" />
+        {{-- a failed bridge hangs the channel up by default; needed so the
+             SIP-attach bridge can fall through to the subdomain bridge --}}
+        <action application="set" data="continue_on_fail=true" />
         <action application="set" data="absolute_codec_string=PCMU,PCMA" />
         <action application="set" data="ringback=$${uk-ring}" />
         <action application="set" data="transfer_ringback=$${uk-ring}" />
