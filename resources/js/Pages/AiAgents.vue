@@ -44,6 +44,8 @@
                 </TableColumnHeader>
                 <TableColumnHeader header="Extension"
                     class="px-2 py-3.5 text-left text-sm font-semibold text-gray-900" />
+                <TableColumnHeader header="Provider"
+                    class="px-2 py-3.5 text-left text-sm font-semibold text-gray-900" />
                 <TableColumnHeader header="Description"
                     class="px-2 py-3.5 text-left text-sm font-semibold text-gray-900" />
                 <TableColumnHeader header="Status" class="px-2 py-3.5 text-left text-sm font-semibold text-gray-900" />
@@ -84,6 +86,12 @@
 
                     <TableField class="whitespace-nowrap px-2 py-2 text-sm text-gray-500"
                         :text="row.agent_extension" />
+                    <TableField class="whitespace-nowrap px-2 py-2 text-sm text-gray-500" :text="row.provider">
+                        <Badge v-if="row.provider === 'telnyx'" text="Telnyx" backgroundColor="bg-emerald-50"
+                            textColor="text-emerald-700" ringColor="ring-emerald-600/20" />
+                        <Badge v-else text="ElevenLabs" backgroundColor="bg-indigo-50" textColor="text-indigo-700"
+                            ringColor="ring-indigo-600/20" />
+                    </TableField>
                     <TableField class="whitespace-nowrap px-2 py-2 text-sm text-gray-500"
                         :text="row.description" />
                     <TableField class="whitespace-nowrap px-2 py-2 text-sm text-gray-500" :text="row.agent_enabled">

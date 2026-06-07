@@ -22,8 +22,14 @@ class AiAgent extends Model
         'dialplan_uuid',
         'agent_name',
         'agent_extension',
+        'provider',
+        'model',
         'elevenlabs_agent_id',
         'elevenlabs_phone_number_id',
+        'telnyx_assistant_id',
+        'telnyx_uac_connection_id',
+        'telnyx_attach_extension_uuid',
+        'telnyx_attach_extension',
         'system_prompt',
         'first_message',
         'voice_id',
@@ -46,6 +52,9 @@ class AiAgent extends Model
 
     public const MODE_DIRECT = 'direct';
     public const MODE_RECEPTION = 'reception';
+
+    public const PROVIDER_ELEVENLABS = 'elevenlabs';
+    public const PROVIDER_TELNYX = 'telnyx';
 
     public function scopeReception($query)
     {

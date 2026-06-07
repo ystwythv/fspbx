@@ -23,10 +23,13 @@ class StoreAiAgentRequest extends FormRequest
                 new UniqueExtension(),
             ],
             'agent_enabled' => 'present',
+            'provider' => 'nullable|string|in:elevenlabs,telnyx',
+            'model' => 'nullable|string|max:100',
             'description' => 'nullable|string|max:255',
             'system_prompt' => 'nullable|string|max:5000',
             'first_message' => 'nullable|string|max:500',
             'voice_id' => 'nullable|string',
+            'telnyx_voice_id' => 'nullable|string',
             'language' => 'nullable|string|max:20',
         ];
     }
