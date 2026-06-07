@@ -190,13 +190,15 @@ class TelnyxConvaiProvider implements ConvaiProviderInterface
     }
 
     /**
-     * Unique numeric SIP username in the shared attach domain. Uses an
-     * 8-digit number outside any tenant dial range.
+     * Unique SIP username in the shared attach domain. Telnyx rejects
+     * digit-only usernames ("Please use a non-digit value in the first 5
+     * characters of your user_name") — and its registration prober silently
+     * never registers them — so the username is alpha-prefixed.
      */
     private function generateAttachExtension(string $attachDomainUuid): string
     {
         for ($i = 0; $i < 25; $i++) {
-            $candidate = (string) random_int(80000000, 89999999);
+            $candidate = 'agt' . random_int(80000000, 89999999);
             $exists = Extensions::where('domain_uuid', $attachDomainUuid)
                 ->where('extension', $candidate)
                 ->exists();
