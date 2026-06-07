@@ -357,12 +357,27 @@ class AiAgentController extends Controller
             $telnyxVoices = [];
             $telnyxModels = [];
             if ((string) config('services.telnyx.api_key', '') !== '') {
+                // Cached briefly so the modal opens fast; the lists still
+                // track the Telnyx catalogue (new voices/models appear within
+                // 15 minutes). Fetched independently so one failing doesn't
+                // blank the other.
                 try {
-                    $telnyxService = app(TelnyxConvaiService::class);
-                    $telnyxVoices = $telnyxService->getVoices();
-                    $telnyxModels = $telnyxService->getModels();
+                    $telnyxVoices = cache()->remember(
+                        'telnyx.convai.voices',
+                        now()->addMinutes(15),
+                        fn () => app(TelnyxConvaiService::class)->getVoices()
+                    );
                 } catch (\Exception $e) {
-                    logger('Failed to fetch Telnyx voices/models: ' . $e->getMessage());
+                    logger('Failed to fetch Telnyx voices: ' . $e->getMessage());
+                }
+                try {
+                    $telnyxModels = cache()->remember(
+                        'telnyx.convai.models',
+                        now()->addMinutes(15),
+                        fn () => app(TelnyxConvaiService::class)->getModels()
+                    );
+                } catch (\Exception $e) {
+                    logger('Failed to fetch Telnyx models: ' . $e->getMessage());
                 }
             }
 
