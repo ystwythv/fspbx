@@ -60,15 +60,25 @@ class TelnyxConvaiService
     /**
      * Update an existing Telnyx assistant.
      * POST /v2/ai/assistants/{assistant_id}
+     *
+     * voice_settings is replaced wholesale by the API, so merge the new
+     * voice into the assistant's current settings — otherwise portal-side
+     * tweaks (voice_speed, background audio, ...) get reset on every save.
      */
     public function updateAssistant(string $assistantId, ?string $name, ?string $instructions, ?string $greeting, ?string $voice, ?string $model, string $language = 'en'): array
     {
+        $voiceSettings = null;
+        if ($voice) {
+            $voiceSettings = $this->getAssistant($assistantId)['voice_settings'] ?? [];
+            $voiceSettings['voice'] = $voice;
+        }
+
         $body = array_filter([
             'name'         => $name,
             'instructions' => $instructions ?? '',
             'greeting'     => $greeting ?? '',
             'model'        => $model,
-            'voice_settings' => $voice ? ['voice' => $voice] : null,
+            'voice_settings' => $voiceSettings,
             'transcription'  => ['language' => $language],
         ], fn ($v) => $v !== null);
 
@@ -77,6 +87,21 @@ class TelnyxConvaiService
         if (!$response->successful()) {
             logger('Telnyx update assistant error: ' . $response->body());
             throw new RuntimeException('Failed to update Telnyx assistant: ' . $this->errorDetail($response));
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Get an assistant's current configuration.
+     * GET /v2/ai/assistants/{assistant_id}
+     */
+    public function getAssistant(string $assistantId): array
+    {
+        $response = $this->http()->get("v2/ai/assistants/{$assistantId}");
+
+        if (!$response->successful()) {
+            throw new RuntimeException('Failed to get Telnyx assistant: ' . $this->errorDetail($response));
         }
 
         return $response->json();
@@ -165,10 +190,14 @@ class TelnyxConvaiService
 
         return collect($response->json('voices', []))
             ->filter(fn ($v) => !empty($v['id']))
-            ->map(fn ($v) => [
-                'value' => $v['id'],
-                'label' => trim(($v['name'] ?? $v['id']) . ' (' . ($v['language'] ?? '') . ($v['gender'] ? ', ' . $v['gender'] : '') . ')'),
-            ])
+            ->map(function ($v) {
+                // language/gender are not present on every voice
+                $meta = implode(', ', array_filter([$v['language'] ?? null, $v['gender'] ?? null]));
+                return [
+                    'value' => $v['id'],
+                    'label' => ($v['name'] ?? $v['id']) . ($meta !== '' ? " ({$meta})" : ''),
+                ];
+            })
             ->values()
             ->toArray();
     }
