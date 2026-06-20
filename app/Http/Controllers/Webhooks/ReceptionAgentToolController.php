@@ -33,15 +33,28 @@ class ReceptionAgentToolController extends Controller
      */
     public function dynamicVariables(Request $request): JsonResponse
     {
-        $target = (string) ($request->input('data.payload.telnyx_end_user_target')
+        // Telnyx nests the call context under data.payload; the exact key for the
+        // agent leg's caller id has varied, so try the documented one and fall
+        // back to a few likely shapes. Log the raw payload so we can see what
+        // Telnyx actually sends.
+        $payload = (array) data_get($request->all(), 'data.payload', $request->all());
+        $target = (string) ($payload['telnyx_end_user_target']
+            ?? $payload['telnyx_agent_target']
             ?? data_get($request->all(), 'data.payload.telnyx_end_user_target', ''));
 
         $conversationId = $target !== ''
             ? ReceptionAgentSummonService::conversationIdForTelnyxToken($target)
             : null;
 
+        logger()->info('reception-agent dynamic-variables', [
+            'target'      => $target,
+            'resolved'    => $conversationId,
+            'payload_keys' => array_keys($payload),
+            'raw'         => $request->all(),
+        ]);
+
         return response()->json([
-            'dynamic_variables' => array_filter(['conversation_id' => $conversationId]),
+            'dynamic_variables' => ['conversation_id' => (string) $conversationId],
         ]);
     }
 
