@@ -27,7 +27,7 @@ class ProvisionReceptionAgent extends Command
         {--voice= : provider voice id}
         {--model=}
         {--language=en}
-        {--feature-code=*9}
+        {--feature-code= : feature code, default *9 (kept out of the signature default because Laravel treats =* as an array option)}
         {--enabled=true}';
 
     protected $description = 'Provision-or-update the per-domain reception agent (headless: no session/permission gate).';
@@ -35,9 +35,9 @@ class ProvisionReceptionAgent extends Command
     public function handle(ReceptionAgentController $controller): int
     {
         $domainArg = (string) $this->argument('domain');
-        $domain = Domain::where('domain_uuid', $domainArg)
-            ->orWhere('domain_name', $domainArg)
-            ->first();
+        $domain = \Illuminate\Support\Str::isUuid($domainArg)
+            ? Domain::where('domain_uuid', $domainArg)->first()
+            : Domain::where('domain_name', $domainArg)->first();
 
         if (!$domain) {
             $this->error("Domain not found: {$domainArg}");
@@ -49,7 +49,7 @@ class ProvisionReceptionAgent extends Command
 
         $inputs = [
             'agent_name'    => (string) $this->option('name'),
-            'feature_code'  => (string) $this->option('feature-code'),
+            'feature_code'  => (string) ($this->option('feature-code') ?: '*9'),
             'provider'      => $provider,
             'system_prompt' => $this->option('prompt') ?: null,
             'first_message' => $this->option('first-message') ?: null,
