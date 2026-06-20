@@ -59,6 +59,8 @@ class ReceptionAgentToolController extends Controller
                 'park_call'          => $this->tools->parkCall($session),
                 'bring_back'         => $this->tools->bringBack($session, (string) ($args['slot'] ?? '')),
                 'three_way_add'      => $this->tools->threeWayAdd($session, (string) ($args['extension'] ?? '')),
+                'take_notes'         => $this->tools->takeNotes($session, (string) ($args['note'] ?? '')),
+                'email_reminder'     => $this->tools->emailReminder($session, (string) ($args['to'] ?? ''), (string) ($args['subject'] ?? ''), (string) ($args['body'] ?? '')),
                 'complete_and_exit'  => $this->tools->completeAndExit($session, $args['message'] ?? null),
                 'get_time_in_city'   => $this->tools->getTimeInCity((string) ($args['city'] ?? '')),
                 'get_weather'        => $this->tools->getWeather((string) ($args['city'] ?? '')),

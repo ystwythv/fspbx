@@ -408,6 +408,18 @@ class ElevenLabsConvaiService
                 'extension' => ['type' => 'string', 'description' => 'Extension to add to the call'],
             ], ['extension']);
         }
+        if ($enabled['take_notes'] ?? true) {
+            $defs[] = $make('take_notes', 'Record a note from the call; notes are kept and included in the post-call summary.', [
+                'note' => ['type' => 'string', 'description' => 'The note text to record'],
+            ], ['note']);
+        }
+        if ($enabled['email_reminder'] ?? true) {
+            $defs[] = $make('email_reminder', 'Email a reminder or summary to an address the caller gives you. Ask for the email address if you do not have it.', [
+                'to' => ['type' => 'string', 'description' => 'Recipient email address'],
+                'subject' => ['type' => 'string', 'description' => 'Email subject line'],
+                'body' => ['type' => 'string', 'description' => 'Email body text'],
+            ], ['to', 'body']);
+        }
         if ($enabled['complete_and_exit'] ?? true) {
             $defs[] = $make('complete_and_exit', 'Call this once you have completed the user\'s request to leave the call cleanly.', [
                 'message' => ['type' => 'string', 'description' => 'Optional final spoken message before exiting'],
