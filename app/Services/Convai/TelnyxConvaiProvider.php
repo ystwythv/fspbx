@@ -116,6 +116,25 @@ class TelnyxConvaiProvider implements ConvaiProviderInterface
         ];
     }
 
+    public function summonEndpoint(AiAgent $agent): string
+    {
+        if (!$agent->telnyx_assistant_id) {
+            throw new \RuntimeException('Telnyx agent not provisioned (missing assistant id).');
+        }
+
+        // Public assistant subdomain — always reachable, no registration needed.
+        $subdomain = sprintf('sofia/external/sip:agent@%s.sip.telnyx.com', $agent->telnyx_assistant_id);
+
+        // Prefer the registered SIP-attach extension (mirrors the dialplan
+        // template) and fail over to the subdomain if it's not registered.
+        $attachDomain = (string) config('services.telnyx.attach_domain', '');
+        if ($agent->telnyx_attach_extension && $attachDomain !== '') {
+            return sprintf('user/%s@%s|%s', $agent->telnyx_attach_extension, $attachDomain, $subdomain);
+        }
+
+        return $subdomain;
+    }
+
     /**
      * Create the attach extension + UAC connection so Telnyx registers in.
      *

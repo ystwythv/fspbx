@@ -47,4 +47,11 @@ interface ConvaiProviderInterface
      * Extra data the dialplan view needs beyond ['agent' => ...].
      */
     public function dialplanData(AiAgent $agent): array;
+
+    /**
+     * FreeSWITCH dial string for ESL-originating the agent leg straight into a
+     * conference (used by the reception-agent summon). May be a `|` failover
+     * list. Throw if the agent isn't provisioned for this provider.
+     */
+    public function summonEndpoint(AiAgent $agent): string;
 }

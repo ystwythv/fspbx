@@ -4,6 +4,7 @@ namespace App\Services\ReceptionAgent;
 
 use App\Models\AiAgent;
 use App\Models\Domain;
+use App\Services\Convai\ConvaiProviderRegistry;
 use App\Services\FreeswitchEslService;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
@@ -46,7 +47,7 @@ class ReceptionAgentSummonService
             ->where('agent_enabled', 'true')
             ->first();
 
-        if (!$agent || !$agent->elevenlabs_agent_id || !$agent->agent_extension) {
+        if (!$agent || !$agent->agent_extension) {
             throw new RuntimeException('No active reception agent provisioned for domain ' . $domainUuid);
         }
 
@@ -56,10 +57,11 @@ class ReceptionAgentSummonService
         $conversationId = (string) Str::uuid();
         $agentLegUuid   = (string) Str::uuid();
 
-        $endpoint = sprintf(
-            'sofia/external/sip:%s@sip.rtc.elevenlabs.io:5060;transport=tcp',
-            $agent->agent_extension
-        );
+        // Provider-driven agent leg (ElevenLabs SIP trunk, or Telnyx SIP attach
+        // / assistant subdomain). summonEndpoint() throws if the agent isn't
+        // provisioned for its provider.
+        $provider = app(ConvaiProviderRegistry::class)->resolve($agent->provider);
+        $endpoint = $provider->summonEndpoint($agent);
 
         $vars = [
             'origination_uuid'              => $agentLegUuid,

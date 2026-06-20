@@ -97,4 +97,16 @@ class ElevenLabsConvaiProvider implements ConvaiProviderInterface
     {
         return [];
     }
+
+    public function summonEndpoint(AiAgent $agent): string
+    {
+        if (!$agent->elevenlabs_agent_id || !$agent->agent_extension) {
+            throw new \RuntimeException('ElevenLabs agent not provisioned (missing agent id / extension).');
+        }
+
+        return sprintf(
+            'sofia/external/sip:%s@sip.rtc.elevenlabs.io:5060;transport=tcp',
+            $agent->agent_extension
+        );
+    }
 }
