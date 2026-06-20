@@ -78,6 +78,12 @@ class ReceptionAgentToolController extends Controller
         }
 
         $args = (array) $request->input('parameters', $request->input('arguments', []));
+        if (!$args) {
+            // Telnyx posts the tool's body_parameters flat at the top level of the
+            // request body (e.g. {"tool_name":"lookup_user","query":"Alice"}), not
+            // nested under parameters/arguments. Treat the rest of the body as args.
+            $args = $request->except(['tool_name', 'tool', 'conversation_id', 'dynamic_variables']);
+        }
 
         $session = null;
         if (!in_array($tool, ['get_time_in_city', 'get_weather'], true)) {
