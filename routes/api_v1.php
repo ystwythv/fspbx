@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\DomainController;
 use App\Http\Controllers\Api\V1\ExtensionController;
+use App\Http\Controllers\Api\V1\PresenceController;
 use App\Http\Controllers\Api\V1\RingGroupController;
 use App\Http\Controllers\Api\V1\VoicemailController;
 use App\Http\Controllers\Api\V1\PhoneNumberController;
@@ -53,6 +54,10 @@ Route::middleware(['auth:sanctum', 'api.token.auth', 'throttle:api'])->group(fun
         ->middleware('user.authorize:extension_view');
 
     Route::get('/domains/{domain_uuid}/extensions/{extension_uuid}', [ExtensionController::class, 'show'])
+        ->middleware('user.authorize:extension_view');
+
+    // Live presence (registration + in-call) for the domain, read from FreeSWITCH.
+    Route::get('/domains/{domain_uuid}/presence', [PresenceController::class, 'index'])
         ->middleware('user.authorize:extension_view');
 
     Route::post('/domains/{domain_uuid}/extensions', [ExtensionController::class, 'store'])
