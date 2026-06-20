@@ -15,19 +15,19 @@
         <action application="set" data="conference_enter_sound=silence_stream://1"/>
         <action application="set" data="conference_exit_sound=silence_stream://1"/>
 
-        <!-- Pull the peer leg into a fresh conference. ${bridge_uuid} is set by
-             FreeSWITCH for the duration of (and persists past) the bridge. Keep the
-             peer alive across the bridge break (else hangup_after_bridge drops it
-             before it lands in the conference) and silence its MOH too. -->
+        <!-- Prep the peer leg: keep it alive across the bridge break (else
+             hangup_after_bridge drops it) and silence its MOH. The summon Lua
+             pulls the peer into the conference via ESL (&conference) because
+             mod_dialplan_inline isn't built on voxra, so a dialplan
+             'conference:...inline' transfer just stalls the peer in CS_ROUTING. -->
         <action application="eval" data="${uuid_setvar(${bridge_uuid} hangup_after_bridge false)}"/>
         <action application="eval" data="${uuid_setvar(${bridge_uuid} conference_moh_sound silence_stream://-1)}"/>
         <action application="eval" data="${uuid_setvar(${bridge_uuid} conference_enter_sound silence_stream://1)}"/>
         <action application="eval" data="${uuid_setvar(${bridge_uuid} conference_exit_sound silence_stream://1)}"/>
-        <action application="eval" data="${uuid_transfer(${bridge_uuid} 'conference:${voxra_conf_name}@@default' inline)}"/>
 
-        <!-- Spawn the ElevenLabs agent leg into the same conference. The Lua
-             call is synchronous so the originate is in flight by the time we
-             transfer ourselves. -->
+        <!-- Spawn the agent leg into the conference AND pull the peer in (both via
+             ESL inside the summon). The Lua call is synchronous so both are in
+             flight by the time we join ourselves below. -->
         <action application="lua" data="voxra_summon_reception_agent.lua ${voxra_conf_name} ${voxra_domain_uuid} ${voxra_originator_uuid} ${voxra_peer_uuid} ${voxra_originator_extension}"/>
 
         <!-- Take the originator (this leg) into the conference too. -->
