@@ -30,7 +30,11 @@
              flight by the time we join ourselves below. -->
         <action application="lua" data="voxra_summon_reception_agent.lua ${voxra_conf_name} ${voxra_domain_uuid} ${voxra_originator_uuid} ${voxra_peer_uuid} ${voxra_originator_extension}"/>
 
-        <!-- Take the originator (this leg) into the conference too. -->
-        <action application="conference" data="${voxra_conf_name}@@default+flags{endconf}"/>
+        <!-- Take the originator (this leg) into the conference too. No endconf flag:
+             a warm transfer moves the peer out and kills the originator/agent, and
+             endconf on the originator would tear the whole conference down mid-transfer
+             (peer gets SIP 480, target never connects). FreeSWITCH auto-destroys the
+             conference once it empties. -->
+        <action application="conference" data="${voxra_conf_name}@@default"/>
     </condition>
 </extension>
