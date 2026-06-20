@@ -33,24 +33,25 @@ class ReceptionAgentToolController extends Controller
      */
     public function dynamicVariables(Request $request): JsonResponse
     {
-        // Telnyx nests the call context under data.payload; the exact key for the
-        // agent leg's caller id has varied, so try the documented one and fall
-        // back to a few likely shapes. Log the raw payload so we can see what
-        // Telnyx actually sends.
         $payload = (array) data_get($request->all(), 'data.payload', $request->all());
-        $target = (string) ($payload['telnyx_end_user_target']
-            ?? $payload['telnyx_agent_target']
-            ?? data_get($request->all(), 'data.payload.telnyx_end_user_target', ''));
 
-        $conversationId = $target !== ''
-            ? ReceptionAgentSummonService::conversationIdForTelnyxToken($target)
-            : null;
+        // The summon sets our context as SIP headers on the agent-leg INVITE,
+        // which Telnyx surfaces verbatim as voxra_* fields on assistant.initialization.
+        // Read the conversation id straight from there — robust, no caller-id token
+        // round-trip (Telnyx prepends +1 to the numeric token, breaking that path).
+        $conversationId = (string) ($payload['voxra_conversation_id'] ?? '');
+
+        // Fallback: the legacy caller-id correlation token.
+        if ($conversationId === '') {
+            $target = (string) ($payload['telnyx_end_user_target'] ?? $payload['telnyx_agent_target'] ?? '');
+            $conversationId = $target !== ''
+                ? (string) ReceptionAgentSummonService::conversationIdForTelnyxToken($target)
+                : '';
+        }
 
         logger()->info('reception-agent dynamic-variables', [
-            'target'      => $target,
-            'resolved'    => $conversationId,
+            'resolved'     => $conversationId,
             'payload_keys' => array_keys($payload),
-            'raw'         => $request->all(),
         ]);
 
         return response()->json([
