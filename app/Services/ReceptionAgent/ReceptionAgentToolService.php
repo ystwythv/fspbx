@@ -74,17 +74,31 @@ class ReceptionAgentToolService
 
     public function transferCall(array $session, string $extension): array
     {
-        $peerUuid       = (string) ($session['peer_uuid'] ?? '');
         $agentUuid      = (string) ($session['agent_uuid'] ?? '');
         $originatorUuid = (string) ($session['originator_uuid'] ?? '');
         $domainName     = (string) ($session['domain_name'] ?? '');
+        $confName       = (string) ($session['conf_name'] ?? '');
         $convId         = (string) ($session['conversation_id'] ?? '');
 
-        if ($peerUuid === '') {
-            return ['ok' => false, 'message' => 'No peer call to transfer'];
+        if ($confName === '') {
+            return ['ok' => false, 'message' => 'No active conference'];
         }
 
-        $this->esl->transfer($peerUuid, $extension, 'XML', $domainName ?: 'default');
+        // Blind transfer: ring the target straight INTO the conference (the
+        // reliable originate path the agent/three-way add already use), then drop
+        // the agent + originator so only the original caller (peer) and the target
+        // remain — effectively a transfer. We deliberately do NOT uuid_transfer the
+        // peer: transferring a live conference member (especially an FMC SIM leg)
+        // stalls ~13s then fails 480.
+        $endpoint = sprintf('user/%s@%s', $extension, $domainName ?: '${domain_name}');
+        $vars = [
+            'origination_caller_id_name'   => 'Reception Transfer',
+            'origination_caller_id_number' => $session['originator_extension'] ?? 'reception',
+            'voxra_conversation_id'        => $convId,
+            'voxra_conf_name'              => $confName,
+        ];
+        $this->esl->originate($endpoint, sprintf('&conference(%s@default)', $confName), 'default', $vars);
+
         if ($agentUuid !== '') {
             $this->esl->killChannel($agentUuid);
         }
@@ -95,7 +109,7 @@ class ReceptionAgentToolService
             ReceptionAgentSummonService::deleteSession($convId);
         }
 
-        return ['ok' => true, 'message' => "Transferred to extension {$extension}"];
+        return ['ok' => true, 'message' => "Transferring to extension {$extension}"];
     }
 
     /**
