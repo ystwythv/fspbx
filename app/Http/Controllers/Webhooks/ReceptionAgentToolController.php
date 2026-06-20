@@ -76,6 +76,13 @@ class ReceptionAgentToolController extends Controller
             }
         }
 
+        logger()->info('reception-agent tool call', [
+            'tool'         => $tool,
+            'args'         => $args,
+            'conv_id'      => $convId !== '' ? substr($convId, 0, 12) . '…' : '(none)',
+            'session_keys' => $session ? array_keys($session) : null,
+        ]);
+
         try {
             $result = match ($tool) {
                 'lookup_user'        => $this->tools->lookupUser($session, (string) ($args['query'] ?? '')),
@@ -91,6 +98,8 @@ class ReceptionAgentToolController extends Controller
                 'get_weather'        => $this->tools->getWeather((string) ($args['city'] ?? '')),
                 default              => ['ok' => false, 'error' => "unknown tool: {$tool}"],
             };
+
+            logger()->info("reception-agent tool {$tool} result", ['result' => $result]);
 
             return response()->json($result);
         } catch (Throwable $e) {
