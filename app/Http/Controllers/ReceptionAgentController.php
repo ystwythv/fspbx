@@ -107,9 +107,26 @@ PROMPT;
         ]);
 
         try {
+            $agent = $this->upsertReceptionAgent(session('domain_uuid'), $inputs, session('user_uuid'));
+
+            return response()->json(['agent' => $agent->fresh()]);
+        } catch (Throwable $e) {
+            logger()->error('reception agent update failed: ' . $e->getMessage());
+
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Provision-or-update the per-domain reception agent. Headless (no session
+     * or permission gate) so it can be driven by update() OR the
+     * `reception-agent:provision` console command.
+     */
+    public function upsertReceptionAgent(string $domainUuid, array $inputs, ?string $userUuid = null): AiAgent
+    {
+        try {
             DB::beginTransaction();
 
-            $domainUuid = session('domain_uuid');
             $agent = AiAgent::reception()->forDomain($domainUuid)->first();
 
             // Existing agent keeps its provider; a new one uses the requested
@@ -151,7 +168,7 @@ PROMPT;
                     'feature_code'    => $inputs['feature_code'],
                     'description'     => 'Reception agent (*' . trim($inputs['feature_code'], '*') . ')',
                     'insert_date'     => date('Y-m-d H:i:s'),
-                    'insert_user'     => session('user_uuid'),
+                    'insert_user'     => $userUuid,
                 ], $providerAttributes));
                 $agent->save();
             } else {
@@ -165,7 +182,7 @@ PROMPT;
                     'tools_enabled' => $inputs['tools_enabled'] ?? $agent->tools_enabled,
                     'feature_code'  => $inputs['feature_code'],
                     'update_date'   => date('Y-m-d H:i:s'),
-                    'update_user'   => session('user_uuid'),
+                    'update_user'   => $userUuid,
                 ]);
                 $agent->save();
 
@@ -187,11 +204,10 @@ PROMPT;
 
             DB::commit();
 
-            return response()->json(['agent' => $agent->fresh()]);
+            return $agent;
         } catch (Throwable $e) {
             DB::rollBack();
-            logger()->error('reception agent update failed: ' . $e->getMessage());
-            return response()->json(['error' => $e->getMessage()], 500);
+            throw $e;
         }
     }
 
