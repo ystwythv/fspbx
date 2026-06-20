@@ -10,7 +10,7 @@
 
         <!-- Pull the peer leg into a fresh conference. ${bridge_uuid} is set by
              FreeSWITCH for the duration of (and persists past) the bridge. -->
-        <action application="api" data="uuid_transfer ${bridge_uuid} 'conference:${voxra_conf_name}@default' inline"/>
+        <action application="api" data="uuid_transfer ${bridge_uuid} 'conference:${voxra_conf_name}@@default' inline"/>
 
         <!-- Spawn the ElevenLabs agent leg into the same conference. The Lua
              call is synchronous so the originate is in flight by the time we
@@ -18,6 +18,6 @@
         <action application="lua" data="voxra_summon_reception_agent.lua ${voxra_conf_name} ${voxra_domain_uuid} ${voxra_originator_uuid} ${voxra_peer_uuid} ${voxra_originator_extension}"/>
 
         <!-- Take the originator (this leg) into the conference too. -->
-        <action application="conference" data="${voxra_conf_name}@default+flags{endconf}"/>
+        <action application="conference" data="${voxra_conf_name}@@default+flags{endconf}"/>
     </condition>
 </extension>
