@@ -247,6 +247,10 @@ PROMPT;
         // since we anchor the literal in the template (e.g. "*9" → "\*9").
         $expression = preg_replace('/[^\w]/', '\\\\$0', $featureCode);
 
+        // Derive the domain from the agent (not the session) so this works from
+        // both the web controller and the headless provision command.
+        $domainName = $agent->domain?->domain_name ?? session('domain_name');
+
         $xml = trim(view('layouts.xml.reception-agent-feature-code-template', [
             'agent'             => $agent,
             'feature_code'      => $expression,
@@ -266,7 +270,7 @@ PROMPT;
             $dialPlan->dialplan_uuid    = $agent->dialplan_uuid;
             $dialPlan->app_uuid         = 'b2c48e1a-7f3d-4a1e-9c5b-8d6e7f1a2b3c';
             $dialPlan->domain_uuid      = $agent->domain_uuid;
-            $dialPlan->dialplan_context = session('domain_name');
+            $dialPlan->dialplan_context = $domainName;
             $dialPlan->dialplan_name    = $agent->agent_name;
             $dialPlan->dialplan_number  = $featureCode;
             $dialPlan->dialplan_continue = 'false';
@@ -277,6 +281,7 @@ PROMPT;
             $dialPlan->insert_date      = date('Y-m-d H:i:s');
             $dialPlan->insert_user      = session('user_uuid');
         } else {
+            $dialPlan->dialplan_context = $domainName;
             $dialPlan->dialplan_xml     = $xml;
             $dialPlan->dialplan_name    = $agent->agent_name;
             $dialPlan->dialplan_number  = $featureCode;
@@ -287,7 +292,7 @@ PROMPT;
 
         $dialPlan->save();
 
-        FusionCache::clear('dialplan.' . session('domain_name'));
+        FusionCache::clear('dialplan.' . $domainName);
     }
 
     /**
@@ -302,6 +307,8 @@ PROMPT;
             $agent->bind_dialplan_uuid = (string) Str::uuid();
             $agent->save();
         }
+
+        $domainName = $agent->domain?->domain_name ?? session('domain_name');
 
         $xml = trim(view('layouts.xml.reception-agent-bind-meta-app-template', [
             'agent' => $agent,
@@ -320,7 +327,7 @@ PROMPT;
             $dialPlan->dialplan_uuid     = $agent->bind_dialplan_uuid;
             $dialPlan->app_uuid          = 'b2c48e1a-7f3d-4a1e-9c5b-8d6e7f1a2b3c';
             $dialPlan->domain_uuid       = $agent->domain_uuid;
-            $dialPlan->dialplan_context  = session('domain_name');
+            $dialPlan->dialplan_context  = $domainName;
             $dialPlan->dialplan_name     = $agent->agent_name . ' bind_meta_app';
             $dialPlan->dialplan_number   = '';
             $dialPlan->dialplan_continue = 'true';
@@ -333,6 +340,7 @@ PROMPT;
             $dialPlan->insert_date       = date('Y-m-d H:i:s');
             $dialPlan->insert_user       = session('user_uuid');
         } else {
+            $dialPlan->dialplan_context  = $domainName;
             $dialPlan->dialplan_xml      = $xml;
             $dialPlan->dialplan_name     = $agent->agent_name . ' bind_meta_app';
             $dialPlan->dialplan_enabled  = $agent->agent_enabled;
@@ -342,6 +350,6 @@ PROMPT;
 
         $dialPlan->save();
 
-        FusionCache::clear('dialplan.' . session('domain_name'));
+        FusionCache::clear('dialplan.' . $domainName);
     }
 }
