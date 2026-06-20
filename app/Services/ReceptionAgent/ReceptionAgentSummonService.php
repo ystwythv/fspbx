@@ -84,6 +84,17 @@ class ReceptionAgentSummonService
             'sip_h_X-Voxra-Conf-Name'       => $confName,
         ];
 
+        // Telnyx's assistant.initialization webhook only exposes
+        // telnyx_end_user_target (the caller id), not SIP headers — so encode a
+        // numeric correlation token as the agent leg's caller id and map it to
+        // this conversation. The dynamic-variables webhook resolves it back to
+        // conversation_id, which tool calls then carry in a templated header.
+        if ($agent->provider === AiAgent::PROVIDER_TELNYX) {
+            $token = (string) random_int(1000000000, 1999999999);
+            $vars['origination_caller_id_number'] = $token;
+            Redis::setex(self::SESSION_KEY_PREFIX . 'telnyxtoken:' . $token, self::SESSION_TTL_SECONDS, $conversationId);
+        }
+
         $this->esl->originate(
             $endpoint,
             sprintf('&conference(%s@default)', $confName),
@@ -146,5 +157,21 @@ class ReceptionAgentSummonService
         if ($session && !empty($session['conf_name'])) {
             Redis::del(self::SESSION_KEY_PREFIX . 'conf:' . $session['conf_name']);
         }
+    }
+
+    /**
+     * Resolve a Telnyx caller-id correlation token (telnyx_end_user_target) back
+     * to its conversation_id, for the dynamic-variables webhook. Digits-only to
+     * survive any +/formatting Telnyx applies to the caller id.
+     */
+    public static function conversationIdForTelnyxToken(string $token): ?string
+    {
+        $token = preg_replace('/\D+/', '', $token);
+        if ($token === '') {
+            return null;
+        }
+        $cid = Redis::get(self::SESSION_KEY_PREFIX . 'telnyxtoken:' . $token);
+
+        return $cid ?: null;
     }
 }

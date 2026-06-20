@@ -380,60 +380,8 @@ class ElevenLabsConvaiService
             ];
         };
 
-        if ($enabled['lookup_user'] ?? true) {
-            $defs[] = $make('lookup_user', 'Find a colleague by name in the directory; returns extension and full name.', [
-                'query' => ['type' => 'string', 'description' => 'Person name or extension to search for'],
-            ], ['query']);
-        }
-        if ($enabled['transfer_call'] ?? true) {
-            $defs[] = $make('transfer_call', 'Blind-transfer the held call to an extension and exit.', [
-                'extension' => ['type' => 'string', 'description' => 'Target extension number'],
-            ], ['extension']);
-        }
-        if ($enabled['announced_transfer'] ?? true) {
-            $defs[] = $make('announced_transfer', 'Announced transfer: ring the target, intro the call to them, then drop yourself when the summoner hangs up so the original caller is connected.', [
-                'extension' => ['type' => 'string', 'description' => 'Target extension number'],
-            ], ['extension']);
-        }
-        if ($enabled['park_call'] ?? true) {
-            $defs[] = $make('park_call', 'Park the held call to a parking slot and read back the slot number.', []);
-        }
-        if ($enabled['bring_back'] ?? true) {
-            $defs[] = $make('bring_back', 'Retrieve a previously parked call by slot number.', [
-                'slot' => ['type' => 'string', 'description' => 'Park slot number to retrieve'],
-            ], ['slot']);
-        }
-        if ($enabled['three_way_add'] ?? true) {
-            $defs[] = $make('three_way_add', 'Add another extension to the current call as a three-way participant.', [
-                'extension' => ['type' => 'string', 'description' => 'Extension to add to the call'],
-            ], ['extension']);
-        }
-        if ($enabled['take_notes'] ?? true) {
-            $defs[] = $make('take_notes', 'Record a note from the call; notes are kept and included in the post-call summary.', [
-                'note' => ['type' => 'string', 'description' => 'The note text to record'],
-            ], ['note']);
-        }
-        if ($enabled['email_reminder'] ?? true) {
-            $defs[] = $make('email_reminder', 'Email a reminder or summary to an address the caller gives you. Ask for the email address if you do not have it.', [
-                'to' => ['type' => 'string', 'description' => 'Recipient email address'],
-                'subject' => ['type' => 'string', 'description' => 'Email subject line'],
-                'body' => ['type' => 'string', 'description' => 'Email body text'],
-            ], ['to', 'body']);
-        }
-        if ($enabled['complete_and_exit'] ?? true) {
-            $defs[] = $make('complete_and_exit', 'Call this once you have completed the user\'s request to leave the call cleanly.', [
-                'message' => ['type' => 'string', 'description' => 'Optional final spoken message before exiting'],
-            ]);
-        }
-        if ($enabled['get_time_in_city'] ?? true) {
-            $defs[] = $make('get_time_in_city', 'Get the current local time in a named city.', [
-                'city' => ['type' => 'string', 'description' => 'City name (e.g. New York, Tokyo)'],
-            ], ['city']);
-        }
-        if ($enabled['get_weather'] ?? true) {
-            $defs[] = $make('get_weather', 'Get the current weather in a named city.', [
-                'city' => ['type' => 'string', 'description' => 'City name'],
-            ], ['city']);
+        foreach (\App\Services\ReceptionAgent\ReceptionAgentToolDefinitions::list($enabled) as $t) {
+            $defs[] = $make($t['name'], $t['description'], $t['properties'], $t['required']);
         }
 
         return $defs;
