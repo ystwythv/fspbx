@@ -1,0 +1,98 @@
+<?php
+
+namespace App\Services\ReceptionAgent;
+
+/**
+ * Provider-neutral definitions of the reception-agent tools.
+ *
+ * Each provider (ElevenLabs, Telnyx) renders these into its own tool schema.
+ * The dispatch endpoint is a single webhook; the `tool_name` (enum) in the body
+ * selects the method, and `conversation_id` ties the call to its Redis session.
+ *
+ * `properties` are JSON-Schema property maps; `required` lists required arg
+ * names (tool_name + conversation_id are always added by the renderers).
+ */
+class ReceptionAgentToolDefinitions
+{
+    /**
+     * @param array<string,bool> $enabled per-tool on/off map (agent->tools_enabled)
+     * @return array<int, array{name:string, description:string, properties:array<string,mixed>, required:array<int,string>}>
+     */
+    public static function list(array $enabled): array
+    {
+        $all = [
+            [
+                'name' => 'lookup_user',
+                'description' => 'Find a colleague by name in the directory; returns extension and full name.',
+                'properties' => ['query' => ['type' => 'string', 'description' => 'Person name or extension to search for']],
+                'required' => ['query'],
+            ],
+            [
+                'name' => 'transfer_call',
+                'description' => 'Blind-transfer the held call to an extension and exit.',
+                'properties' => ['extension' => ['type' => 'string', 'description' => 'Target extension number']],
+                'required' => ['extension'],
+            ],
+            [
+                'name' => 'announced_transfer',
+                'description' => 'Announced (warm) transfer: ring the target, introduce the call, then drop yourself so the original caller is connected.',
+                'properties' => ['extension' => ['type' => 'string', 'description' => 'Target extension number']],
+                'required' => ['extension'],
+            ],
+            [
+                'name' => 'park_call',
+                'description' => 'Park the held call to a parking slot and read back the slot number.',
+                'properties' => [],
+                'required' => [],
+            ],
+            [
+                'name' => 'bring_back',
+                'description' => 'Retrieve a previously parked call by slot number.',
+                'properties' => ['slot' => ['type' => 'string', 'description' => 'Park slot number to retrieve']],
+                'required' => ['slot'],
+            ],
+            [
+                'name' => 'three_way_add',
+                'description' => 'Add another extension to the current call as a three-way participant.',
+                'properties' => ['extension' => ['type' => 'string', 'description' => 'Extension to add to the call']],
+                'required' => ['extension'],
+            ],
+            [
+                'name' => 'take_notes',
+                'description' => 'Record a note from the call; notes are kept and included in the post-call summary.',
+                'properties' => ['note' => ['type' => 'string', 'description' => 'The note text to record']],
+                'required' => ['note'],
+            ],
+            [
+                'name' => 'email_reminder',
+                'description' => 'Email a reminder or summary to an address the caller gives you. Ask for the email address if you do not have it.',
+                'properties' => [
+                    'to' => ['type' => 'string', 'description' => 'Recipient email address'],
+                    'subject' => ['type' => 'string', 'description' => 'Email subject line'],
+                    'body' => ['type' => 'string', 'description' => 'Email body text'],
+                ],
+                'required' => ['to', 'body'],
+            ],
+            [
+                'name' => 'complete_and_exit',
+                'description' => 'Call this once you have completed the user\'s request to leave the call cleanly.',
+                'properties' => ['message' => ['type' => 'string', 'description' => 'Optional final spoken message before exiting']],
+                'required' => [],
+            ],
+            [
+                'name' => 'get_time_in_city',
+                'description' => 'Get the current local time in a named city.',
+                'properties' => ['city' => ['type' => 'string', 'description' => 'City name (e.g. New York, Tokyo)']],
+                'required' => ['city'],
+            ],
+            [
+                'name' => 'get_weather',
+                'description' => 'Get the current weather in a named city.',
+                'properties' => ['city' => ['type' => 'string', 'description' => 'City name']],
+                'required' => ['city'],
+            ],
+        ];
+
+        return array_values(array_filter($all, fn ($t) => $enabled[$t['name']] ?? true));
+    }
+}

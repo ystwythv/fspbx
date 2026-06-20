@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AiAgent;
 use App\Models\Dialplans;
 use App\Models\FusionCache;
+use App\Services\Convai\ConvaiProviderRegistry;
 use App\Services\ElevenLabsConvaiService;
 use App\Services\Tts\ElevenLabsTtsService;
 use Illuminate\Http\JsonResponse;
@@ -92,55 +93,83 @@ PROMPT;
         }
 
         $inputs = $request->validate([
-            'agent_name'     => 'required|string|max:100',
-            'feature_code'   => 'required|string|max:8',
-            'system_prompt'  => 'nullable|string',
-            'first_message'  => 'nullable|string|max:500',
-            'voice_id'       => 'nullable|string|max:255',
-            'language'       => 'nullable|string|max:20',
-            'agent_enabled'  => 'required|in:true,false',
-            'tools_enabled'  => 'array',
+            'agent_name'      => 'required|string|max:100',
+            'feature_code'    => 'required|string|max:8',
+            'provider'        => 'nullable|string|in:elevenlabs,telnyx',
+            'system_prompt'   => 'nullable|string',
+            'first_message'   => 'nullable|string|max:500',
+            'voice_id'        => 'nullable|string|max:255',
+            'telnyx_voice_id' => 'nullable|string|max:255',
+            'model'           => 'nullable|string|max:255',
+            'language'        => 'nullable|string|max:20',
+            'agent_enabled'   => 'required|in:true,false',
+            'tools_enabled'   => 'array',
         ]);
 
         try {
-            DB::beginTransaction();
+            $agent = $this->upsertReceptionAgent(session('domain_uuid'), $inputs, session('user_uuid'));
 
-            $convai = app(ElevenLabsConvaiService::class);
-            $domainUuid = session('domain_uuid');
+            return response()->json(['agent' => $agent->fresh()]);
+        } catch (Throwable $e) {
+            logger()->error('reception agent update failed: ' . $e->getMessage());
+
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Provision-or-update the per-domain reception agent. Headless (no session
+     * or permission gate) so it can be driven by update() OR the
+     * `reception-agent:provision` console command.
+     */
+    public function upsertReceptionAgent(string $domainUuid, array $inputs, ?string $userUuid = null): AiAgent
+    {
+        try {
+            DB::beginTransaction();
 
             $agent = AiAgent::reception()->forDomain($domainUuid)->first();
 
-            if (!$agent) {
-                // Provision: create the ConvAI agent on ElevenLabs first.
-                $created = $convai->createAgent(
-                    $inputs['agent_name'],
-                    $inputs['system_prompt'] ?? self::DEFAULT_SYSTEM_PROMPT,
-                    $inputs['first_message'] ?? self::DEFAULT_FIRST_MESSAGE,
-                    $inputs['voice_id'] ?? null,
-                    $inputs['language'] ?? 'en',
-                );
+            // Existing agent keeps its provider; a new one uses the requested
+            // provider (default elevenlabs).
+            $providerName = $agent->provider ?? ($inputs['provider'] ?? ConvaiProviderRegistry::DEFAULT);
+            $provider = app(ConvaiProviderRegistry::class)->resolve($providerName);
 
+            // Telnyx exposes its voice catalogue under a separate field.
+            if ($providerName === AiAgent::PROVIDER_TELNYX && !empty($inputs['telnyx_voice_id'])) {
+                $inputs['voice_id'] = $inputs['telnyx_voice_id'];
+            }
+
+            if (!$agent) {
                 $agentExtension = $this->allocateAgentExtension($domainUuid);
 
+                // Provision on the provider platform (no inbound phone number;
+                // the reception agent is reached via the summon).
+                $providerAttributes = $provider->provisionReceptionAgent(array_merge($inputs, [
+                    'agent_extension' => $agentExtension,
+                    'system_prompt'   => $inputs['system_prompt'] ?? self::DEFAULT_SYSTEM_PROMPT,
+                    'first_message'   => $inputs['first_message'] ?? self::DEFAULT_FIRST_MESSAGE,
+                ]));
+
                 $agent = new AiAgent();
-                $agent->fill([
-                    'domain_uuid'         => $domainUuid,
-                    'dialplan_uuid'       => Str::uuid(),
-                    'agent_name'          => $inputs['agent_name'],
-                    'agent_extension'     => $agentExtension,
-                    'elevenlabs_agent_id' => $created['agent_id'] ?? null,
-                    'system_prompt'       => $inputs['system_prompt'] ?? self::DEFAULT_SYSTEM_PROMPT,
-                    'first_message'      => $inputs['first_message'] ?? self::DEFAULT_FIRST_MESSAGE,
-                    'voice_id'            => $inputs['voice_id'] ?? null,
-                    'language'            => $inputs['language'] ?? 'en',
-                    'agent_enabled'       => $inputs['agent_enabled'],
-                    'mode'                => AiAgent::MODE_RECEPTION,
-                    'tools_enabled'       => $inputs['tools_enabled'] ?? [],
-                    'feature_code'        => $inputs['feature_code'],
-                    'description'         => 'Reception agent (*' . trim($inputs['feature_code'], '*') . ')',
-                    'insert_date'         => date('Y-m-d H:i:s'),
-                    'insert_user'         => session('user_uuid'),
-                ]);
+                $agent->fill(array_merge([
+                    'domain_uuid'     => $domainUuid,
+                    'dialplan_uuid'   => Str::uuid(),
+                    'agent_name'      => $inputs['agent_name'],
+                    'agent_extension' => $agentExtension,
+                    'provider'        => $providerName,
+                    'model'           => $inputs['model'] ?? null,
+                    'system_prompt'   => $inputs['system_prompt'] ?? self::DEFAULT_SYSTEM_PROMPT,
+                    'first_message'   => $inputs['first_message'] ?? self::DEFAULT_FIRST_MESSAGE,
+                    'voice_id'        => $inputs['voice_id'] ?? null,
+                    'language'        => $inputs['language'] ?? 'en',
+                    'agent_enabled'   => $inputs['agent_enabled'],
+                    'mode'            => AiAgent::MODE_RECEPTION,
+                    'tools_enabled'   => $inputs['tools_enabled'] ?? [],
+                    'feature_code'    => $inputs['feature_code'],
+                    'description'     => 'Reception agent (*' . trim($inputs['feature_code'], '*') . ')',
+                    'insert_date'     => date('Y-m-d H:i:s'),
+                    'insert_user'     => $userUuid,
+                ], $providerAttributes));
                 $agent->save();
             } else {
                 $agent->fill([
@@ -153,37 +182,32 @@ PROMPT;
                     'tools_enabled' => $inputs['tools_enabled'] ?? $agent->tools_enabled,
                     'feature_code'  => $inputs['feature_code'],
                     'update_date'   => date('Y-m-d H:i:s'),
-                    'update_user'   => session('user_uuid'),
+                    'update_user'   => $userUuid,
                 ]);
                 $agent->save();
 
-                if ($agent->elevenlabs_agent_id) {
-                    $convai->updateAgent(
-                        $agent->elevenlabs_agent_id,
-                        $agent->agent_name,
-                        $agent->system_prompt,
-                        $agent->first_message,
-                        $agent->voice_id,
-                        $agent->language ?? 'en',
-                    );
-                }
+                $provider->updateAgent($agent, [
+                    'agent_name'    => $agent->agent_name,
+                    'system_prompt' => $agent->system_prompt,
+                    'first_message' => $agent->first_message,
+                    'voice_id'      => $agent->voice_id,
+                    'model'         => $agent->model,
+                    'language'      => $agent->language ?? 'en',
+                ]);
             }
 
             // Always sync the tool surface; tool toggles can change between saves.
-            if ($agent->elevenlabs_agent_id) {
-                $convai->syncReceptionAgentTools($agent);
-            }
+            $provider->syncReceptionAgentTools($agent);
 
             $this->generateFeatureCodeDialPlan($agent);
             $this->generateBindMetaAppDialPlan($agent);
 
             DB::commit();
 
-            return response()->json(['agent' => $agent->fresh()]);
+            return $agent;
         } catch (Throwable $e) {
             DB::rollBack();
-            logger()->error('reception agent update failed: ' . $e->getMessage());
-            return response()->json(['error' => $e->getMessage()], 500);
+            throw $e;
         }
     }
 

@@ -93,6 +93,72 @@ class TelnyxConvaiService
     }
 
     /**
+     * Register the reception-agent tool surface on a Telnyx assistant and wire
+     * the dynamic-variables webhook (so each tool call carries conversation_id).
+     *
+     * Telnyx webhook tool shape: {"type":"webhook","webhook":{name,description,
+     * url,method,headers,body_parameters}}. The assistant fills body_parameters;
+     * conversation_id is injected via a templated header ({{conversation_id}}),
+     * resolved from the dynamic-variables webhook at call start.
+     *
+     * POST /v2/ai/assistants/{assistant_id}
+     */
+    public function syncReceptionAgentTools(\App\Models\AiAgent $agent): array
+    {
+        if (!$agent->telnyx_assistant_id) {
+            throw new RuntimeException('Agent has no Telnyx assistant id; create the assistant first');
+        }
+
+        $base = rtrim((string) config('app.url', ''), '/');
+        if ($base === '') {
+            throw new RuntimeException('APP_URL must be set for Telnyx tool webhooks');
+        }
+        // Telnyx-specific routes (the ElevenLabs /tool route is gated by an
+        // ElevenLabs-signature middleware Telnyx calls can't satisfy).
+        $toolUrl = $base . '/webhooks/voxra/reception-agent/tool-telnyx';
+        $dynVarsUrl = $base . '/webhooks/voxra/reception-agent/dynamic-variables';
+
+        $tools = [];
+        foreach (\App\Services\ReceptionAgent\ReceptionAgentToolDefinitions::list((array) ($agent->tools_enabled ?? [])) as $t) {
+            $tools[] = [
+                'type' => 'webhook',
+                'webhook' => [
+                    'name' => $t['name'],
+                    'description' => $t['description'],
+                    'url' => $toolUrl,
+                    'method' => 'POST',
+                    'headers' => [
+                        ['name' => 'Content-Type', 'value' => 'application/json'],
+                        // conversation_id resolved from the dynamic-variables webhook.
+                        ['name' => 'X-Voxra-Conversation-Id', 'value' => '{{conversation_id}}'],
+                    ],
+                    'body_parameters' => [
+                        'type' => 'object',
+                        'properties' => array_merge([
+                            'tool_name' => ['type' => 'string', 'enum' => [$t['name']]],
+                        ], $t['properties']),
+                        'required' => array_values(array_unique(array_merge(['tool_name'], $t['required']))),
+                    ],
+                ],
+            ];
+        }
+
+        $body = [
+            'tools' => $tools,
+            'dynamic_variables_webhook_url' => $dynVarsUrl,
+        ];
+
+        $response = $this->http()->post("v2/ai/assistants/{$agent->telnyx_assistant_id}", $body);
+
+        if (!$response->successful()) {
+            logger('Telnyx sync reception tools error: ' . $response->body());
+            throw new RuntimeException('Failed to sync Telnyx reception tools: ' . $this->errorDetail($response));
+        }
+
+        return $response->json();
+    }
+
+    /**
      * Get an assistant's current configuration.
      * GET /v2/ai/assistants/{assistant_id}
      */

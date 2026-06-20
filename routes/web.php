@@ -100,6 +100,18 @@ Route::post('/webhooks/voxra/reception-agent/tool', [
     \App\Http\Controllers\Webhooks\ReceptionAgentToolController::class, 'handle',
 ])->middleware(\App\Http\Middleware\VerifyElevenLabsSignature::class);
 
+// Telnyx AI Assistant tool callbacks + dynamic-variables (assistant.initialization).
+// Both are effectively token-guarded: tool calls need a valid (unguessable,
+// short-lived) conversation_id session, and dynamic-variables only echoes a
+// conversation_id when given a valid caller-id correlation token.
+// TODO(hardening): add Telnyx Ed25519 signature verification before broad prod use.
+Route::post('/webhooks/voxra/reception-agent/tool-telnyx', [
+    \App\Http\Controllers\Webhooks\ReceptionAgentToolController::class, 'handle',
+]);
+Route::post('/webhooks/voxra/reception-agent/dynamic-variables', [
+    \App\Http\Controllers\Webhooks\ReceptionAgentToolController::class, 'dynamicVariables',
+]);
+
 // Routes for 2FA email challenge. Used as a backup when 2FA is not enabled.
 Route::get('/email-challenge', [App\Http\Controllers\Auth\EmailChallengeController::class, 'create'])->name('email-challenge.login');
 Route::put('/email-challenge', [App\Http\Controllers\Auth\EmailChallengeController::class, 'update'])

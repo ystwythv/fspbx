@@ -25,6 +25,26 @@ class ReceptionAgentToolController extends Controller
     {
     }
 
+    /**
+     * Telnyx assistant.initialization (dynamic_variables_webhook_url). Resolves
+     * the caller-id correlation token (telnyx_end_user_target) to our
+     * conversation_id and returns it as a dynamic variable, which the assistant
+     * then injects into every tool call via a templated header.
+     */
+    public function dynamicVariables(Request $request): JsonResponse
+    {
+        $target = (string) ($request->input('data.payload.telnyx_end_user_target')
+            ?? data_get($request->all(), 'data.payload.telnyx_end_user_target', ''));
+
+        $conversationId = $target !== ''
+            ? ReceptionAgentSummonService::conversationIdForTelnyxToken($target)
+            : null;
+
+        return response()->json([
+            'dynamic_variables' => array_filter(['conversation_id' => $conversationId]),
+        ]);
+    }
+
     public function handle(Request $request): JsonResponse
     {
         $tool = (string) $request->input('tool_name', $request->input('tool', ''));
@@ -32,7 +52,12 @@ class ReceptionAgentToolController extends Controller
             return response()->json(['ok' => false, 'error' => 'tool_name required'], 422);
         }
 
-        $convId = (string) $request->input('conversation_id', $request->input('dynamic_variables.conversation_id', ''));
+        // Telnyx carries conversation_id in a templated tool header; ElevenLabs
+        // puts it in the body (directly or under dynamic_variables).
+        $convId = (string) $request->header('X-Voxra-Conversation-Id', '');
+        if ($convId === '') {
+            $convId = (string) $request->input('conversation_id', $request->input('dynamic_variables.conversation_id', ''));
+        }
         if ($convId === '') {
             // ElevenLabs nests dynamic variables under a different shape depending on version.
             $convId = (string) data_get($request->all(), 'dynamic_variables.conversation_id', '');
@@ -59,6 +84,8 @@ class ReceptionAgentToolController extends Controller
                 'park_call'          => $this->tools->parkCall($session),
                 'bring_back'         => $this->tools->bringBack($session, (string) ($args['slot'] ?? '')),
                 'three_way_add'      => $this->tools->threeWayAdd($session, (string) ($args['extension'] ?? '')),
+                'take_notes'         => $this->tools->takeNotes($session, (string) ($args['note'] ?? '')),
+                'email_reminder'     => $this->tools->emailReminder($session, (string) ($args['to'] ?? ''), (string) ($args['subject'] ?? ''), (string) ($args['body'] ?? '')),
                 'complete_and_exit'  => $this->tools->completeAndExit($session, $args['message'] ?? null),
                 'get_time_in_city'   => $this->tools->getTimeInCity((string) ($args['city'] ?? '')),
                 'get_weather'        => $this->tools->getWeather((string) ($args['city'] ?? '')),

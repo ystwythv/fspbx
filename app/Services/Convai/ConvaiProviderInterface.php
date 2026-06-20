@@ -54,4 +54,19 @@ interface ConvaiProviderInterface
      * list. Throw if the agent isn't provisioned for this provider.
      */
     public function summonEndpoint(AiAgent $agent): string;
+
+    /**
+     * Provision a reception-mode agent on the provider platform (the call-path
+     * resources a reception agent needs — e.g. an ElevenLabs agent, or a Telnyx
+     * assistant + SIP attach — but NOT a direct inbound phone number).
+     *
+     * @param  array  $inputs  agent_name, system_prompt, first_message, voice_id, language, model, agent_extension
+     * @return array  attributes to persist on the AiAgent row
+     */
+    public function provisionReceptionAgent(array $inputs): array;
+
+    /**
+     * Register/refresh the reception-agent tool surface on the provider platform.
+     */
+    public function syncReceptionAgentTools(AiAgent $agent): void;
 }

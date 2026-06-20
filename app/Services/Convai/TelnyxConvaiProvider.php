@@ -135,6 +135,18 @@ class TelnyxConvaiProvider implements ConvaiProviderInterface
         return $subdomain;
     }
 
+    public function provisionReceptionAgent(array $inputs): array
+    {
+        // A reception agent uses the same call path as a direct Telnyx agent:
+        // create the assistant + SIP attach (no inbound phone number).
+        return $this->provisionAgent($inputs);
+    }
+
+    public function syncReceptionAgentTools(AiAgent $agent): void
+    {
+        $this->service->syncReceptionAgentTools($agent);
+    }
+
     /**
      * Create the attach extension + UAC connection so Telnyx registers in.
      *

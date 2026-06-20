@@ -8,6 +8,7 @@ use DateTime;
 use DateTimeZone;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -192,6 +193,57 @@ class ReceptionAgentToolService
         }
 
         return ['ok' => true, 'message' => $message ?? 'Done'];
+    }
+
+    /**
+     * Capture a note during the call. Notes accrue on the Redis session so they
+     * can be surfaced/emailed in the post-call summary.
+     */
+    public function takeNotes(array $session, string $note): array
+    {
+        $note = trim($note);
+        if ($note === '') {
+            return ['ok' => false, 'message' => 'Nothing to note'];
+        }
+
+        $convId = (string) ($session['conversation_id'] ?? '');
+        if ($convId !== '') {
+            $current = ReceptionAgentSummonService::loadSession($convId) ?? $session;
+            $notes = $current['notes'] ?? [];
+            $notes[] = ['at' => now()->toIso8601String(), 'text' => $note];
+            $current['notes'] = $notes;
+            ReceptionAgentSummonService::saveSession($convId, $current);
+        }
+
+        return ['ok' => true, 'message' => 'Noted'];
+    }
+
+    /**
+     * Email a reminder/summary to an address the caller provides.
+     */
+    public function emailReminder(array $session, string $to, string $subject, string $body): array
+    {
+        $to = trim($to);
+        if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+            return ['ok' => false, 'message' => 'I need a valid email address to send to'];
+        }
+
+        $subject = trim($subject) !== '' ? trim($subject) : 'Reminder from your call';
+        $body = trim($body);
+        if ($body === '') {
+            return ['ok' => false, 'message' => 'There is nothing to send yet'];
+        }
+
+        try {
+            Mail::raw($body, function ($message) use ($to, $subject) {
+                $message->to($to)->subject($subject);
+            });
+        } catch (Throwable $e) {
+            logger()->error('reception-agent email_reminder failed: ' . $e->getMessage());
+            return ['ok' => false, 'message' => 'Sorry, I could not send that email'];
+        }
+
+        return ['ok' => true, 'message' => "Emailed {$to}"];
     }
 
     public function getTimeInCity(string $city): array

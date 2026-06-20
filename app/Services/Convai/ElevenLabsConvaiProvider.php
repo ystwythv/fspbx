@@ -109,4 +109,24 @@ class ElevenLabsConvaiProvider implements ConvaiProviderInterface
             $agent->agent_extension
         );
     }
+
+    public function provisionReceptionAgent(array $inputs): array
+    {
+        // Reception agents reach ElevenLabs via the summon SIP trunk, so unlike
+        // a direct agent we do NOT allocate a phone number here.
+        $created = $this->service->createAgent(
+            $inputs['agent_name'],
+            $inputs['system_prompt'] ?? null,
+            $inputs['first_message'] ?? null,
+            $inputs['voice_id'] ?? null,
+            $inputs['language'] ?? 'en',
+        );
+
+        return ['elevenlabs_agent_id' => $created['agent_id'] ?? null];
+    }
+
+    public function syncReceptionAgentTools(AiAgent $agent): void
+    {
+        $this->service->syncReceptionAgentTools($agent);
+    }
 }
