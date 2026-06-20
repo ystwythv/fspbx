@@ -5,6 +5,6 @@
              listen=ab (either leg's DTMF triggers), respond=s (action runs on the
              leg that pressed). Falls through (continue=true) so this never breaks
              normal call routing. --}}
-        <action application="set" data="bind_meta_app=9 ab s execute_extension::*9 XML ${domain_name}"/>
+        <action application="bind_meta_app" data="9 ab s execute_extension::*9 XML ${domain_name}"/>
     </condition>
 </extension>
