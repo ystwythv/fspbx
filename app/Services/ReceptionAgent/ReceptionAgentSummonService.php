@@ -102,6 +102,15 @@ class ReceptionAgentSummonService
             $vars
         );
 
+        // Pull the existing peer leg into the same conference. mod_dialplan_inline
+        // isn't built on voxra, so the dialplan's `conference:...@default inline`
+        // transfer stalls the peer in CS_ROUTING — use the &application transfer
+        // form here (no inline dialplan needed), the same &conference() the
+        // originate above uses for the agent leg.
+        if ($peerUuid !== '') {
+            $this->esl->executeCommand(sprintf('uuid_transfer %s \'&conference(%s@default)\'', $peerUuid, $confName));
+        }
+
         $session = [
             'conf_name'             => $confName,
             'conversation_id'       => $conversationId,
