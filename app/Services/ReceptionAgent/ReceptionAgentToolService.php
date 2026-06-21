@@ -272,6 +272,20 @@ class ReceptionAgentToolService
             'origination_caller_id_number' => $session['originator_extension'] ?? 'reception',
             'execute_on_answer'            => sprintf('lua lua/voxra_conf_stop_ringback.lua %s', $confName),
         ]);
+
+        // The agent's job is done once the party is being added — gracefully leave
+        // so the humans + new party keep the call. Done server-side (deferred so
+        // the agent's spoken confirmation drains first) instead of via a separate
+        // complete_and_exit tool turn, which Telnyx voices as "empty response".
+        $agentUuid = (string) ($session['agent_uuid'] ?? '');
+        $convId    = (string) ($session['conversation_id'] ?? '');
+        if ($agentUuid !== '') {
+            $this->esl->executeCommand(sprintf('sched_api +4 none uuid_kill %s', $agentUuid));
+        }
+        if ($convId !== '') {
+            ReceptionAgentSummonService::deleteSession($convId);
+        }
+
         return ['ok' => true, 'message' => "Adding {$extension} to the call"];
     }
 
