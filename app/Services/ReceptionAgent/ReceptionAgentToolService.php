@@ -186,10 +186,21 @@ class ReceptionAgentToolService
             return ['ok' => false, 'message' => 'No active conference'];
         }
         $domain = (string) ($session['domain_name'] ?? '${domain_name}');
+
+        // Play UK ringback INTO the conference while the new party rings, so the
+        // existing members hear it ringing instead of silence. The originated
+        // leg stops it on answer (execute_on_answer -> voxra_conf_stop_ringback).
+        // L=30 caps it (~2 min) in case the party never answers.
+        $this->esl->executeCommand(sprintf(
+            'conference %s play tone_stream://L=30;%%(400,200,400,450);%%(400,2000,400,450) async',
+            $confName
+        ));
+
         $endpoint = sprintf('user/%s@%s', $extension, $domain);
         $this->esl->originate($endpoint, sprintf('&conference(%s@voxra_recept)', $confName), 'default', [
             'origination_caller_id_name'   => 'Three-Way',
             'origination_caller_id_number' => $session['originator_extension'] ?? 'reception',
+            'execute_on_answer'            => sprintf('lua lua/voxra_conf_stop_ringback.lua %s', $confName),
         ]);
         return ['ok' => true, 'message' => "Adding {$extension} to the call"];
     }
