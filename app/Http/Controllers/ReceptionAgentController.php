@@ -201,6 +201,8 @@ PROMPT;
 
             $this->generateFeatureCodeDialPlan($agent);
             $this->generateBindMetaAppDialPlan($agent);
+            $this->ensureSilentConferenceProfile();
+            $this->generateConferenceJoinDialPlan($agent);
 
             DB::commit();
 
@@ -344,6 +346,117 @@ PROMPT;
             $dialPlan->dialplan_xml      = $xml;
             $dialPlan->dialplan_name     = $agent->agent_name . ' bind_meta_app';
             $dialPlan->dialplan_enabled  = $agent->agent_enabled;
+            $dialPlan->update_date       = date('Y-m-d H:i:s');
+            $dialPlan->update_user       = session('user_uuid');
+        }
+
+        $dialPlan->save();
+
+        FusionCache::clear('dialplan.' . $domainName);
+    }
+
+    /**
+     * Ensure the global `voxra_recept` conference profile exists. It is a silent
+     * clone of `default`: no alone-sound ("you are the only person…"), no MOH, no
+     * enter/exit beeps — so when *9 is pressed the brief window before the agent
+     * and peer arrive is quiet, and both parties can keep talking. Conference
+     * profiles are global in FusionPBX (no domain_uuid), so this runs once and is
+     * shared by every domain. Idempotent — keyed on profile_name.
+     */
+    private function ensureSilentConferenceProfile(): void
+    {
+        $existing = DB::table('v_conference_profiles')
+            ->where('profile_name', 'voxra_recept')
+            ->value('conference_profile_uuid');
+
+        if ($existing) {
+            return;
+        }
+
+        $profileUuid = (string) Str::uuid();
+        DB::table('v_conference_profiles')->insert([
+            'conference_profile_uuid' => $profileUuid,
+            'profile_name'            => 'voxra_recept',
+            'profile_enabled'         => 'true',
+            'profile_description'     => 'Silent profile for the in-call reception agent (no alone-sound/MOH/beeps)',
+            'insert_date'             => date('Y-m-d H:i:s'),
+        ]);
+
+        // Mirror the stock `default` profile, but silence everything that would
+        // play to a member who is briefly alone or on hold.
+        $params = [
+            'alone-sound'        => '',                        // no "you are the only person"
+            'moh-sound'          => 'silence_stream://-1',     // no hold music
+            'enter-sound'        => '',                        // no enter beep
+            'exit-sound'         => '',                        // no exit beep
+            'comfort-noise'      => 'true',
+            'interval'           => '20',
+            'rate'               => '8000',
+            'energy-level'       => '15',
+            'auto-gain-level'    => '0',
+            'caller-controls'    => 'default',
+            'moderator-controls' => 'moderator',
+        ];
+        $rows = [];
+        foreach ($params as $name => $value) {
+            $rows[] = [
+                'conference_profile_param_uuid' => (string) Str::uuid(),
+                'conference_profile_uuid'       => $profileUuid,
+                'profile_param_name'            => $name,
+                'profile_param_value'           => $value,
+                'profile_param_enabled'         => 'true',
+                'insert_date'                   => date('Y-m-d H:i:s'),
+            ];
+        }
+        DB::table('v_conference_profile_params')->insert($rows);
+    }
+
+    /**
+     * Per-domain dialplan that moves an EXISTING leg into the reception
+     * conference. The summon Lua transfers the held peer here with
+     * `uuid_transfer <peer> <room> XML <domain>`; this extension matches the room
+     * name and joins it. Needed because mod_dialplan_inline isn't built on voxra,
+     * so the `conference:...inline` / `&conference()` transfer forms silently
+     * no-op for existing legs. Idempotent — keyed on dialplan_name + domain.
+     */
+    private function generateConferenceJoinDialPlan(AiAgent $agent): void
+    {
+        $domainName = $agent->domain?->domain_name ?? session('domain_name');
+        $name = 'Voxra Reception Conference Join';
+
+        $xml = sprintf(
+            '<extension name="%s" continue="false" uuid="%%s">' .
+            '<condition field="destination_number" expression="^(voxra_recept_[0-9a-fA-F\-]+)$">' .
+            '<action application="answer" data=""/>' .
+            '<action application="conference" data="$1@voxra_recept"/>' .
+            '</condition></extension>',
+            $name
+        );
+
+        $dialPlan = Dialplans::where('dialplan_name', $name)
+            ->where('domain_uuid', $agent->domain_uuid)
+            ->first();
+
+        if (!$dialPlan) {
+            $uuid = (string) Str::uuid();
+            $dialPlan = new Dialplans();
+            $dialPlan->dialplan_uuid     = $uuid;
+            $dialPlan->app_uuid          = 'b2c48e1a-7f3d-4a1e-9c5b-8d6e7f1a2b3c';
+            $dialPlan->domain_uuid       = $agent->domain_uuid;
+            $dialPlan->dialplan_context  = $domainName;
+            $dialPlan->dialplan_name     = $name;
+            $dialPlan->dialplan_number   = '';
+            $dialPlan->dialplan_continue = 'false';
+            $dialPlan->dialplan_xml      = sprintf($xml, $uuid);
+            $dialPlan->dialplan_order    = 101;
+            $dialPlan->dialplan_enabled  = 'true';
+            $dialPlan->dialplan_description = 'Reception Agent: join existing leg to conference';
+            $dialPlan->insert_date       = date('Y-m-d H:i:s');
+            $dialPlan->insert_user       = session('user_uuid');
+        } else {
+            $dialPlan->dialplan_context  = $domainName;
+            $dialPlan->dialplan_xml      = sprintf($xml, $dialPlan->dialplan_uuid);
+            $dialPlan->dialplan_enabled  = 'true';
             $dialPlan->update_date       = date('Y-m-d H:i:s');
             $dialPlan->update_user       = session('user_uuid');
         }

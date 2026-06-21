@@ -97,18 +97,25 @@ class ReceptionAgentSummonService
 
         $this->esl->originate(
             $endpoint,
-            sprintf('&conference(%s@default)', $confName),
+            sprintf('&conference(%s@voxra_recept)', $confName),
             'default',
             $vars
         );
 
-        // Pull the existing peer leg into the same conference. mod_dialplan_inline
-        // isn't built on voxra, so the dialplan's `conference:...@default inline`
-        // transfer stalls the peer in CS_ROUTING — use the &application transfer
-        // form here (no inline dialplan needed), the same &conference() the
-        // originate above uses for the agent leg.
+        // Pull the existing peer leg into the same conference via a real
+        // XML-dialplan transfer to the voxra_recept_join extension (which runs
+        // `conference <room>@voxra_recept`). mod_dialplan_inline isn't built on
+        // voxra, so the `conference:...inline` and `&conference()` transfer forms
+        // both silently no-op — the peer would just sit on hold music after the
+        // originator leaves the bridge. The destination IS the room name, which
+        // the join extension matches with ^(voxra_recept_.+)$.
         if ($peerUuid !== '') {
-            $this->esl->executeCommand(sprintf('uuid_transfer %s \'&conference(%s@default)\'', $peerUuid, $confName));
+            $this->esl->executeCommand(sprintf(
+                'uuid_transfer %s %s XML %s',
+                $peerUuid,
+                $confName,
+                $domainName !== '' ? $domainName : 'default'
+            ));
         }
 
         $session = [
