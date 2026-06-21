@@ -328,6 +328,15 @@ class ReceptionAgentToolService
             ReceptionAgentSummonService::saveSession($convId, $current);
         }
 
+        // Leave gracefully after confirming (deferred so the spoken line drains)
+        // rather than via a complete_and_exit tool turn, which Telnyx voices as
+        // "empty response". Session is left intact so a same-breath "email me those
+        // notes" can still read them within the window.
+        $agentUuid = (string) ($session['agent_uuid'] ?? '');
+        if ($agentUuid !== '') {
+            $this->esl->executeCommand(sprintf('sched_api +4 none uuid_kill %s', $agentUuid));
+        }
+
         return ['ok' => true, 'message' => 'Noted'];
     }
 
@@ -354,6 +363,18 @@ class ReceptionAgentToolService
         } catch (Throwable $e) {
             logger()->error('reception-agent email_reminder failed: ' . $e->getMessage());
             return ['ok' => false, 'message' => 'Sorry, I could not send that email'];
+        }
+
+        // Leave gracefully after confirming (deferred so the spoken line drains)
+        // rather than via a complete_and_exit tool turn (Telnyx voices that empty
+        // turn as "empty response").
+        $agentUuid = (string) ($session['agent_uuid'] ?? '');
+        $convId    = (string) ($session['conversation_id'] ?? '');
+        if ($agentUuid !== '') {
+            $this->esl->executeCommand(sprintf('sched_api +4 none uuid_kill %s', $agentUuid));
+        }
+        if ($convId !== '') {
+            ReceptionAgentSummonService::deleteSession($convId);
         }
 
         return ['ok' => true, 'message' => "Emailed {$to}"];
