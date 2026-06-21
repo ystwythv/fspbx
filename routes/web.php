@@ -94,6 +94,9 @@ Route::post('/internal/voxra/reception-agent/summon', [
 Route::post('/internal/voxra/reception-agent/announced-settle', [
     \App\Http\Controllers\Internal\ReceptionAgentSummonController::class, 'announcedSettle',
 ])->middleware(\App\Http\Middleware\VerifyVoxraInternalSignature::class);
+Route::post('/internal/voxra/reception-agent/summon-by-uuid', [
+    \App\Http\Controllers\Internal\ReceptionAgentSummonController::class, 'summonByUuid',
+])->middleware(\App\Http\Middleware\VerifyVoxraInternalSignature::class);
 
 // ElevenLabs Conversational AI tool callbacks (transfer, lookup_user, etc).
 Route::post('/webhooks/voxra/reception-agent/tool', [

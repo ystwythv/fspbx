@@ -385,6 +385,16 @@ class FreeswitchEslService
         return $this->executeCommand(sprintf('uuid_setvar %s %s %s', $uuid, $name, $value));
     }
 
+    public function getVar(string $uuid, string $name): ?string
+    {
+        $res = $this->executeCommand(sprintf('uuid_getvar %s %s', $uuid, $name));
+        $res = is_string($res) ? trim($res) : '';
+        if ($res === '' || $res === '_undef_' || stripos($res, '-ERR') === 0) {
+            return null;
+        }
+        return $res;
+    }
+
     public function bindMetaApp(string $uuid, string $key, string $action, string $leg = 'a')
     {
         return $this->executeCommand(sprintf("uuid_bind_meta_app %s %s %s s %s", $uuid, $key, $leg, $action));
