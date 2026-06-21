@@ -23,7 +23,7 @@ class ReceptionAgentToolDefinitions
         $all = [
             [
                 'name' => 'lookup_user',
-                'description' => 'Find a colleague by name in the directory; returns extension and full name.',
+                'description' => 'Find a colleague by name in the directory. Returns each match with extension, full name, and live availability: status is "available" (free to take a call), "busy" (currently on a call), "offline" (phone off/unreachable), or "unknown". Use this to answer whether someone is available before transferring or adding them.',
                 'properties' => ['query' => ['type' => 'string', 'description' => 'Person name or extension to search for']],
                 'required' => ['query'],
             ],
