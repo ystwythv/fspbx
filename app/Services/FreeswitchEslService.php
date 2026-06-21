@@ -59,6 +59,16 @@ class FreeswitchEslService
     public function executeCommand($cmd, $disconnect = true)
     {
         try {
+            // Self-heal: the socket is disconnected after every command (the
+            // $disconnect default below), so any second command in a multi-step
+            // flow — e.g. originate the agent leg then uuid_transfer the peer into
+            // the conference — would otherwise hit a dead connection and silently
+            // return null ("Call to a member function getBody() on null"). Reopen
+            // it if needed before sending.
+            if (!$this->isConnected()) {
+                $this->reconnect();
+            }
+
             // Send the command and get the response in ESLevent Format
             $eslEvent = $this->conn->api($cmd);
 
