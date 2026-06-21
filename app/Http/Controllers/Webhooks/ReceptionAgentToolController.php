@@ -61,7 +61,9 @@ class ReceptionAgentToolController extends Controller
 
     public function handle(Request $request): JsonResponse
     {
-        $tool = (string) $request->input('tool_name', $request->input('tool', ''));
+        // Prefer the tool name from the URL path (reliable); fall back to the body
+        // for older/bare-route calls.
+        $tool = (string) ($request->route('tool') ?: $request->input('tool_name', $request->input('tool', '')));
         if ($tool === '') {
             return response()->json(['ok' => false, 'error' => 'tool_name required'], 422);
         }

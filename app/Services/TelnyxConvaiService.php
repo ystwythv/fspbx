@@ -125,7 +125,9 @@ class TelnyxConvaiService
                 'webhook' => [
                     'name' => $t['name'],
                     'description' => $t['description'],
-                    'url' => $toolUrl,
+                    // Tool name in the path — robust against the LLM omitting it
+                    // from the body (causes a 422 'tool_name required').
+                    'url' => $toolUrl . '/' . $t['name'],
                     'method' => 'POST',
                     'headers' => [
                         ['name' => 'Content-Type', 'value' => 'application/json'],
