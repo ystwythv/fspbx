@@ -74,7 +74,7 @@ class ReceptionAgentSummonController extends Controller
             }
 
             if ($originatorUuid !== '' && $peerMemberId !== null) {
-                $hook = sprintf('lua voxra_unmute_member.lua %s %d', $confName, $peerMemberId);
+                $hook = sprintf('lua lua/voxra_unmute_member.lua %s %d', $confName, $peerMemberId);
                 $this->esl->setVar($originatorUuid, 'api_hangup_hook', $hook);
             }
 
