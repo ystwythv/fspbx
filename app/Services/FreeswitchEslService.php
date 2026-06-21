@@ -387,8 +387,20 @@ class FreeswitchEslService
 
     public function getVar(string $uuid, string $name): ?string
     {
-        $res = $this->executeCommand(sprintf('uuid_getvar %s %s', $uuid, $name));
-        $res = is_string($res) ? trim($res) : '';
+        // uuid_getvar returns the raw value (e.g. a bare UUID for bridge_uuid).
+        // We must NOT route it through executeCommand()/convertEslResponse(): a
+        // plain hex-and-dash value isn't +OK/JSON/CSV so it gets fed to
+        // simplexml_load_string() and comes back null — which silently broke the
+        // bridge-peer lookup in the wakeword summon path. Read the body directly.
+        if (!extension_loaded('esl')) {
+            return null;
+        }
+        if (!$this->isConnected()) {
+            $this->reconnect();
+        }
+        $event = $this->conn->api(sprintf('uuid_getvar %s %s', $uuid, $name));
+        $res = $event ? trim($event->getBody()) : '';
+        $this->disconnect();
         if ($res === '' || $res === '_undef_' || stripos($res, '-ERR') === 0) {
             return null;
         }
