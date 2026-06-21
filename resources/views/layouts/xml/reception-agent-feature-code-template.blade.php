@@ -7,7 +7,7 @@
         <action application="set" data="voxra_peer_uuid=${bridge_uuid}"/>
 
         <!-- Originate the AI agent leg into the (silent) voxra_recept conference. -->
-        <action application="lua" data="voxra_summon_reception_agent.lua ${voxra_conf_name} ${voxra_domain_uuid} ${voxra_originator_uuid} ${voxra_peer_uuid} ${voxra_originator_extension}"/>
+        <action application="lua" data="lua/voxra_summon_reception_agent.lua ${voxra_conf_name} ${voxra_domain_uuid} ${voxra_originator_uuid} ${voxra_peer_uuid} ${voxra_originator_extension}"/>
 
         <!-- Move BOTH legs of the live call into the conference in one shot.
              bind_meta_app runs this *9 extension as a SUBROUTINE while the A/B

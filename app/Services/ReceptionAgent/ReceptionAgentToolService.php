@@ -101,7 +101,7 @@ class ReceptionAgentToolService
             'voxra_conversation_id'        => $convId,
             'voxra_conf_name'              => $confName,
             'execute_on_answer'            => sprintf(
-                'lua voxra_blind_settle.lua %s %s %s',
+                'lua lua/voxra_blind_settle.lua %s %s %s',
                 $agentUuid !== '' ? $agentUuid : '-',
                 $originatorUuid !== '' ? $originatorUuid : '-',
                 $convId !== '' ? $convId : '-'
@@ -144,7 +144,7 @@ class ReceptionAgentToolService
             'voxra_conf_name'              => $confName,
             // On answer, the settle script reads session state from Redis and
             // performs: mute peer, kill agent, install hangup hook on summoner.
-            'execute_on_answer'            => sprintf('lua voxra_announced_settle.lua %s', $convId),
+            'execute_on_answer'            => sprintf('lua lua/voxra_announced_settle.lua %s', $convId),
         ];
 
         $this->esl->originate($endpoint, sprintf('&conference(%s@voxra_recept)', $confName), 'default', $vars);
