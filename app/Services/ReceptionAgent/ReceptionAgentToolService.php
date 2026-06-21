@@ -85,29 +85,29 @@ class ReceptionAgentToolService
         }
 
         // Blind transfer: ring the target straight INTO the conference (the
-        // reliable originate path the agent/three-way add already use), then drop
-        // the agent + originator so only the original caller (peer) and the target
-        // remain — effectively a transfer. We deliberately do NOT uuid_transfer the
-        // peer: transferring a live conference member (especially an FMC SIM leg)
-        // stalls ~13s then fails 480.
+        // reliable originate path the agent/three-way add already use). We must
+        // NOT kill the agent + originator here synchronously — originate is async
+        // (bgapi), so killing the conference members in the same breath races the
+        // still-ringing target leg and FreeSWITCH aborts it (instant 503, target
+        // never rings). Instead defer teardown to execute_on_answer: once the
+        // target actually answers and is in the conference, the settle script
+        // kills the agent + originator, leaving the original caller (peer) bridged
+        // to the target. If the target never answers the agent stays live and can
+        // tell the caller.
         $endpoint = sprintf('user/%s@%s', $extension, $domainName ?: '${domain_name}');
         $vars = [
             'origination_caller_id_name'   => 'Reception Transfer',
             'origination_caller_id_number' => $session['originator_extension'] ?? 'reception',
             'voxra_conversation_id'        => $convId,
             'voxra_conf_name'              => $confName,
+            'execute_on_answer'            => sprintf(
+                'lua voxra_blind_settle.lua %s %s %s',
+                $agentUuid !== '' ? $agentUuid : '-',
+                $originatorUuid !== '' ? $originatorUuid : '-',
+                $convId !== '' ? $convId : '-'
+            ),
         ];
-        $this->esl->originate($endpoint, sprintf('&conference(%s@default)', $confName), 'default', $vars);
-
-        if ($agentUuid !== '') {
-            $this->esl->killChannel($agentUuid);
-        }
-        if ($originatorUuid !== '') {
-            $this->esl->killChannel($originatorUuid);
-        }
-        if ($convId !== '') {
-            ReceptionAgentSummonService::deleteSession($convId);
-        }
+        $this->esl->originate($endpoint, sprintf('&conference(%s@voxra_recept)', $confName), 'default', $vars);
 
         return ['ok' => true, 'message' => "Transferring to extension {$extension}"];
     }
@@ -147,7 +147,7 @@ class ReceptionAgentToolService
             'execute_on_answer'            => sprintf('lua voxra_announced_settle.lua %s', $convId),
         ];
 
-        $this->esl->originate($endpoint, sprintf('&conference(%s@default)', $confName), 'default', $vars);
+        $this->esl->originate($endpoint, sprintf('&conference(%s@voxra_recept)', $confName), 'default', $vars);
 
         return ['ok' => true, 'message' => "Calling {$extension} now"];
     }
@@ -175,7 +175,7 @@ class ReceptionAgentToolService
         $domain = (string) ($session['domain_name'] ?? 'default');
         // Originate back: pick up the parked slot and drop into our conference.
         $endpoint = sprintf('loopback/%s/%s', $slot, $domain);
-        $this->esl->originate($endpoint, sprintf('&conference(%s@default)', $confName), 'default', []);
+        $this->esl->originate($endpoint, sprintf('&conference(%s@voxra_recept)', $confName), 'default', []);
         return ['ok' => true, 'message' => "Retrieving call from slot {$slot}"];
     }
 
@@ -187,7 +187,7 @@ class ReceptionAgentToolService
         }
         $domain = (string) ($session['domain_name'] ?? '${domain_name}');
         $endpoint = sprintf('user/%s@%s', $extension, $domain);
-        $this->esl->originate($endpoint, sprintf('&conference(%s@default)', $confName), 'default', [
+        $this->esl->originate($endpoint, sprintf('&conference(%s@voxra_recept)', $confName), 'default', [
             'origination_caller_id_name'   => 'Three-Way',
             'origination_caller_id_number' => $session['originator_extension'] ?? 'reception',
         ]);
