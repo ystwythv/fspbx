@@ -111,9 +111,11 @@ class ReceptionAgentToolService
         try {
             $registered = [];
             foreach ($this->esl->getAllSipRegistrations() as $reg) {
+                // 'user' is the full AOR, e.g. "811@iqmobile.uk" — key by the bare
+                // extension within this domain so it matches the lookup rows.
                 $u = (string) ($reg['user'] ?? '');
-                if ($u !== '') {
-                    $registered[$u] = true;
+                if ($u !== '' && str_ends_with($u, '@' . $domainName)) {
+                    $registered[strtok($u, '@')] = true;
                 }
             }
         } catch (\Throwable $e) {
