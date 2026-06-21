@@ -69,7 +69,75 @@ class ReceptionAgentToolService
             }
         }
 
-        return ['matches' => $matches];
+        return ['matches' => $this->annotateAvailability($matches, (string) ($session['domain_name'] ?? ''))];
+    }
+
+    /**
+     * Tag each lookup match with on-hook/off-hook availability so the agent can
+     * answer "is Alice available?" and decide whether to add/transfer:
+     *   available = registered + not on a call
+     *   busy      = currently on a call (off-hook)
+     *   offline   = not registered (phone off / unreachable)
+     *   unknown   = couldn't read live state
+     */
+    private function annotateAvailability(array $matches, string $domainName): array
+    {
+        if (empty($matches)) {
+            return $matches;
+        }
+
+        // Extensions currently on a call (any leg whose presence_id / caller /
+        // callee is this extension in this domain).
+        $busy = [];
+        try {
+            foreach ($this->esl->getAllChannels() as $ch) {
+                $pid = (string) ($ch['presence_id'] ?? '');
+                if ($pid !== '' && str_ends_with($pid, '@' . $domainName)) {
+                    $busy[strtok($pid, '@')] = true;
+                }
+                foreach (['cid_num', 'callee_num'] as $k) {
+                    $v = (string) ($ch[$k] ?? '');
+                    if ($v !== '' && ctype_digit($v)) {
+                        $busy[$v] = true;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            logger()->warning('lookup availability: getAllChannels failed: ' . $e->getMessage());
+        }
+
+        // Registered extensions (phone on/reachable).
+        $registered = null;
+        try {
+            $registered = [];
+            foreach ($this->esl->getAllSipRegistrations() as $reg) {
+                $u = (string) ($reg['user'] ?? '');
+                if ($u !== '') {
+                    $registered[$u] = true;
+                }
+            }
+        } catch (\Throwable $e) {
+            $registered = null; // unknown
+            logger()->warning('lookup availability: getAllSipRegistrations failed: ' . $e->getMessage());
+        }
+
+        foreach ($matches as &$m) {
+            $ext = (string) ($m['extension'] ?? '');
+            if (isset($busy[$ext])) {
+                $status = 'busy';
+            } elseif ($registered === null) {
+                $status = 'unknown';
+            } elseif (isset($registered[$ext])) {
+                $status = 'available';
+            } else {
+                $status = 'offline';
+            }
+            $m['status'] = $status;
+            $m['available'] = ($status === 'available');
+        }
+        unset($m);
+
+        return $matches;
     }
 
     public function transferCall(array $session, string $extension): array
