@@ -70,6 +70,7 @@
                                     emergency_caller_id_name: options.item.emergency_caller_id_name ?? '',
                                     call_timeout: options.item.call_timeout ?? null,
                                     call_screen_enabled: options.item.call_screen_enabled ?? 'false',
+                                    wakeword_enabled: options.item.wakeword_enabled ?? 'false',
                                     max_registrations: options.item.max_registrations ?? '',
                                     limit_max: options.item.limit_max ?? '',
                                     limit_destination: options.item.limit_destination ?? '',
@@ -349,6 +350,7 @@
                                                     'directory_visible',
                                                     'directory_exten_visible',
                                                     'call_screen_enabled',
+                                                    'wakeword_enabled',
                                                     'max_registrations',
                                                     'limit_destination',
                                                     'toll_allow',
@@ -461,6 +463,12 @@
 
                                                 <StaticElement name="divider1" tag="hr"
                                                     :conditions="[(form$) => options.permissions.extension_do_not_disturb && form$.el$('suspended')?.value != true]" />
+
+                                                <ToggleElement name="wakeword_enabled" text="Wake word (&quot;Hey Jarvis&quot;)"
+                                                    true-value="true" false-value="false"
+                                                    description="When on, the user can say &quot;Hey Jarvis&quot; mid-call to summon the AI assistant into the call." />
+
+                                                <StaticElement name="divider_wakeword" tag="hr" />
 
                                                 <ToggleElement name="enabled" text="Status" true-value="true"
                                                     false-value="false"

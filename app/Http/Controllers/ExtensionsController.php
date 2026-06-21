@@ -424,6 +424,7 @@ class ExtensionsController extends Controller
                     'follow_me_enabled',
                 ])
                 ->with([
+                    'settings',
                     'voicemail' => function ($query) use ($currentDomain) {
                         $query->where('domain_uuid', $currentDomain)
                             ->select(
@@ -514,6 +515,7 @@ class ExtensionsController extends Controller
 
             $extensionDto = ExtensionDetailData::from([
                 ...$extension->toArray(),
+                'wakeword_enabled' => $extension->variableValue('wakeword_enabled') === 'true' ? 'true' : 'false',
                 'follow_me_destinations' => $extension->followMe
                     ? FollowMeDestinationData::collect($extension->followMe->followMeDestinations->sortBy('follow_me_order'))
                     : [],
@@ -955,6 +957,10 @@ public function store(StoreExtensionRequest $request)
                 $data
             );
 
+            // wakeword_enabled is a directory "variable" (v_extension_settings),
+            // not an extensions column.
+            $extension->setVariable('wakeword_enabled', ($data['wakeword_enabled'] ?? 'false') === 'true');
+
             DB::commit();
 
             // Clear FusionPBX cache for the extension
@@ -1324,6 +1330,10 @@ public function store(StoreExtensionRequest $request)
                 ['extension_uuid' => $extension->extension_uuid],
                 $data
             );
+
+            // wakeword_enabled is a directory "variable" (v_extension_settings),
+            // not an extensions column.
+            $extension->setVariable('wakeword_enabled', ($data['wakeword_enabled'] ?? 'false') === 'true');
 
             // Handle voicemail_destinations (copies)
             if (

@@ -254,6 +254,62 @@ class Extensions extends Model
     }
 
     /**
+     * FusionPBX per-extension settings (v_extension_settings), e.g. directory
+     * "variable" rows such as wakeword_enabled.
+     */
+    public function settings()
+    {
+        return $this->hasMany(ExtensionSetting::class, 'extension_uuid', 'extension_uuid');
+    }
+
+    /**
+     * Current value of a directory "variable" setting (e.g. wakeword_enabled),
+     * or null if unset.
+     */
+    public function variableValue(string $name): ?string
+    {
+        $row = $this->settings
+            ->firstWhere(fn ($s) => $s->extension_setting_type === 'variable'
+                && $s->extension_setting_name === $name
+                && $s->extension_setting_enabled === 'true');
+
+        return $row?->extension_setting_value;
+    }
+
+    /**
+     * Upsert (on) or remove (off) a directory "variable" setting such as
+     * wakeword_enabled. Caller is responsible for clearing the directory cache.
+     */
+    public function setVariable(string $name, bool $on, string $value = 'true'): void
+    {
+        $existing = $this->settings()
+            ->where('extension_setting_type', 'variable')
+            ->where('extension_setting_name', $name)
+            ->first();
+
+        if ($on) {
+            if ($existing) {
+                $existing->update([
+                    'extension_setting_value'   => $value,
+                    'extension_setting_enabled' => 'true',
+                ]);
+            } else {
+                $this->settings()->create([
+                    'domain_uuid'               => $this->domain_uuid,
+                    'extension_setting_type'    => 'variable',
+                    'extension_setting_name'    => $name,
+                    'extension_setting_value'   => $value,
+                    'extension_setting_enabled' => 'true',
+                    'extension_setting_description' => 'Managed by the extension form',
+                    'insert_date'               => now(),
+                ]);
+            }
+        } elseif ($existing) {
+            $existing->delete();
+        }
+    }
+
+    /**
      * Get all of the users for the extension.
      */
     public function users()

@@ -35,6 +35,7 @@ class UpdateExtensionRequest extends FormRequest
             'directory_exten_visible'  => ['sometimes', 'required', 'in:true,false,1,0'],
             'user_record' => ['nullable', 'string'],
             'call_screen_enabled'  => ['sometimes', 'required', 'in:true,false,1,0'],
+            'wakeword_enabled'     => ['sometimes', 'nullable', 'in:true,false,1,0'],
             'max_registrations' => ['nullable', 'string'],
             'limit_max' => ['nullable', 'string'],
             'limit_destination' => ['nullable', 'string'],
