@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Internal;
 
 use App\Http\Controllers\Controller;
+use App\Models\Domain;
 use App\Services\FreeswitchEslService;
 use App\Services\ReceptionAgent\ReceptionAgentSummonService;
 use Illuminate\Http\JsonResponse;
@@ -32,6 +33,62 @@ class ReceptionAgentSummonController extends Controller
             return response()->json(['ok' => true] + $result);
         } catch (Throwable $e) {
             logger()->error('reception-agent summon failed: ' . $e->getMessage());
+            return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Wakeword path: the openWakeWord service POSTs here when it detects the wake
+     * phrase on a forked call leg. There's no dialplan involved (unlike *9), so we
+     * do the whole merge over ESL: stop the audio fork, originate the AI agent into
+     * a fresh conference, then `uuid_transfer -both` the live call into it. Without
+     * a bind_meta_app subroutine in the way, -both dissolves the bridge cleanly and
+     * routes both parties into the room.
+     */
+    public function summonByUuid(Request $request): JsonResponse
+    {
+        $payload = $request->validate([
+            'uuid'        => 'required|string|max:64',
+            'domain_uuid' => 'required|uuid',
+            'ext'         => 'nullable|string|max:32',
+        ]);
+
+        $uuid = $payload['uuid'];
+
+        $domain = Domain::where('domain_uuid', $payload['domain_uuid'])->first();
+        if (!$domain) {
+            return response()->json(['ok' => false, 'error' => 'unknown domain'], 404);
+        }
+        $domainName = $domain->domain_name;
+
+        // The forked leg is the wakeword-enabled extension; its bridge partner is
+        // the other party on the live call.
+        $peerUuid = (string) ($this->esl->getVar($uuid, 'bridge_uuid') ?? '');
+        $ext = $payload['ext'] ?: (string) ($this->esl->getVar($uuid, 'caller_id_number') ?? '');
+        $confName = 'voxra_recept_' . $uuid;
+
+        try {
+            // Stop the fork so a second "jarvis" mid-summon can't re-fire.
+            $this->esl->executeCommand(sprintf('uuid_audio_stream %s stop', $uuid));
+
+            // Originate the AI agent leg into the (silent) conference.
+            $result = $this->summonService->summon([
+                'conf_name'            => $confName,
+                'domain_uuid'          => $payload['domain_uuid'],
+                'originator_uuid'      => $uuid,
+                'peer_uuid'            => $peerUuid,
+                'originator_extension' => $ext,
+            ]);
+
+            // Move BOTH legs of the live call into the conference.
+            $this->esl->executeCommand(sprintf(
+                'uuid_transfer %s -both %s XML %s',
+                $uuid, $confName, $domainName
+            ));
+
+            return response()->json(['ok' => true] + $result);
+        } catch (Throwable $e) {
+            logger()->error('reception-agent summon-by-uuid failed: ' . $e->getMessage());
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);
         }
     }
