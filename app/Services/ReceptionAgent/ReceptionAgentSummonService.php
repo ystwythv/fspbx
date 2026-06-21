@@ -102,26 +102,13 @@ class ReceptionAgentSummonService
             $vars
         );
 
-        // Pull the existing peer leg into the same conference via a real
-        // XML-dialplan transfer to the voxra_recept_join extension (which runs
-        // `conference <room>@voxra_recept`). mod_dialplan_inline isn't built on
-        // voxra, so the `conference:...inline` and `&conference()` transfer forms
-        // both silently no-op. The destination IS the room name, which the join
-        // extension matches with ^(voxra_recept_.+)$.
-        //
-        // We SCHEDULE the transfer ~1s out rather than firing it now: pressing *9
-        // tears the A/B bridge down asynchronously, and an immediate uuid_transfer
-        // races that teardown — the peer gets wedged in CS_ROUTING and never joins
-        // (one-way / no audio). Deferring past the teardown lets the peer transfer
-        // cleanly from its settled (post-bridge hold) state into the conference.
-        if ($peerUuid !== '') {
-            $this->esl->executeCommand(sprintf(
-                'sched_transfer +1 %s %s XML %s',
-                $peerUuid,
-                $confName,
-                $domainName !== '' ? $domainName : 'default'
-            ));
-        }
+        // NOTE: both original call legs (originator + peer) are moved into the
+        // conference by the *9 dialplan itself via `transfer -both` — NOT here.
+        // bind_meta_app runs the *9 extension as a subroutine while the A/B bridge
+        // is still live, so transferring one leg from here wedged it in CS_ROUTING
+        // and broke the peer's audio. `transfer -both` dissolves the bridge and
+        // routes both parties cleanly into the room. We only originate the agent
+        // leg above.
 
         $session = [
             'conf_name'             => $confName,
