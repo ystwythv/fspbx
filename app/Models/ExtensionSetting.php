@@ -31,6 +31,11 @@ class ExtensionSetting extends Model
         'insert_user',
     ];
 
+    // extension_setting_enabled is a Postgres boolean column.
+    protected $casts = [
+        'extension_setting_enabled' => 'boolean',
+    ];
+
     protected static function booted()
     {
         static::creating(function ($model) {

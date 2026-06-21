@@ -271,7 +271,7 @@ class Extensions extends Model
         $row = $this->settings
             ->firstWhere(fn ($s) => $s->extension_setting_type === 'variable'
                 && $s->extension_setting_name === $name
-                && $s->extension_setting_enabled === 'true');
+                && $s->extension_setting_enabled === true);
 
         return $row?->extension_setting_value;
     }
@@ -291,7 +291,7 @@ class Extensions extends Model
             if ($existing) {
                 $existing->update([
                     'extension_setting_value'   => $value,
-                    'extension_setting_enabled' => 'true',
+                    'extension_setting_enabled' => true,
                 ]);
             } else {
                 $this->settings()->create([
@@ -299,7 +299,7 @@ class Extensions extends Model
                     'extension_setting_type'    => 'variable',
                     'extension_setting_name'    => $name,
                     'extension_setting_value'   => $value,
-                    'extension_setting_enabled' => 'true',
+                    'extension_setting_enabled' => true,
                     'extension_setting_description' => 'Managed by the extension form',
                     'insert_date'               => now(),
                 ]);
