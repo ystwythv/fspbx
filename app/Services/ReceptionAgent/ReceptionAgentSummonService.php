@@ -106,12 +106,17 @@ class ReceptionAgentSummonService
         // XML-dialplan transfer to the voxra_recept_join extension (which runs
         // `conference <room>@voxra_recept`). mod_dialplan_inline isn't built on
         // voxra, so the `conference:...inline` and `&conference()` transfer forms
-        // both silently no-op — the peer would just sit on hold music after the
-        // originator leaves the bridge. The destination IS the room name, which
-        // the join extension matches with ^(voxra_recept_.+)$.
+        // both silently no-op. The destination IS the room name, which the join
+        // extension matches with ^(voxra_recept_.+)$.
+        //
+        // We SCHEDULE the transfer ~1s out rather than firing it now: pressing *9
+        // tears the A/B bridge down asynchronously, and an immediate uuid_transfer
+        // races that teardown — the peer gets wedged in CS_ROUTING and never joins
+        // (one-way / no audio). Deferring past the teardown lets the peer transfer
+        // cleanly from its settled (post-bridge hold) state into the conference.
         if ($peerUuid !== '') {
             $this->esl->executeCommand(sprintf(
-                'uuid_transfer %s %s XML %s',
+                'sched_transfer +1 %s %s XML %s',
                 $peerUuid,
                 $confName,
                 $domainName !== '' ? $domainName : 'default'
