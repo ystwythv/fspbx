@@ -108,6 +108,12 @@ Route::post('/webhooks/voxra/reception-agent/tool', [
 // short-lived) conversation_id session, and dynamic-variables only echoes a
 // conversation_id when given a valid caller-id correlation token.
 // TODO(hardening): add Telnyx Ed25519 signature verification before broad prod use.
+// Per-tool URL: the tool name is in the path so we never depend on the LLM
+// echoing tool_name in the body (it often omits it -> 422). Keep the bare route
+// too for backwards compatibility.
+Route::post('/webhooks/voxra/reception-agent/tool-telnyx/{tool}', [
+    \App\Http\Controllers\Webhooks\ReceptionAgentToolController::class, 'handle',
+]);
 Route::post('/webhooks/voxra/reception-agent/tool-telnyx', [
     \App\Http\Controllers\Webhooks\ReceptionAgentToolController::class, 'handle',
 ]);
