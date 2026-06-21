@@ -22,6 +22,7 @@ class StoreExtensionRequest extends FormRequest
             ],
             'directory_first_name'     => ['required', 'string', 'max:60'],
             'directory_last_name'      => ['nullable', 'string', 'max:60'],
+            'wakeword_enabled'         => ['sometimes', 'nullable', 'in:true,false,1,0'],
             'effective_caller_id_name' => ['present'],
             'effective_caller_id_number' => ['present'],
             'voicemail_mail_to'               => ['nullable', 'email', 'max:255'],

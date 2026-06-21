@@ -88,5 +88,8 @@ class ExtensionDetailData extends Data
         public ?array $follow_me_destinations,
 
         public ?MobileAppData $mobile_app,
+
+        // Directory "variable" (v_extension_settings), not an extensions column.
+        public ?string $wakeword_enabled = 'false',
     ) {}
 }
