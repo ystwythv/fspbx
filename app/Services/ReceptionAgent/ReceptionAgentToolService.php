@@ -210,8 +210,12 @@ class ReceptionAgentToolService
         $agentUuid = (string) ($session['agent_uuid'] ?? '');
         $convId    = (string) ($session['conversation_id'] ?? '');
 
+        // Defer the agent-leg hangup a few seconds so its final spoken line isn't
+        // chopped off mid-word: the assistant typically says a one-line closer and
+        // calls complete_and_exit in the same turn, and an immediate uuid_kill
+        // truncates the in-flight TTS. sched_api lets the audio drain first.
         if ($agentUuid !== '') {
-            $this->esl->killChannel($agentUuid);
+            $this->esl->executeCommand(sprintf('sched_api +4 none uuid_kill %s', $agentUuid));
         }
         if ($convId !== '') {
             ReceptionAgentSummonService::deleteSession($convId);
