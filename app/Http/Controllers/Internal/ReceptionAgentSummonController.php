@@ -68,10 +68,11 @@ class ReceptionAgentSummonController extends Controller
         $confName = 'voxra_recept_' . $uuid;
 
         try {
-            // Stop the fork so a second "jarvis" mid-summon can't re-fire.
-            $this->esl->executeCommand(sprintf('uuid_audio_stream %s stop', $uuid));
-
-            // Originate the AI agent leg into the (silent) conference.
+            // Originate the AI agent leg into the (silent) conference. We leave the
+            // audio fork running so the user can re-summon ("hey jarvis" again)
+            // later in the same call; the cooldown in the wakeword service prevents
+            // double-firing on one utterance, and this endpoint is idempotent on
+            // the uuid-derived conference name.
             $result = $this->summonService->summon([
                 'conf_name'            => $confName,
                 'domain_uuid'          => $payload['domain_uuid'],
@@ -80,11 +81,16 @@ class ReceptionAgentSummonController extends Controller
                 'originator_extension' => $ext,
             ]);
 
-            // Move BOTH legs of the live call into the conference.
-            $this->esl->executeCommand(sprintf(
-                'uuid_transfer %s -both %s XML %s',
-                $uuid, $confName, $domainName
-            ));
+            // First summon: the leg is still bridged to the other party, so move
+            // BOTH legs into the conference. On a re-summon the leg is already a
+            // conference member (no bridge_uuid) — skip the transfer so we don't
+            // blip them out and back in; the agent simply rejoins the room.
+            if ($peerUuid !== '') {
+                $this->esl->executeCommand(sprintf(
+                    'uuid_transfer %s -both %s XML %s',
+                    $uuid, $confName, $domainName
+                ));
+            }
 
             return response()->json(['ok' => true] + $result);
         } catch (Throwable $e) {
