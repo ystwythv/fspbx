@@ -55,6 +55,7 @@ class ProvisionTenantController extends Controller
                 'provider'        => 'telnyx',
                 'model'           => 'moonshotai/Kimi-K2.6',
                 'telnyx_voice_id' => self::UK_VOICE,
+                'feature_code'    => '*9',
                 'agent_enabled'   => 'true',
             ]
         );
