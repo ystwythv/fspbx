@@ -54,9 +54,24 @@ class ReceptionAgentToolController extends Controller
             'payload_keys' => array_keys($payload),
         ]);
 
-        return response()->json([
-            'dynamic_variables' => ['conversation_id' => (string) $conversationId],
-        ]);
+        // Retrieval (voxragtm#93): if we know the tenant + caller, inject a short
+        // brief (returning-caller history + business facts to honour) the
+        // assistant greeting/prompt can use for context.
+        $vars = ['conversation_id' => (string) $conversationId];
+        $domainUuid = (string) ($payload['voxra_domain_uuid'] ?? '');
+        $callerNumber = (string) ($payload['voxra_caller_number'] ?? $payload['telnyx_end_user_target'] ?? '');
+        if ($domainUuid !== '' && $callerNumber !== '') {
+            try {
+                $brief = $this->tools->callerContextBrief($domainUuid, $callerNumber);
+                if ($brief !== '') {
+                    $vars['caller_context'] = $brief;
+                }
+            } catch (Throwable $e) {
+                logger()->warning('reception-agent context brief failed: ' . $e->getMessage());
+            }
+        }
+
+        return response()->json(['dynamic_variables' => $vars]);
     }
 
     public function handle(Request $request): JsonResponse
@@ -118,6 +133,8 @@ class ReceptionAgentToolController extends Controller
                 'book_appointment'   => $this->tools->bookAppointment($session, $args),
                 'recall_caller'         => $this->tools->recallCaller($session, $args),
                 'remember_about_caller' => $this->tools->rememberAboutCaller($session, $args),
+                'remember'              => $this->tools->remember($session, $args),
+                'recall_business'       => $this->tools->recallBusiness($session, $args),
                 'take_notes'         => $this->tools->takeNotes($session, (string) ($args['note'] ?? '')),
                 'email_reminder'     => $this->tools->emailReminder($session, (string) ($args['to'] ?? ''), (string) ($args['subject'] ?? ''), (string) ($args['body'] ?? '')),
                 'complete_and_exit'  => $this->tools->completeAndExit($session, $args['message'] ?? null),

@@ -6,6 +6,8 @@ use App\Models\Extensions;
 use App\Models\ReceptionAppointment;
 use App\Models\ReceptionContact;
 use App\Models\ReceptionLead;
+use App\Models\ReceptionMemory;
+use App\Models\ReceptionTeamMember;
 use App\Services\FreeswitchEslService;
 use Illuminate\Support\Carbon;
 use DateTime;
@@ -775,6 +777,120 @@ class ReceptionAgentToolService
         $contact->save();
 
         return ['ok' => true, 'message' => "Saved to their record."];
+    }
+
+    // ----- team identity (voxragtm#92) ---------------------------------------
+
+    private function resolveTeamMember(string $domainUuid, ?string $number): ?ReceptionTeamMember
+    {
+        $number = $this->normNumber($number);
+        if ($number === null) {
+            return null;
+        }
+        return ReceptionTeamMember::where('domain_uuid', $domainUuid)
+            ->where('phone_number', $number)
+            ->first();
+    }
+
+    // ----- business memory (voxragtm#90) -------------------------------------
+
+    /**
+     * Remember a durable business fact/preference for the tenant, shared across
+     * the team. Provenance is recorded from the speaker; sensitive changes
+     * (pricing/policy) by a non-owner are saved as `pending` for approval.
+     */
+    public function remember(array $session, array $args): array
+    {
+        $domainUuid = (string) ($session['domain_uuid'] ?? '');
+        if ($domainUuid === '') {
+            return ['ok' => false, 'message' => 'No active tenant context'];
+        }
+        $fact = trim((string) ($args['fact'] ?? ''));
+        if ($fact === '') {
+            return ['ok' => false, 'message' => 'What should I remember?'];
+        }
+        $category = strtolower(trim((string) ($args['category'] ?? 'general'))) ?: 'general';
+
+        $speakerNumber = $this->normNumber((string) ($session['caller_number'] ?? ''));
+        $member = $this->resolveTeamMember($domainUuid, $speakerNumber);
+        $isOwner = $member?->isOwner() ?? false;
+
+        $sensitive = in_array($category, ReceptionMemory::SENSITIVE, true);
+        $status = ($sensitive && !$isOwner) ? 'pending' : 'active';
+
+        ReceptionMemory::create([
+            'domain_uuid'       => $domainUuid,
+            'category'          => $category,
+            'fact'              => $fact,
+            'status'            => $status,
+            'created_by_number' => $speakerNumber,
+            'created_by_name'   => $member?->name,
+            'source'            => (string) ($session['source'] ?? '') ?: null,
+            'insert_date'       => now(),
+        ]);
+
+        return [
+            'ok'      => true,
+            'status'  => $status,
+            'message' => $status === 'pending'
+                ? "I've noted that, but a change to {$category} needs the owner to confirm before I use it."
+                : "Got it — I'll remember that.",
+        ];
+    }
+
+    /**
+     * Recall the tenant's active business facts (optionally filtered), so the
+     * agent can answer using what the owner has told it over time.
+     */
+    public function recallBusiness(array $session, array $args): array
+    {
+        $domainUuid = (string) ($session['domain_uuid'] ?? '');
+        if ($domainUuid === '') {
+            return ['ok' => false, 'message' => 'No active tenant context'];
+        }
+        $category = strtolower(trim((string) ($args['category'] ?? '')));
+
+        $facts = ReceptionMemory::where('domain_uuid', $domainUuid)
+            ->where('status', 'active')
+            ->when($category !== '', fn ($q) => $q->where('category', $category))
+            ->orderByDesc('insert_date')
+            ->limit(50)
+            ->get()
+            ->map(fn ($m) => ['category' => $m->category, 'fact' => $m->fact])
+            ->all();
+
+        return ['ok' => true, 'count' => count($facts), 'facts' => $facts];
+    }
+
+    /**
+     * A short natural-language brief about a caller + the business, for the
+     * retrieval layer to inject at conversation start (voxragtm#93).
+     */
+    public function callerContextBrief(string $domainUuid, ?string $callerNumber): string
+    {
+        $parts = [];
+
+        $contact = $this->resolveContact($domainUuid, $callerNumber);
+        if ($contact) {
+            $bits = [];
+            if ($contact->name) $bits[] = "name {$contact->name}";
+            $bits[] = "{$contact->total_calls} previous call(s)";
+            if ((int) $contact->total_bookings > 0) $bits[] = "{$contact->total_bookings} booking(s)";
+            if ($contact->notes) $bits[] = "notes: " . str_replace("\n", "; ", $contact->notes);
+            $parts[] = "Returning caller — " . implode(", ", $bits) . ".";
+        }
+
+        $facts = ReceptionMemory::where('domain_uuid', $domainUuid)
+            ->where('status', 'active')
+            ->orderByDesc('insert_date')
+            ->limit(8)
+            ->pluck('fact')
+            ->all();
+        if ($facts) {
+            $parts[] = "Business notes to honour: " . implode("; ", $facts) . ".";
+        }
+
+        return trim(implode(" ", $parts));
     }
 
     /**

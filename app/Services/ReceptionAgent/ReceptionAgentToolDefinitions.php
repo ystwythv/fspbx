@@ -108,6 +108,23 @@ class ReceptionAgentToolDefinitions
                 'required' => ['note'],
             ],
             [
+                'name' => 'remember',
+                'description' => 'Remember a durable fact or preference about how THIS BUSINESS operates, so you and the team use it on future calls (e.g. "we now charge £70 call-out", "don\'t book jobs on Sundays", "always ask if it\'s a boiler under warranty"). For notes about a specific caller use remember_about_caller instead.',
+                'properties' => [
+                    'fact' => ['type' => 'string', 'description' => 'The business fact/preference to remember'],
+                    'category' => ['type' => 'string', 'description' => 'Optional category, e.g. pricing, policy, scheduling, general'],
+                ],
+                'required' => ['fact'],
+            ],
+            [
+                'name' => 'recall_business',
+                'description' => 'Recall what the owner has told you about how the business operates (pricing, policies, preferences), so you can answer accurately. Optionally filter by category.',
+                'properties' => [
+                    'category' => ['type' => 'string', 'description' => 'Optional category to filter by'],
+                ],
+                'required' => [],
+            ],
+            [
                 'name' => 'take_notes',
                 'description' => 'Record a note from the call; notes are kept and included in the post-call summary.',
                 'properties' => ['note' => ['type' => 'string', 'description' => 'The note text to record']],
