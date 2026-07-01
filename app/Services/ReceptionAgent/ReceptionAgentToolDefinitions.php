@@ -58,6 +58,39 @@ class ReceptionAgentToolDefinitions
                 'required' => ['extension'],
             ],
             [
+                'name' => 'capture_lead',
+                'description' => 'Record who is calling and what they need — use this as you qualify a new caller. Capture their name, the job/enquiry, their postcode and how urgent it is. Safe to call more than once as you learn more; it updates the same lead. If the caller has rung before, the result tells you (returning_caller) and what they last wanted, so you can greet them accordingly.',
+                'properties' => [
+                    'name' => ['type' => 'string', 'description' => "Caller's name"],
+                    'caller_number' => ['type' => 'string', 'description' => "Caller's phone number (ask if not already known)"],
+                    'postcode' => ['type' => 'string', 'description' => 'Job/site postcode or area'],
+                    'job_description' => ['type' => 'string', 'description' => 'What the caller needs, in a sentence'],
+                    'urgency' => ['type' => 'string', 'enum' => ['emergency', 'urgent', 'routine'], 'description' => 'How urgent the job is'],
+                ],
+                'required' => ['job_description'],
+            ],
+            [
+                'name' => 'check_availability',
+                'description' => 'Check which appointment slots are free on a given day before offering times to the caller. Returns available slots within business hours.',
+                'properties' => [
+                    'date' => ['type' => 'string', 'description' => 'The day to check, e.g. "2026-07-03", "tomorrow", or "next Tuesday"'],
+                ],
+                'required' => ['date'],
+            ],
+            [
+                'name' => 'book_appointment',
+                'description' => 'Book the job into the diary once the caller has agreed a time. Confirms the booking and returns a reference. Only book a time you have confirmed is free with check_availability.',
+                'properties' => [
+                    'starts_at' => ['type' => 'string', 'description' => 'Start date & time, e.g. "2026-07-03 09:30" or ISO 8601'],
+                    'service' => ['type' => 'string', 'description' => 'What is being booked (e.g. "boiler repair", "cut & colour")'],
+                    'duration_minutes' => ['type' => 'integer', 'description' => 'Expected duration in minutes (default 60)'],
+                    'customer_name' => ['type' => 'string', 'description' => "Customer's name (defaults to the captured lead)"],
+                    'customer_number' => ['type' => 'string', 'description' => "Customer's phone number (defaults to the captured lead)"],
+                    'deposit_amount' => ['type' => 'number', 'description' => 'Holding deposit taken, if any'],
+                ],
+                'required' => ['starts_at', 'service'],
+            ],
+            [
                 'name' => 'take_notes',
                 'description' => 'Record a note from the call; notes are kept and included in the post-call summary.',
                 'properties' => ['note' => ['type' => 'string', 'description' => 'The note text to record']],
