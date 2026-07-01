@@ -200,6 +200,7 @@ PROMPT;
             $provider->syncReceptionAgentTools($agent);
 
             $this->generateFeatureCodeDialPlan($agent);
+            $this->generateInboundReceptionDialPlan($agent);
             $this->generateBindMetaAppDialPlan($agent);
             $this->ensureSilentConferenceProfile();
             $this->generateConferenceJoinDialPlan($agent);
@@ -292,6 +293,74 @@ PROMPT;
             $dialPlan->update_user      = session('user_uuid');
         }
 
+        $dialPlan->save();
+
+        FusionCache::clear('dialplan.' . $domainName);
+    }
+
+    private const INBOUND_DIALPLAN_DESCRIPTION = 'Reception Agent inbound answer';
+
+    /**
+     * Reception agent as an inbound answer target (voxragtm#23). Creates a
+     * dialplan on the agent's extension that answers a direct inbound call
+     * (e.g. an FMC no-answer failover routed via the `ai_agents` destination) and
+     * bridges to the Telnyx assistant with the reception session headers, so the
+     * qualify/book tools work on a call the caller reached without pressing *9.
+     * Telnyx-only; no-op otherwise. Upserts by (domain_uuid, agent_extension).
+     */
+    private function generateInboundReceptionDialPlan(AiAgent $agent): void
+    {
+        if (
+            $agent->provider !== AiAgent::PROVIDER_TELNYX
+            || empty($agent->telnyx_assistant_id)
+            || empty($agent->agent_extension)
+        ) {
+            return;
+        }
+
+        $domainName = $agent->domain?->domain_name ?? session('domain_name');
+
+        $existing = Dialplans::where('domain_uuid', $agent->domain_uuid)
+            ->where('dialplan_number', $agent->agent_extension)
+            ->where('dialplan_description', self::INBOUND_DIALPLAN_DESCRIPTION)
+            ->first();
+
+        $dialplanUuid = $existing?->dialplan_uuid ?? (string) Str::uuid();
+
+        $xml = trim(view('layouts.xml.telnyx-ai-agent-inbound-reception-template', [
+            'agent'             => $agent,
+            'dialplan_uuid'     => $dialplanUuid,
+            'attach_domain'     => config('services.telnyx.attach_domain'),
+            'dialplan_continue' => 'false',
+        ])->render());
+
+        $dom = new \DOMDocument();
+        $dom->preserveWhiteSpace = false;
+        $dom->loadXML($xml);
+        $dom->formatOutput = true;
+        $xml = $dom->saveXML($dom->documentElement);
+
+        $dialPlan = $existing ?? new Dialplans();
+
+        if (!$existing) {
+            $dialPlan->dialplan_uuid        = $dialplanUuid;
+            $dialPlan->app_uuid             = 'b2c48e1a-7f3d-4a1e-9c5b-8d6e7f1a2b3c';
+            $dialPlan->domain_uuid          = $agent->domain_uuid;
+            $dialPlan->dialplan_number      = $agent->agent_extension;
+            $dialPlan->dialplan_order       = 101;
+            $dialPlan->dialplan_description = self::INBOUND_DIALPLAN_DESCRIPTION;
+            $dialPlan->insert_date          = date('Y-m-d H:i:s');
+            $dialPlan->insert_user          = session('user_uuid');
+        } else {
+            $dialPlan->update_date          = date('Y-m-d H:i:s');
+            $dialPlan->update_user          = session('user_uuid');
+        }
+
+        $dialPlan->dialplan_context  = $domainName;
+        $dialPlan->dialplan_name     = $agent->agent_name . ' inbound';
+        $dialPlan->dialplan_continue = 'false';
+        $dialPlan->dialplan_xml      = $xml;
+        $dialPlan->dialplan_enabled  = $agent->agent_enabled;
         $dialPlan->save();
 
         FusionCache::clear('dialplan.' . $domainName);

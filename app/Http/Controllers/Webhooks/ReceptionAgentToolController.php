@@ -49,6 +49,20 @@ class ReceptionAgentToolController extends Controller
                 : '';
         }
 
+        // Inbound FMC calls (voxragtm#23) reach the agent directly (no *9 summon),
+        // so no session exists yet. They carry the tenant + caller as voxra_*
+        // headers surfaced here; bootstrap a minimal session so the qualify/book
+        // tools can resolve the domain.
+        $domainUuid = (string) ($payload['voxra_domain_uuid'] ?? '');
+        if ($conversationId !== '' && $domainUuid !== '') {
+            $caller = (string) ($payload['voxra_caller_number'] ?? $payload['telnyx_end_user_target'] ?? '');
+            try {
+                ReceptionAgentSummonService::ensureInboundSession($domainUuid, $conversationId, $caller);
+            } catch (\Throwable $e) {
+                logger()->warning('reception-agent inbound session bootstrap failed: ' . $e->getMessage());
+            }
+        }
+
         logger()->info('reception-agent dynamic-variables', [
             'resolved'     => $conversationId,
             'payload_keys' => array_keys($payload),

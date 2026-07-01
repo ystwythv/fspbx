@@ -158,6 +158,42 @@ class ReceptionAgentSummonService
         );
     }
 
+    /**
+     * Bootstrap a minimal reception session for a *direct inbound* call (FMC
+     * no-answer → agent, voxragtm#23). Unlike summon() there is no conference or
+     * peer — just the caller and the agent — so the session only needs the
+     * tenant + conversation + caller so the qualify/book tools resolve the domain
+     * and repeat-caller recognition works. No-op if a session already exists.
+     *
+     * @return array the existing or newly-created session
+     */
+    public static function ensureInboundSession(
+        string $domainUuid,
+        string $conversationId,
+        ?string $callerNumber = null,
+    ): array {
+        if ($domainUuid === '' || $conversationId === '') {
+            throw new RuntimeException('ensureInboundSession: domain_uuid and conversation_id required');
+        }
+
+        $existing = self::loadSession($conversationId);
+        if ($existing) {
+            return $existing;
+        }
+
+        $session = [
+            'conversation_id' => $conversationId,
+            'domain_uuid'     => $domainUuid,
+            'caller_number'   => $callerNumber !== '' ? $callerNumber : null,
+            'source'          => 'inbound_reception',
+            'created_at'      => now()->toIso8601String(),
+        ];
+
+        self::saveSession($conversationId, $session);
+
+        return $session;
+    }
+
     public static function deleteSession(string $conversationId): void
     {
         $session = self::loadSession($conversationId);
