@@ -17,6 +17,13 @@ use Illuminate\Http\Client\ConnectionException;
  */
 class TelnyxConvaiService
 {
+    /**
+     * Default assistant voice when none is specified: "Alistair — Composed
+     * Consultant", a British male Telnyx Ultra voice (voxra voice standard).
+     * Without this, Telnyx assigns a US default (Katie), which is wrong for UK.
+     */
+    public const DEFAULT_VOICE = 'Telnyx.Ultra.c8f7835e-28a3-4f0c-80d7-c1302ac62aae';
+
     private string $apiKey;
     private string $baseUrl;
     private int $timeout;
@@ -43,7 +50,7 @@ class TelnyxConvaiService
             'instructions' => $instructions ?? '',
             'greeting'     => $greeting ?? '',
             'model'        => $model,
-            'voice_settings' => $voice ? ['voice' => $voice] : null,
+            'voice_settings' => ['voice' => $voice ?: self::DEFAULT_VOICE],
             'transcription'  => ['language' => $language],
         ], fn ($v) => $v !== null);
 
