@@ -113,27 +113,54 @@ class TelnyxConvaiService
         if ($base === '') {
             throw new RuntimeException('APP_URL must be set for Telnyx tool webhooks');
         }
-        // Telnyx-specific routes (the ElevenLabs /tool route is gated by an
-        // ElevenLabs-signature middleware Telnyx calls can't satisfy).
+        // Telephony tools stay on this PBX (they need ESL). DATA tools (lead/
+        // booking/memory) run in voxraweb, which owns customer data in Supabase
+        // (voxragtm#88); Telnyx points those + the dynamic-variables webhook at
+        // voxraweb, authed by a shared secret, with the tenant/caller context
+        // templated into headers from the dynamic variables voxraweb returns.
         $toolUrl = $base . '/webhooks/voxra/reception-agent/tool-telnyx';
-        $dynVarsUrl = $base . '/webhooks/voxra/reception-agent/dynamic-variables';
+
+        $voxraBase = rtrim((string) config('services.voxra.app_url', ''), '/');
+        $secret = (string) config('services.voxra.agent_tool_secret', '');
+        $dataToolUrl = $voxraBase !== '' ? $voxraBase . '/api/agent/tool' : '';
+        $dynVarsUrl = $voxraBase !== ''
+            ? $voxraBase . '/api/agent/dynamic-variables' . ($secret !== '' ? '?s=' . urlencode($secret) : '')
+            : $base . '/webhooks/voxra/reception-agent/dynamic-variables';
+
+        $defs = \App\Services\ReceptionAgent\ReceptionAgentToolDefinitions::class;
 
         $tools = [];
-        foreach (\App\Services\ReceptionAgent\ReceptionAgentToolDefinitions::list((array) ($agent->tools_enabled ?? [])) as $t) {
+        foreach ($defs::list((array) ($agent->tools_enabled ?? [])) as $t) {
+            if ($defs::isDataTool($t['name'])) {
+                if ($dataToolUrl === '') {
+                    throw new RuntimeException('VOXRA_APP_URL must be set for reception data tools');
+                }
+                $url = $dataToolUrl;
+                $headers = [
+                    ['name' => 'Content-Type', 'value' => 'application/json'],
+                    ['name' => 'Authorization', 'value' => 'Bearer ' . $secret],
+                    ['name' => 'X-Voxra-Domain-Uuid', 'value' => '{{domain_uuid}}'],
+                    ['name' => 'X-Voxra-Conversation-Id', 'value' => '{{conversation_id}}'],
+                    ['name' => 'X-Voxra-Caller-Number', 'value' => '{{caller_number}}'],
+                ];
+            } else {
+                // Tool name in the path — robust against the LLM omitting it
+                // from the body (causes a 422 'tool_name required').
+                $url = $toolUrl . '/' . $t['name'];
+                $headers = [
+                    ['name' => 'Content-Type', 'value' => 'application/json'],
+                    ['name' => 'X-Voxra-Conversation-Id', 'value' => '{{conversation_id}}'],
+                ];
+            }
+
             $tools[] = [
                 'type' => 'webhook',
                 'webhook' => [
                     'name' => $t['name'],
                     'description' => $t['description'],
-                    // Tool name in the path — robust against the LLM omitting it
-                    // from the body (causes a 422 'tool_name required').
-                    'url' => $toolUrl . '/' . $t['name'],
+                    'url' => $url,
                     'method' => 'POST',
-                    'headers' => [
-                        ['name' => 'Content-Type', 'value' => 'application/json'],
-                        // conversation_id resolved from the dynamic-variables webhook.
-                        ['name' => 'X-Voxra-Conversation-Id', 'value' => '{{conversation_id}}'],
-                    ],
+                    'headers' => $headers,
                     'body_parameters' => [
                         'type' => 'object',
                         'properties' => array_merge([

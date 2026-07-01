@@ -91,6 +91,57 @@ class ReceptionAgentToolDefinitions
                 'required' => ['starts_at', 'service'],
             ],
             [
+                'name' => 'recall_caller',
+                'description' => 'Look up what we already know about the current caller (or a given number) — their name, how many times they have called or booked, and any notes on file — so you can greet returning customers by context. Call this early for a caller you may have dealt with before.',
+                'properties' => [
+                    'number' => ['type' => 'string', 'description' => "The caller's number (optional; defaults to this caller)"],
+                ],
+                'required' => [],
+            ],
+            [
+                'name' => 'remember_about_caller',
+                'description' => 'Save a note about this caller to their record so you and the whole team remember it next time (e.g. "prefers morning appointments", "gate code 1234", "cash only").',
+                'properties' => [
+                    'note' => ['type' => 'string', 'description' => 'The note to remember about the caller'],
+                    'number' => ['type' => 'string', 'description' => "The caller's number (optional; defaults to this caller)"],
+                ],
+                'required' => ['note'],
+            ],
+            [
+                'name' => 'remember',
+                'description' => 'Remember a durable fact or preference about how THIS BUSINESS operates (e.g. "we now charge £70 call-out", "don\'t book jobs on Sundays"). For notes about a specific caller use remember_about_caller.',
+                'properties' => [
+                    'fact' => ['type' => 'string', 'description' => 'The business fact/preference to remember'],
+                    'category' => ['type' => 'string', 'description' => 'Optional category, e.g. pricing, policy, scheduling, general'],
+                ],
+                'required' => ['fact'],
+            ],
+            [
+                'name' => 'recall_business',
+                'description' => 'Recall what the owner has told you about how the business operates (pricing, policies, preferences), so you can answer accurately. Optionally filter by category.',
+                'properties' => [
+                    'category' => ['type' => 'string', 'description' => 'Optional category to filter by'],
+                ],
+                'required' => [],
+            ],
+            [
+                'name' => 'record_summary',
+                'description' => 'At the end of the call, record a one or two sentence summary of what happened (and the outcome) to the customer\'s timeline.',
+                'properties' => [
+                    'summary' => ['type' => 'string', 'description' => 'What happened on this call, briefly'],
+                    'outcome' => ['type' => 'string', 'description' => 'Optional: booked | message | transferred | spam | no_action'],
+                ],
+                'required' => ['summary'],
+            ],
+            [
+                'name' => 'search_memory',
+                'description' => 'Search everything you know about this business and its customers for anything relevant to a question — past jobs, quotes, preferences, policies. Use it when the structured context does not obviously cover what the caller is asking.',
+                'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'What to look up, in a few words'],
+                ],
+                'required' => ['query'],
+            ],
+            [
                 'name' => 'take_notes',
                 'description' => 'Record a note from the call; notes are kept and included in the post-call summary.',
                 'properties' => ['note' => ['type' => 'string', 'description' => 'The note text to record']],
@@ -127,5 +178,20 @@ class ReceptionAgentToolDefinitions
         ];
 
         return array_values(array_filter($all, fn ($t) => $enabled[$t['name']] ?? true));
+    }
+
+    /**
+     * Tools whose handlers live in voxraweb (customer data in Supabase,
+     * voxragtm#88). Telnyx points these at the voxraweb BFF; the rest (telephony)
+     * stay on this PBX.
+     */
+    public const DATA_TOOLS = [
+        'capture_lead', 'check_availability', 'book_appointment',
+        'recall_caller', 'remember_about_caller', 'remember', 'recall_business', 'record_summary', 'search_memory',
+    ];
+
+    public static function isDataTool(string $name): bool
+    {
+        return in_array($name, self::DATA_TOOLS, true);
     }
 }
