@@ -117,6 +117,14 @@ return [
         'attach_proxy' => env('TELNYX_ATTACH_PROXY', ''),
     ],
 
+    // voxraweb — customer data lives in Supabase and the reception agent's DATA
+    // tools run there (voxragtm#88). Telnyx points those tools + the dynamic-
+    // variables webhook at voxraweb; telephony tools stay on this PBX.
+    'voxra' => [
+        'app_url' => env('VOXRA_APP_URL', ''),                     // e.g. https://voxraweb.vercel.app
+        'agent_tool_secret' => env('VOXRA_AGENT_TOOL_SECRET', ''), // shared secret sent on data-tool calls
+    ],
+
     'keygen' => [
         'api_url' => env('KEYGEN_API_URL', 'https://api.keygen.sh'),
         'account_id' => env('KEYGEN_ACCOUNT_ID', 'f2ca6242-a55c-4949-9529-d7d591d3271a'),
