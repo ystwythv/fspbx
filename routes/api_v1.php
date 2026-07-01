@@ -162,6 +162,17 @@ Route::middleware(['auth:sanctum', 'api.token.auth', 'throttle:api'])->group(fun
 
     /*
     |--------------------------------------------------------------------------
+    | Reception contacts — per-customer memory (read-only)
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/domains/{domain_uuid}/reception/contacts', [\App\Http\Controllers\Api\V1\ReceptionContactController::class, 'index'])
+        ->middleware('user.authorize:ai_agent_view')->name('api.v1.reception.contacts.index');
+
+    Route::get('/domains/{domain_uuid}/reception/contacts/{contact_uuid}', [\App\Http\Controllers\Api\V1\ReceptionContactController::class, 'show'])
+        ->middleware('user.authorize:ai_agent_view')->name('api.v1.reception.contacts.show');
+
+    /*
+    |--------------------------------------------------------------------------
     | CDR (Call Detail Records) — domain-scoped, read-only
     |--------------------------------------------------------------------------
     | All routes enforce tenant-vs-global token scope via `cdr.scope`. Stats
