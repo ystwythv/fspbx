@@ -5,6 +5,7 @@ namespace App\Services\ReceptionAgent;
 use App\Models\Extensions;
 use App\Models\ReceptionAppointment;
 use App\Models\ReceptionContact;
+use App\Models\ReceptionInteraction;
 use App\Models\ReceptionLead;
 use App\Models\ReceptionMemory;
 use App\Models\ReceptionTeamMember;
@@ -740,6 +741,13 @@ class ReceptionAgentToolService
             return ['ok' => true, 'found' => false, 'message' => 'No history for this caller yet.'];
         }
 
+        $recent = ReceptionInteraction::where('domain_uuid', $domainUuid)
+            ->where('reception_contact_uuid', $contact->reception_contact_uuid)
+            ->orderByDesc('occurred_at')
+            ->limit(3)
+            ->pluck('summary')
+            ->all();
+
         return [
             'ok'            => true,
             'found'         => true,
@@ -748,6 +756,7 @@ class ReceptionAgentToolService
             'times_booked'  => (int) $contact->total_bookings,
             'last_seen'     => $contact->last_seen_at ? $contact->last_seen_at->toDateString() : null,
             'notes'         => $contact->notes,
+            'recent'        => $recent,
         ];
     }
 
@@ -878,6 +887,14 @@ class ReceptionAgentToolService
             if ((int) $contact->total_bookings > 0) $bits[] = "{$contact->total_bookings} booking(s)";
             if ($contact->notes) $bits[] = "notes: " . str_replace("\n", "; ", $contact->notes);
             $parts[] = "Returning caller — " . implode(", ", $bits) . ".";
+
+            $last = ReceptionInteraction::where('domain_uuid', $domainUuid)
+                ->where('reception_contact_uuid', $contact->reception_contact_uuid)
+                ->orderByDesc('occurred_at')
+                ->first();
+            if ($last) {
+                $parts[] = "Last time: {$last->summary}";
+            }
         }
 
         $facts = ReceptionMemory::where('domain_uuid', $domainUuid)
@@ -891,6 +908,42 @@ class ReceptionAgentToolService
         }
 
         return trim(implode(" ", $parts));
+    }
+
+    // ----- episodic memory (voxragtm#91) -------------------------------------
+
+    /**
+     * Record a short summary of this interaction to the tenant/contact timeline,
+     * so future calls can reference what happened last time.
+     */
+    public function recordSummary(array $session, array $args): array
+    {
+        $domainUuid = (string) ($session['domain_uuid'] ?? '');
+        if ($domainUuid === '') {
+            return ['ok' => false, 'message' => 'No active tenant context'];
+        }
+        $summary = trim((string) ($args['summary'] ?? ''));
+        if ($summary === '') {
+            return ['ok' => false, 'message' => 'Nothing to record'];
+        }
+
+        $callerNumber = $this->normNumber((string) ($session['caller_number'] ?? ''));
+        $contact = $callerNumber !== null
+            ? $this->touchContact($domainUuid, $callerNumber, null, false, false)
+            : null;
+
+        ReceptionInteraction::create([
+            'domain_uuid'            => $domainUuid,
+            'reception_contact_uuid' => $contact?->reception_contact_uuid,
+            'conversation_id'        => (string) ($session['conversation_id'] ?? '') ?: null,
+            'channel'                => ((string) ($session['source'] ?? '') === 'whatsapp') ? 'whatsapp' : 'voice',
+            'summary'                => $summary,
+            'outcome'                => trim((string) ($args['outcome'] ?? '')) ?: null,
+            'occurred_at'            => now(),
+            'insert_date'            => now(),
+        ]);
+
+        return ['ok' => true, 'message' => 'Logged.'];
     }
 
     /**

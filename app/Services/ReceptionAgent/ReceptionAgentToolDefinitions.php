@@ -125,6 +125,15 @@ class ReceptionAgentToolDefinitions
                 'required' => [],
             ],
             [
+                'name' => 'record_summary',
+                'description' => 'At the end of the call, record a one or two sentence summary of what happened (and the outcome) to the customer\'s timeline, so next time you can reference it.',
+                'properties' => [
+                    'summary' => ['type' => 'string', 'description' => 'What happened on this call, briefly'],
+                    'outcome' => ['type' => 'string', 'description' => 'Optional: booked | message | transferred | spam | no_action'],
+                ],
+                'required' => ['summary'],
+            ],
+            [
                 'name' => 'take_notes',
                 'description' => 'Record a note from the call; notes are kept and included in the post-call summary.',
                 'properties' => ['note' => ['type' => 'string', 'description' => 'The note text to record']],

@@ -135,6 +135,7 @@ class ReceptionAgentToolController extends Controller
                 'remember_about_caller' => $this->tools->rememberAboutCaller($session, $args),
                 'remember'              => $this->tools->remember($session, $args),
                 'recall_business'       => $this->tools->recallBusiness($session, $args),
+                'record_summary'        => $this->tools->recordSummary($session, $args),
                 'take_notes'         => $this->tools->takeNotes($session, (string) ($args['note'] ?? '')),
                 'email_reminder'     => $this->tools->emailReminder($session, (string) ($args['to'] ?? ''), (string) ($args['subject'] ?? ''), (string) ($args['body'] ?? '')),
                 'complete_and_exit'  => $this->tools->completeAndExit($session, $args['message'] ?? null),
