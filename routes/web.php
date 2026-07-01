@@ -98,6 +98,11 @@ Route::post('/internal/voxra/reception-agent/summon-by-uuid', [
     \App\Http\Controllers\Internal\ReceptionAgentSummonController::class, 'summonByUuid',
 ])->middleware(\App\Http\Middleware\VerifyVoxraInternalSignature::class);
 
+// voxraweb → provision a tenant's PBX (domain + reception agent) on activation. voxragtm#42
+Route::post('/internal/voxra/provision-tenant', [
+    \App\Http\Controllers\Internal\ProvisionTenantController::class, 'provision',
+])->middleware(\App\Http\Middleware\VerifyVoxraInternalSignature::class);
+
 // ElevenLabs Conversational AI tool callbacks (transfer, lookup_user, etc).
 Route::post('/webhooks/voxra/reception-agent/tool', [
     \App\Http\Controllers\Webhooks\ReceptionAgentToolController::class, 'handle',
