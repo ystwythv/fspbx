@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\VoicemailController;
 use App\Http\Controllers\Api\V1\PhoneNumberController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\AiAgentController;
+use App\Http\Controllers\Api\V1\ReceptionController;
 use App\Http\Controllers\Api\V1\CallFlowSimulationController;
 use App\Http\Controllers\Api\V1\CdrCallController;
 use App\Http\Controllers\Api\V1\CdrStatsController;
@@ -159,6 +160,17 @@ Route::middleware(['auth:sanctum', 'api.token.auth', 'throttle:api'])->group(fun
 
     Route::get('/domains/{domain_uuid}/ai-agents/{ai_agent_uuid}', [AiAgentController::class, 'show'])
         ->middleware('user.authorize:ai_agent_view')->name('api.v1.ai-agents.show');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Reception — leads & booked appointments captured by the AI agent, read-only
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/domains/{domain_uuid}/reception/leads', [ReceptionController::class, 'leads'])
+        ->middleware('user.authorize:ai_agent_view')->name('api.v1.reception.leads');
+
+    Route::get('/domains/{domain_uuid}/reception/appointments', [ReceptionController::class, 'appointments'])
+        ->middleware('user.authorize:ai_agent_view')->name('api.v1.reception.appointments');
 
     /*
     |--------------------------------------------------------------------------
