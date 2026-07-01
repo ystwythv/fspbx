@@ -134,6 +134,14 @@ class ReceptionAgentToolDefinitions
                 'required' => ['summary'],
             ],
             [
+                'name' => 'search_memory',
+                'description' => 'Search everything you know about this business and its customers for anything relevant to a question — past jobs, quotes, preferences, policies. Use it when the structured context does not obviously cover what the caller is asking.',
+                'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'What to look up, in a few words'],
+                ],
+                'required' => ['query'],
+            ],
+            [
                 'name' => 'take_notes',
                 'description' => 'Record a note from the call; notes are kept and included in the post-call summary.',
                 'properties' => ['note' => ['type' => 'string', 'description' => 'The note text to record']],
@@ -179,7 +187,7 @@ class ReceptionAgentToolDefinitions
      */
     public const DATA_TOOLS = [
         'capture_lead', 'check_availability', 'book_appointment',
-        'recall_caller', 'remember_about_caller', 'remember', 'recall_business', 'record_summary',
+        'recall_caller', 'remember_about_caller', 'remember', 'recall_business', 'record_summary', 'search_memory',
     ];
 
     public static function isDataTool(string $name): bool
