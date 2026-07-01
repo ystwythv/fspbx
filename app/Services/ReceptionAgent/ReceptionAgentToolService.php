@@ -4,6 +4,7 @@ namespace App\Services\ReceptionAgent;
 
 use App\Models\Extensions;
 use App\Models\ReceptionAppointment;
+use App\Models\ReceptionContact;
 use App\Models\ReceptionLead;
 use App\Services\FreeswitchEslService;
 use Illuminate\Support\Carbon;
@@ -599,6 +600,7 @@ class ReceptionAgentToolService
         $lead = $convId !== ''
             ? ReceptionLead::where('domain_uuid', $domainUuid)->where('conversation_id', $convId)->first()
             : null;
+        $isNewLead = $lead === null;
 
         if ($lead) {
             $lead->fill($attrs);
@@ -616,6 +618,16 @@ class ReceptionAgentToolService
             ], $attrs));
         }
 
+        // Contact memory: touch the per-customer record (voxragtm#89). Only count
+        // a call on the first capture of this conversation.
+        $contact = $this->touchContact(
+            $domainUuid,
+            $callerNumber,
+            trim((string) ($args['name'] ?? '')) ?: null,
+            $isNewLead,
+            false,
+        );
+
         return [
             'ok'               => true,
             'message'          => $returning
@@ -623,8 +635,146 @@ class ReceptionAgentToolService
                 : 'Got it, thank you.',
             'returning_caller' => $returning,
             'previous_job'     => $previousJob,
+            'times_called'     => $contact?->total_calls,
+            'notes_on_file'    => $contact?->notes ?: null,
             'lead_ref'         => substr((string) $lead->reception_lead_uuid, 0, 8),
         ];
+    }
+
+    // ----- contact memory (voxragtm#89) --------------------------------------
+
+    private function normNumber(?string $number): ?string
+    {
+        $n = trim((string) $number);
+        return $n !== '' ? $n : null;
+    }
+
+    private function resolveContact(string $domainUuid, ?string $number): ?ReceptionContact
+    {
+        $number = $this->normNumber($number);
+        if ($number === null) {
+            return null;
+        }
+        return ReceptionContact::where('domain_uuid', $domainUuid)
+            ->where('phone_number', $number)
+            ->first();
+    }
+
+    /**
+     * Upsert the caller's contact record, bumping counters. Counts are opt-in per
+     * call so we don't over-count repeated tool calls within one conversation.
+     */
+    private function touchContact(
+        string $domainUuid,
+        ?string $number,
+        ?string $name,
+        bool $newConversation,
+        bool $newBooking,
+    ): ?ReceptionContact {
+        $number = $this->normNumber($number);
+        if ($number === null) {
+            return null;
+        }
+        $name = trim((string) $name) ?: null;
+
+        $contact = ReceptionContact::where('domain_uuid', $domainUuid)
+            ->where('phone_number', $number)
+            ->first();
+
+        if (!$contact) {
+            return ReceptionContact::create([
+                'domain_uuid'    => $domainUuid,
+                'phone_number'   => $number,
+                'name'           => $name,
+                'first_seen_at'  => now(),
+                'last_seen_at'   => now(),
+                'total_calls'    => $newConversation ? 1 : 0,
+                'total_bookings' => $newBooking ? 1 : 0,
+                'insert_date'    => now(),
+            ]);
+        }
+
+        if ($name && !$contact->name) {
+            $contact->name = $name;
+        }
+        $contact->last_seen_at = now();
+        if ($newConversation) {
+            $contact->total_calls = (int) $contact->total_calls + 1;
+        }
+        if ($newBooking) {
+            $contact->total_bookings = (int) $contact->total_bookings + 1;
+        }
+        $contact->update_date = now();
+        $contact->save();
+
+        return $contact;
+    }
+
+    /** Return the caller's number from args, else the session (inbound). */
+    private function callerFromArgsOrSession(array $session, array $args): ?string
+    {
+        return $this->normNumber(
+            (string) ($args['number'] ?? $args['caller_number'] ?? $session['caller_number'] ?? ''),
+        );
+    }
+
+    /**
+     * Recall what we know about the current caller (or a given number) so the
+     * agent can greet returning customers by context. (voxragtm#89)
+     */
+    public function recallCaller(array $session, array $args): array
+    {
+        $domainUuid = (string) ($session['domain_uuid'] ?? '');
+        if ($domainUuid === '') {
+            return ['ok' => false, 'message' => 'No active tenant context'];
+        }
+        $number = $this->callerFromArgsOrSession($session, $args);
+        if ($number === null) {
+            return ['ok' => true, 'found' => false, 'message' => "I don't have a number to look up."];
+        }
+
+        $contact = $this->resolveContact($domainUuid, $number);
+        if (!$contact) {
+            return ['ok' => true, 'found' => false, 'message' => 'No history for this caller yet.'];
+        }
+
+        return [
+            'ok'            => true,
+            'found'         => true,
+            'name'          => $contact->name,
+            'times_called'  => (int) $contact->total_calls,
+            'times_booked'  => (int) $contact->total_bookings,
+            'last_seen'     => $contact->last_seen_at ? $contact->last_seen_at->toDateString() : null,
+            'notes'         => $contact->notes,
+        ];
+    }
+
+    /**
+     * Save a note about the caller to their record so the whole team remembers it
+     * next time (e.g. "prefers mornings", "gate code 1234"). (voxragtm#89)
+     */
+    public function rememberAboutCaller(array $session, array $args): array
+    {
+        $domainUuid = (string) ($session['domain_uuid'] ?? '');
+        if ($domainUuid === '') {
+            return ['ok' => false, 'message' => 'No active tenant context'];
+        }
+        $note = trim((string) ($args['note'] ?? ''));
+        if ($note === '') {
+            return ['ok' => false, 'message' => 'What should I remember?'];
+        }
+        $number = $this->callerFromArgsOrSession($session, $args);
+        if ($number === null) {
+            return ['ok' => false, 'message' => "I need the caller's number to save that."];
+        }
+
+        $contact = $this->touchContact($domainUuid, $number, null, false, false);
+        $line = '[' . now()->format('Y-m-d') . '] ' . $note;
+        $contact->notes = $contact->notes ? $contact->notes . "\n" . $line : $line;
+        $contact->update_date = now();
+        $contact->save();
+
+        return ['ok' => true, 'message' => "Saved to their record."];
     }
 
     /**
@@ -739,6 +889,15 @@ class ReceptionAgentToolService
             $lead->update_date = now();
             $lead->save();
         }
+
+        // Contact memory: record the booking against the caller. (voxragtm#89)
+        $this->touchContact(
+            $domainUuid,
+            (trim((string) ($args['customer_number'] ?? '')) ?: $lead?->caller_number) ?: null,
+            (trim((string) ($args['customer_name'] ?? '')) ?: $lead?->name) ?: null,
+            false,
+            true,
+        );
 
         return [
             'ok'              => true,

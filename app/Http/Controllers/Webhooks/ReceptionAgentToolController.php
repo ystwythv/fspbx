@@ -116,6 +116,8 @@ class ReceptionAgentToolController extends Controller
                 'capture_lead'       => $this->tools->captureLead($session, $args),
                 'check_availability' => $this->tools->checkAvailability($session, $args),
                 'book_appointment'   => $this->tools->bookAppointment($session, $args),
+                'recall_caller'         => $this->tools->recallCaller($session, $args),
+                'remember_about_caller' => $this->tools->rememberAboutCaller($session, $args),
                 'take_notes'         => $this->tools->takeNotes($session, (string) ($args['note'] ?? '')),
                 'email_reminder'     => $this->tools->emailReminder($session, (string) ($args['to'] ?? ''), (string) ($args['subject'] ?? ''), (string) ($args['body'] ?? '')),
                 'complete_and_exit'  => $this->tools->completeAndExit($session, $args['message'] ?? null),

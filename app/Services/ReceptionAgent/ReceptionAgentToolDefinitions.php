@@ -91,6 +91,23 @@ class ReceptionAgentToolDefinitions
                 'required' => ['starts_at', 'service'],
             ],
             [
+                'name' => 'recall_caller',
+                'description' => 'Look up what we already know about the current caller (or a given number) — their name, how many times they have called or booked, and any notes on file — so you can greet returning customers by context. Call this early for a caller you may have dealt with before.',
+                'properties' => [
+                    'number' => ['type' => 'string', 'description' => "The caller's number (optional; defaults to this caller)"],
+                ],
+                'required' => [],
+            ],
+            [
+                'name' => 'remember_about_caller',
+                'description' => 'Save a note about this caller to their record so you and the whole team remember it next time (e.g. "prefers morning appointments", "gate code 1234", "cash only"). Shared across the business.',
+                'properties' => [
+                    'note' => ['type' => 'string', 'description' => 'The note to remember about the caller'],
+                    'number' => ['type' => 'string', 'description' => "The caller's number (optional; defaults to this caller)"],
+                ],
+                'required' => ['note'],
+            ],
+            [
                 'name' => 'take_notes',
                 'description' => 'Record a note from the call; notes are kept and included in the post-call summary.',
                 'properties' => ['note' => ['type' => 'string', 'description' => 'The note text to record']],
