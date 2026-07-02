@@ -979,6 +979,25 @@ if (!class_exists('cdr_import')) {
 								$this->array[$key]['extension_uuid'] = $extension_uuid;
 								unset($parameters);
 							}
+							//outbound/local calls that arrive IP-authorized (e.g. FMC/SBC trunks) never load
+							//the directory user, so extension_uuid is not set on the channel; match the
+							//SIP From user to an extension in the same domain instead
+							if (empty($this->array[$key]['extension_uuid']) && isset($domain_uuid) && isset($xml->variables->sip_from_user) && isset($xml->variables->call_direction)) {
+								$call_direction = urldecode($xml->variables->call_direction);
+								if ($call_direction == 'outbound' || $call_direction == 'local') {
+									$sql = "select extension_uuid from v_extensions ";
+									$sql .= "where domain_uuid = :domain_uuid ";
+									$sql .= "and (extension = :sip_from_user or number_alias = :sip_from_user) ";
+									$parameters['domain_uuid'] = $domain_uuid;
+									$parameters['sip_from_user'] = urldecode($xml->variables->sip_from_user);
+									$database = new database;
+									$extension_uuid = $database->select($sql, $parameters, 'column');
+									if (!empty($extension_uuid)) {
+										$this->array[$key]['extension_uuid'] = $extension_uuid;
+									}
+									unset($parameters);
+								}
+							}
 						}
 
 					//store xml cdr on the file system as a file
