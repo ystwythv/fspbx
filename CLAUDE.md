@@ -23,6 +23,14 @@ Fork of [nemerald-voip/fspbx](https://github.com/nemerald-voip/fspbx) — a Lara
 - Permissions seeded in `database/seeders/DatabaseSeeder.php`
 - Menu items stored in `v_menu_items` / `v_menu_item_groups` DB tables
 
+## Call recording webhooks
+
+Per-domain webhooks fire when a call recording becomes available (signed
+POST with time-limited recording URLs). **See `docs/recording-webhooks.md`**
+for the full contract, how to enable a domain, how to build a receiver, and
+operations/troubleshooting. Reference receiver: iqcrm
+(`src/app/api/webhooks/voxra/recording/route.ts`).
+
 ## ElevenLabs integration
 
 - **TTS:** `app/Services/Tts/ElevenLabsTtsService.php` — text-to-speech for greetings
