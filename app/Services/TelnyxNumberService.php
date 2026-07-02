@@ -81,14 +81,17 @@ class TelnyxNumberService
      * @param  array<int,string>  $phoneNumbers  E.164 numbers, e.g. ['+442071234567']
      * @return array{id:?string,status:?string,phone_numbers:array<int,mixed>}
      */
-    public function createOrder(array $phoneNumbers, ?string $connectionId = null, ?string $messagingProfileId = null): array
+    public function createOrder(array $phoneNumbers, ?string $connectionId = null, ?string $messagingProfileId = null, ?string $requirementGroupId = null): array
     {
         if ($phoneNumbers === []) {
             throw new RuntimeException('createOrder requires at least one phone number.');
         }
 
         $body = array_filter([
-            'phone_numbers'        => array_map(fn (string $n) => ['phone_number' => $n], array_values($phoneNumbers)),
+            'phone_numbers'        => array_map(fn (string $n) => array_filter([
+                'phone_number'         => $n,
+                'requirement_group_id' => $requirementGroupId,
+            ], fn ($v) => $v !== null), array_values($phoneNumbers)),
             'connection_id'        => $connectionId,
             'messaging_profile_id' => $messagingProfileId,
         ], fn ($v) => $v !== null);

@@ -28,8 +28,9 @@ class ProvisionTenantController extends Controller
     public function provision(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'tenant_id'     => 'required|string|max:64',
-            'business_name' => 'required|string|max:120',
+            'tenant_id'            => 'required|string|max:64',
+            'business_name'        => 'required|string|max:120',
+            'requirement_group_id' => 'nullable|string|max:64',
         ]);
 
         $tenantId = $data['tenant_id'];
@@ -65,7 +66,8 @@ class ProvisionTenantController extends Controller
         // number failure must not fail provisioning (domain + agent are done).
         $number = null;
         try {
-            $number = app(\App\Services\ProvisionNumberService::class)->orderAndRoute($domain, $agent);
+            $number = app(\App\Services\ProvisionNumberService::class)
+                ->orderAndRoute($domain, $agent, $data['requirement_group_id'] ?? null);
         } catch (\Throwable $e) {
             logger('Voxra auto-number failed for ' . $domain->domain_name . ': ' . $e->getMessage());
         }
