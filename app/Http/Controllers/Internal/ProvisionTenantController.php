@@ -60,6 +60,16 @@ class ProvisionTenantController extends Controller
             ]
         );
 
+        // Auto-order + route a DID (voxragtm#23) — gated + spend-capped; returns
+        // null unless VOXRA_PROVISION_ORDER_NUMBER is enabled. Best-effort: a
+        // number failure must not fail provisioning (domain + agent are done).
+        $number = null;
+        try {
+            $number = app(\App\Services\ProvisionNumberService::class)->orderAndRoute($domain, $agent);
+        } catch (\Throwable $e) {
+            logger('Voxra auto-number failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+        }
+
         return response()->json([
             'ok'                  => true,
             'domain_uuid'         => $domain->domain_uuid,
@@ -67,7 +77,7 @@ class ProvisionTenantController extends Controller
             'agent_extension'     => $agent->agent_extension,
             'feature_code'        => $agent->feature_code,
             'telnyx_assistant_id' => $agent->telnyx_assistant_id,
-            'number'              => null, // number ordering is a gated follow-up (paid)
+            'number'              => $number,
         ]);
     }
 
