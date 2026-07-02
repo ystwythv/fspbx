@@ -22,7 +22,7 @@ class ProvisionNumberService
 {
     /** Order a UK number within the cap and route it to the agent. Returns the
      *  E.164 number, or null when disabled / nothing suitable. */
-    public function orderAndRoute(Domain $domain, AiAgent $agent): ?string
+    public function orderAndRoute(Domain $domain, AiAgent $agent, ?string $requirementGroupId = null): ?string
     {
         if (! config('services.voxra.provision_order_number')) {
             return null;
@@ -30,6 +30,12 @@ class ProvisionNumberService
         $connectionId = (string) config('services.voxra.number_connection_id', '');
         if ($connectionId === '') {
             logger('Voxra auto-number skipped: services.voxra.number_connection_id not set');
+            return null;
+        }
+        // Regulatory gate: UK numbers require an APPROVED requirement group
+        // (proof of address + ID). voxraweb passes it only when approved.
+        if (! $requirementGroupId) {
+            logger('Voxra auto-number skipped: no approved regulatory requirement group for ' . $domain->domain_name);
             return null;
         }
 
@@ -59,7 +65,7 @@ class ProvisionNumberService
         $number = $pick['phone_number'];
         $messagingProfileId = (string) config('services.voxra.number_messaging_profile_id', '') ?: null;
 
-        $order = $svc->createOrder([$number], $connectionId, $messagingProfileId);
+        $order = $svc->createOrder([$number], $connectionId, $messagingProfileId, $requirementGroupId);
 
         // Orders settle asynchronously — poll briefly (routing works regardless).
         if (! empty($order['id'])) {
