@@ -95,6 +95,11 @@ class Kernel extends ConsoleKernel
             $schedule->job(new ProcessWakeupCalls())->everyMinute();
         }
 
+        // Dispatch call recording webhooks for enabled domains
+        if (isset($jobSettings['recording_webhooks']) && $jobSettings['recording_webhooks'] === "true") {
+            $schedule->command('webhooks:dispatch-recordings')->everyMinute();
+        }
+
         if (isset($jobSettings['delete_old_faxes']) && $jobSettings['delete_old_faxes'] === "true") {
             // Retrieve the days to keep faxes from settings or default to 90 days.
             $daysKeepFax = $jobSettings['days_keep_fax'] ?? 90;
