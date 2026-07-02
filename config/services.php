@@ -123,6 +123,17 @@ return [
     'voxra' => [
         'app_url' => env('VOXRA_APP_URL', ''),                     // e.g. https://voxraweb.vercel.app
         'agent_tool_secret' => env('VOXRA_AGENT_TOOL_SECRET', ''), // shared secret sent on data-tool calls
+
+        // Auto-order a Telnyx DID on activation + route it to the reception agent
+        // (voxragtm#23). OFF by default — createOrder spends money. Enable by
+        // setting VOXRA_PROVISION_ORDER_NUMBER=true once tested. The connection
+        // id defaults to the voxra-pbx-inbound FQDN connection (→ sip-in.voxra.uk).
+        'provision_order_number' => env('VOXRA_PROVISION_ORDER_NUMBER', false),
+        'number_connection_id' => env('VOXRA_NUMBER_CONNECTION_ID', '2994981238638380563'),
+        'number_messaging_profile_id' => env('VOXRA_NUMBER_MESSAGING_PROFILE_ID', ''),
+        'number_country' => env('VOXRA_NUMBER_COUNTRY', 'GB'),
+        'number_type' => env('VOXRA_NUMBER_TYPE', 'local'),
+        'number_max_monthly_cost' => (float) env('VOXRA_NUMBER_MAX_MONTHLY_COST', 5.0),
     ],
 
     'keygen' => [
