@@ -60,6 +60,7 @@ class DispatchRecordingWebhooks extends Command
                 ->get([
                     'xml_cdr_uuid',
                     'domain_uuid',
+                    'record_path',
                     'record_name',
                     'direction',
                     'billsec',
@@ -73,6 +74,14 @@ class DispatchRecordingWebhooks extends Command
             });
 
             foreach ($primaryLegs as $cdr) {
+                // Locally-stored recordings can only be served by the node that
+                // holds the file: the webhook URL is signed with this node's
+                // APP_KEY and points at this node's APP_URL. Leave the CDR
+                // unclaimed so the node that recorded the call dispatches it.
+                if (!$this->recordingIsServableHere($cdr)) {
+                    continue;
+                }
+
                 // insertOrIgnore + unique(domain_uuid, record_name) is the atomic
                 // claim: whichever cluster node inserts the row sends the webhook
                 $inserted = RecordingWebhookDelivery::insertOrIgnore([
@@ -102,6 +111,22 @@ class DispatchRecordingWebhooks extends Command
         }
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Whether this node can serve the CDR's recording. S3-backed recordings
+     * are reachable from any node (presigned object URLs); local recordings
+     * only from the node whose disk holds the file.
+     */
+    private function recordingIsServableHere($cdr): bool
+    {
+        if ($cdr->record_path === 'S3') {
+            return true;
+        }
+
+        $dir = rtrim($cdr->record_path ?: '', '/');
+
+        return $dir !== '' && is_file($dir . '/' . $cdr->record_name);
     }
 
     private function retryFailed(array $domainUuids): void

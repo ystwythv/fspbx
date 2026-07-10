@@ -64,6 +64,20 @@ class SendRecordingWebhook implements ShouldQueue
             return;
         }
 
+        // A locally-stored recording can only be served by the node that holds
+        // the file — the signed URL uses this node's APP_URL/APP_KEY. Fail
+        // loudly rather than deliver a URL that will 404 on fetch.
+        if ($cdr->record_path !== 'S3') {
+            $dir = rtrim($cdr->record_path ?: '', '/');
+            if ($dir === '' || !is_file($dir . '/' . $cdr->record_name)) {
+                $delivery->update([
+                    'status' => RecordingWebhookDelivery::STATUS_FAILED,
+                    'last_error' => 'Recording file not present on this node (' . gethostname() . ')',
+                ]);
+                return;
+            }
+        }
+
         $delivery->increment('attempts');
 
         $urls = $urlService->urlsForCdr($cdr->xml_cdr_uuid, $config['url_ttl']);
