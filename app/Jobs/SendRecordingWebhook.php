@@ -14,6 +14,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use App\Services\CallRecordingUrlService;
 use Illuminate\Foundation\Bus\Dispatchable;
 use App\Services\RecordingWebhookConfigService;
+use Symfony\Component\Process\Process;
 
 class SendRecordingWebhook implements ShouldQueue
 {
@@ -76,6 +77,8 @@ class SendRecordingWebhook implements ShouldQueue
                 ]);
                 return;
             }
+
+            $this->transcodeOversizedWav($cdr, $dir);
         }
 
         $delivery->increment('attempts');
@@ -141,6 +144,64 @@ class SendRecordingWebhook implements ShouldQueue
             'sent_at' => now(),
             'last_error' => null,
         ]);
+    }
+
+    /**
+     * WebRTC/verto legs are recorded at their native format (48kHz stereo PCM,
+     * ~11.5MB/min) instead of the usual 16kHz mono, producing WAVs of 100MB+
+     * that downstream consumers cannot ingest (the CRM transcription pipeline
+     * rejects payloads over 80MB). Before delivering the webhook, convert any
+     * oversized WAV to 16kHz mono MP3 (~130KB/min) and point the CDR at the
+     * new file so the signed URLs — and any later playback — use it.
+     */
+    private const TRANSCODE_THRESHOLD_BYTES = 25 * 1024 * 1024;
+
+    private function transcodeOversizedWav(CDR $cdr, string $dir): void
+    {
+        $wavPath = $dir . '/' . $cdr->record_name;
+
+        if (strtolower(pathinfo($wavPath, PATHINFO_EXTENSION)) !== 'wav') {
+            return;
+        }
+
+        $size = filesize($wavPath);
+        if ($size === false || $size <= self::TRANSCODE_THRESHOLD_BYTES) {
+            return;
+        }
+
+        $mp3Name = preg_replace('/\.wav$/i', '.mp3', $cdr->record_name);
+        $mp3Path = $dir . '/' . $mp3Name;
+
+        $process = new Process([
+            'ffmpeg',
+            '-nostdin',
+            '-y',
+            '-i', $wavPath,
+            '-ac', '1',
+            '-ar', '16000',
+            '-b:a', '32k',
+            $mp3Path,
+        ]);
+        $process->setTimeout(1800);
+        $process->run();
+
+        if (!$process->isSuccessful() || !is_file($mp3Path) || filesize($mp3Path) === 0) {
+            @unlink($mp3Path);
+            logger()->warning('Recording webhook: ffmpeg transcode failed for ' . $wavPath
+                . ' — delivering original WAV. ' . Str::limit($process->getErrorOutput(), 500));
+            return;
+        }
+
+        CDR::where('xml_cdr_uuid', $cdr->xml_cdr_uuid)->update(['record_name' => $mp3Name]);
+        $cdr->record_name = $mp3Name;
+        @unlink($wavPath);
+
+        logger()->info(sprintf(
+            'Recording webhook: transcoded oversized WAV %s (%.1fMB -> %.1fMB)',
+            $cdr->xml_cdr_uuid,
+            $size / 1048576,
+            filesize($mp3Path) / 1048576
+        ));
     }
 
     public function failed(\Throwable $exception): void
