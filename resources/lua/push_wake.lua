@@ -201,6 +201,45 @@ local function bridge_uri(row)
     return "sofia/" .. row.profile .. "/" .. uri
 end
 
+-- Authoritative live registrations from mod_sofia's in-memory state, via
+-- `sofia_contact */<aor>`. Unlike query_contacts()'s direct read of the sofia
+-- registration sqlite DB (which lags/races sofia's own writes), this reflects
+-- the LIVE transport binding, so we never bridge to a WSS contact whose socket
+-- has already gone (the ghost-ring failure — CallKit rings off the push but the
+-- INVITE is delivered to a dead transport; ystwythv/iqcrmapp#14) and never miss
+-- a registration the sqlite file hasn't caught up with yet.
+--
+-- Output is a comma-separated list of bridge-ready `sofia/<profile>/sip:...`
+-- dial strings (with fs_path/device= params), or an `error/...` string when the
+-- AOR has no registrations — api_value() maps the latter to "". Returns a list
+-- of {dial, class} using the same device= classification as query_contacts().
+local function live_contacts()
+    local raw = api_value("sofia_contact */" .. aor)
+    local out = {}
+    if raw == "" then return out end
+    for dial in raw:gmatch("[^,]+") do
+        dial = dial:gsub("^%s+", ""):gsub("%s+$", "")
+        if dial:match("^sofia/") then
+            table.insert(out, { dial = dial, class = classify_contact(dial, "") })
+        end
+    end
+    return out
+end
+
+-- Unified contact accessor used by both the wake poll and the final bridge.
+-- Prefer mod_sofia's authoritative live view; fall back to the legacy sqlite
+-- enumeration only when sofia returns nothing, so behaviour is never worse than
+-- before. Both paths yield the same {dial, class} shape.
+local function get_contacts()
+    local live = live_contacts()
+    if #live > 0 then return live end
+    local rows = {}
+    for _, row in ipairs(query_contacts()) do
+        table.insert(rows, { dial = bridge_uri(row), class = row.class })
+    end
+    return rows
+end
+
 -- Wake the iPhone only when the app is in the ring set AND has a push
 -- token. For ring_target=fmc we skip the WebRTC flush + APNs push + early
 -- media entirely — the FMC registration takes the call without the iPhone
@@ -283,13 +322,13 @@ if app_in_ring_set and apns_token ~= "" then
     -- wins" silently runs in the opposite direction from what the user
     -- saw on their wrist. See ystwythv/iqm-ansible#19.
     local function has_app_contact()
-        for _, row in ipairs(query_contacts()) do
-            if row.class == "app" then return true end
+        for _, c in ipairs(get_contacts()) do
+            if c.class == "app" then return true end
         end
         return false
     end
     local function has_any_contact()
-        return #query_contacts() > 0
+        return #get_contacts() > 0
     end
 
     local deadline_attempts = math.floor(PUSH_WAKE_TIMEOUT_MS / PUSH_WAKE_POLL_MS)
@@ -367,11 +406,11 @@ local function goto_voicemail(reason)
     end
 end
 
-local contacts = query_contacts()
+local contacts = get_contacts()
 local matched = {}
-for _, row in ipairs(contacts) do
-    if ring_target == "both" or row.class == ring_target then
-        table.insert(matched, bridge_uri(row))
+for _, c in ipairs(contacts) do
+    if ring_target == "both" or c.class == ring_target then
+        table.insert(matched, c.dial)
     end
 end
 
