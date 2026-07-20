@@ -72,43 +72,8 @@ class RingGroupStrategyEvaluatorTest extends TestCase
         $this->assertSame([], $node->branches);
     }
 
-    public function test_sequential_chains_members(): void
-    {
-        // this case resolves members against v_extensions — needs a live DB
-        try {
-            \Illuminate\Support\Facades\DB::connection()->getPdo();
-        } catch (\Throwable $e) {
-            $this->markTestSkipped('sequential strategy resolves members against the database');
-        }
-
-        $g = $this->group('sequence', [
-            $this->member('201'),
-            $this->member('202'),
-            $this->member('203'),
-        ]);
-        $ctx = $this->ctx();
-
-        $node = $this->evaluator->expand($g, $ctx, fn ($opt) => throw new \AssertionError('no exit configured'));
-
-        $this->assertSame('ring_group', $node->type);
-        $this->assertCount(1, $node->branches);
-        $this->assertSame('enter', $node->branches[0]->condition);
-
-        // first member → second → third
-        $first = $node->branches[0]->child;
-        $this->assertSame('ring_group_member', $first->type);
-        $this->assertSame('201', $first->extension);
-        $this->assertCount(1, $first->branches);
-        $this->assertSame('member_next', $first->branches[0]->condition);
-
-        $second = $first->branches[0]->child;
-        $this->assertSame('202', $second->extension);
-
-        $third = $second->branches[0]->child;
-        $this->assertSame('203', $third->extension);
-        // no exit configured, so tail has no further branch
-        $this->assertSame([], $third->branches);
-    }
+    // NOTE: the sequential strategy resolves members against v_extensions,
+    // so its test lives in tests/Integration/CallFlow (real database).
 
     public function test_random_strategy_attaches_warning(): void
     {

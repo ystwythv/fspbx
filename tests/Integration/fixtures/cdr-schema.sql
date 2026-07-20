@@ -114,6 +114,16 @@ CREATE TABLE IF NOT EXISTS personal_access_tokens (
     updated_at timestamptz
 );
 
+CREATE TABLE IF NOT EXISTS v_extensions (
+    extension_uuid uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    domain_uuid uuid,
+    extension text,
+    effective_caller_id_name text,
+    do_not_disturb text,
+    enabled text DEFAULT 'true',
+    insert_date timestamptz
+);
+
 CREATE TABLE IF NOT EXISTS archive_recording (
     id bigserial PRIMARY KEY,
     xml_cdr_uuid uuid,

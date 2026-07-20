@@ -35,6 +35,7 @@ abstract class CdrIntegrationTestCase extends TestCase
         'archive_recording',
         'users_adv_fields',
         'v_user_settings',
+        'v_extensions',
     ];
 
     protected function setUp(): void
