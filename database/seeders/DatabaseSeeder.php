@@ -274,6 +274,10 @@ class DatabaseSeeder extends Seeder
                 'reception_agent_view',
                 'reception_agent_update',
                 'reception_agent_test',
+                'cdr_api_read',
+                'cdr_api_read_all_domains',
+                'api_token_manage',
+                'api_token_self_manage',
             ],
             'admin' => [
                 'wakeup_calls_list_view',
@@ -312,6 +316,8 @@ class DatabaseSeeder extends Seeder
                 'reception_agent_view',
                 'reception_agent_update',
                 'reception_agent_test',
+                'cdr_api_read',
+                'api_token_self_manage',
             ],
             'Message Admin' => [
                 'message_settings_list_view',
