@@ -36,6 +36,7 @@ abstract class CdrIntegrationTestCase extends TestCase
         'users_adv_fields',
         'v_user_settings',
         'v_extensions',
+        'extension_advanced_settings',
     ];
 
     protected function setUp(): void

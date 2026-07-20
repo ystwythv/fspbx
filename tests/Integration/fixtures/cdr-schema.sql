@@ -124,6 +124,15 @@ CREATE TABLE IF NOT EXISTS v_extensions (
     insert_date timestamptz
 );
 
+-- eager-loaded by the Extensions model ($with = ['advSettings'])
+CREATE TABLE IF NOT EXISTS extension_advanced_settings (
+    setting_uuid uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    extension_uuid uuid,
+    suspended boolean,
+    created_at timestamptz,
+    updated_at timestamptz
+);
+
 CREATE TABLE IF NOT EXISTS archive_recording (
     id bigserial PRIMARY KEY,
     xml_cdr_uuid uuid,
