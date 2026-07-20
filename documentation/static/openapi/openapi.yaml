@@ -5976,6 +5976,82 @@ paths:
         name: token_id
         required: true
         schema: { type: string }
+  '/api/v1/domains/{domain_uuid}/webhooks':
+    get:
+      summary: 'List API webhooks'
+      operationId: listApiWebhooks
+      description: "Per-domain webhook subscriptions for `cdr.finalized` events, including delivery health (`last_success_at`, `last_failure_at`, `consecutive_failures`). Requires the `api_webhook_manage` permission."
+      responses:
+        200: { description: Success }
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+      tags: ['API Webhooks']
+    post:
+      summary: 'Create an API webhook'
+      operationId: createApiWebhook
+      description: "Registers an HTTPS endpoint for `cdr.finalized` events. The HMAC signing secret is returned once in `secret` and is unrecoverable afterwards — rotate to get a new one. Limit: 10 webhooks per domain."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, example: 'https://example.com/webhooks/voxra/cdr' }
+                events: { type: array, items: { type: string, enum: [cdr.finalized] }, example: [cdr.finalized] }
+                description: { type: string, example: 'CRM call sync' }
+      responses:
+        201: { description: Created }
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+        422: { $ref: '#/components/responses/WindowValidation' }
+      tags: ['API Webhooks']
+    parameters:
+      - { in: path, name: domain_uuid, required: true, schema: { type: string } }
+  '/api/v1/domains/{domain_uuid}/webhooks/{webhook_uuid}':
+    delete:
+      summary: 'Delete an API webhook'
+      operationId: deleteApiWebhook
+      responses:
+        200: { description: Deleted }
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+        404: { $ref: '#/components/responses/ResourceMissing' }
+      tags: ['API Webhooks']
+    parameters:
+      - { in: path, name: domain_uuid, required: true, schema: { type: string } }
+      - { in: path, name: webhook_uuid, required: true, schema: { type: string } }
+  '/api/v1/domains/{domain_uuid}/webhooks/{webhook_uuid}/rotate-secret':
+    post:
+      summary: 'Rotate a webhook signing secret'
+      operationId: rotateApiWebhookSecret
+      description: 'Replaces the HMAC secret. The new secret is returned once; the old one stops working immediately.'
+      responses:
+        200: { description: Rotated }
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+        404: { $ref: '#/components/responses/ResourceMissing' }
+      tags: ['API Webhooks']
+    parameters:
+      - { in: path, name: domain_uuid, required: true, schema: { type: string } }
+      - { in: path, name: webhook_uuid, required: true, schema: { type: string } }
+  '/api/v1/domains/{domain_uuid}/webhooks/{webhook_uuid}/deliveries':
+    get:
+      summary: 'List recent webhook deliveries'
+      operationId: listApiWebhookDeliveries
+      description: 'Newest-first delivery attempts (status, attempts, last_error) so failing endpoints are visible without queue access.'
+      parameters:
+        - { in: query, name: limit, required: false, schema: { type: integer } }
+      responses:
+        200: { description: Success }
+        401: { $ref: '#/components/responses/Unauthenticated' }
+        403: { $ref: '#/components/responses/ForbiddenDomain' }
+        404: { $ref: '#/components/responses/ResourceMissing' }
+      tags: ['API Webhooks']
+    parameters:
+      - { in: path, name: domain_uuid, required: true, schema: { type: string } }
+      - { in: path, name: webhook_uuid, required: true, schema: { type: string } }
 tags:
   -
     name: Domains
@@ -6001,6 +6077,9 @@ tags:
   -
     name: 'Tenant API Tokens'
     description: 'Self-service token management for a single tenant.'
+  -
+    name: 'API Webhooks'
+    description: 'Signed cdr.finalized webhook subscriptions for a single tenant.'
 components:
   securitySchemes:
     default:
