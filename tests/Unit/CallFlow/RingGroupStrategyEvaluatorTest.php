@@ -74,6 +74,13 @@ class RingGroupStrategyEvaluatorTest extends TestCase
 
     public function test_sequential_chains_members(): void
     {
+        // this case resolves members against v_extensions — needs a live DB
+        try {
+            \Illuminate\Support\Facades\DB::connection()->getPdo();
+        } catch (\Throwable $e) {
+            $this->markTestSkipped('sequential strategy resolves members against the database');
+        }
+
         $g = $this->group('sequence', [
             $this->member('201'),
             $this->member('202'),
