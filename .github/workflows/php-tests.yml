@@ -37,6 +37,20 @@ jobs:
           extensions: pdo_pgsql, pgsql, simplexml, gd, zip, intl, bcmath, redis
           coverage: none
 
+      # public/ is provisioned at deploy time (FusionPBX legacy app) and not
+      # in git, but composer autoload.files requires four files from it.
+      # Stub them: nothing in the test suites touches the legacy classes.
+      - name: Stub FusionPBX legacy autoload files
+        run: |
+          mkdir -p public/resources/classes public/resources/tcpdf public/resources/fpdi
+          for f in public/resources/tcpdf/tcpdf.php public/resources/fpdi/fpdi.php; do
+            [ -f "$f" ] || echo '<?php' > "$f"
+          done
+          for c in cache event_socket; do
+            f="public/resources/classes/$c.php"
+            [ -f "$f" ] || printf '<?php\nif (!class_exists("%s")) { class %s { public function __call($m, $a) { return null; } public static function __callStatic($m, $a) { return null; } } }\n' "$c" "$c" > "$f"
+          done
+
       - name: Install composer dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
 
