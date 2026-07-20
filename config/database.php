@@ -78,6 +78,22 @@ return [
             'sslmode' => 'prefer',
         ],
 
+        // Dedicated integration-test database (tests/Integration). Never
+        // points at a live cluster — see .github/workflows/php-tests.yml.
+        'pgsql_testing' => [
+            'driver' => 'pgsql',
+            'host' => env('DB_TEST_HOST', '127.0.0.1'),
+            'port' => env('DB_TEST_PORT', '5432'),
+            'database' => env('DB_TEST_DATABASE', 'fspbx_testing'),
+            'username' => env('DB_TEST_USERNAME', 'postgres'),
+            'password' => env('DB_TEST_PASSWORD', 'postgres'),
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'schema' => 'public',
+            'sslmode' => 'prefer',
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DATABASE_URL'),
