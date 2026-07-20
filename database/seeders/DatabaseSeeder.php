@@ -165,6 +165,7 @@ class DatabaseSeeder extends Seeder
             ['application_name' => 'CDR API', 'permission_name' => 'cdr_api_read_all_domains'],
             ['application_name' => 'CDR API', 'permission_name' => 'api_token_manage'],
             ['application_name' => 'CDR API', 'permission_name' => 'api_token_self_manage'],
+            ['application_name' => 'CDR API', 'permission_name' => 'api_webhook_manage'],
             ['application_name' => 'Call Flow API', 'permission_name' => 'call_flow_simulate'],
             ['application_name' => 'Call Flow API', 'permission_name' => 'call_flow_simulate_all_domains'],
         ];
@@ -278,6 +279,7 @@ class DatabaseSeeder extends Seeder
                 'cdr_api_read_all_domains',
                 'api_token_manage',
                 'api_token_self_manage',
+                'api_webhook_manage',
             ],
             'admin' => [
                 'wakeup_calls_list_view',
@@ -318,6 +320,7 @@ class DatabaseSeeder extends Seeder
                 'reception_agent_test',
                 'cdr_api_read',
                 'api_token_self_manage',
+                'api_webhook_manage',
             ],
             'Message Admin' => [
                 'message_settings_list_view',

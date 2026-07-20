@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\CallFlowSimulationController;
 use App\Http\Controllers\Api\V1\CdrCallController;
 use App\Http\Controllers\Api\V1\CdrStatsController;
 use App\Http\Controllers\Api\V1\TenantApiTokenController;
+use App\Http\Controllers\Api\V1\ApiWebhookController;
 use App\Http\Controllers\Api\V1\Admin\ApiTokenController;
 
 /*
@@ -286,5 +287,29 @@ Route::middleware(['auth:sanctum', 'api.token.auth', 'throttle:api'])->group(fun
 
         Route::delete('/domains/{domain_uuid}/api-tokens/{token_id}', [TenantApiTokenController::class, 'destroy'])
             ->name('api.v1.tenant.api-tokens.destroy');
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Tenant self-service API webhooks (cdr.finalized)
+    |--------------------------------------------------------------------------
+    | Per-domain webhook subscriptions with HMAC signing. Delivery history is
+    | exposed so failing endpoints are visible without queue access.
+    */
+    Route::middleware(['cdr.scope:tenant', 'user.authorize:api_webhook_manage'])->group(function () {
+        Route::get('/domains/{domain_uuid}/webhooks', [ApiWebhookController::class, 'index'])
+            ->name('api.v1.tenant.webhooks.index');
+
+        Route::post('/domains/{domain_uuid}/webhooks', [ApiWebhookController::class, 'store'])
+            ->name('api.v1.tenant.webhooks.store');
+
+        Route::post('/domains/{domain_uuid}/webhooks/{webhook_uuid}/rotate-secret', [ApiWebhookController::class, 'rotateSecret'])
+            ->name('api.v1.tenant.webhooks.rotate');
+
+        Route::delete('/domains/{domain_uuid}/webhooks/{webhook_uuid}', [ApiWebhookController::class, 'destroy'])
+            ->name('api.v1.tenant.webhooks.destroy');
+
+        Route::get('/domains/{domain_uuid}/webhooks/{webhook_uuid}/deliveries', [ApiWebhookController::class, 'deliveries'])
+            ->name('api.v1.tenant.webhooks.deliveries');
     });
 });
