@@ -63,7 +63,7 @@ return new class extends Migration
 
         DB::table('v_group_permissions')->where('permission_name', 'api_webhook_manage')->delete();
         DB::table('v_permissions')->where('permission_name', 'api_webhook_manage')->delete();
-        DB::table('default_settings')
+        DB::table('v_default_settings')
             ->where('default_setting_category', 'scheduled_jobs')
             ->where('default_setting_subcategory', 'cdr_webhooks')
             ->delete();
@@ -111,13 +111,13 @@ return new class extends Migration
 
     private function seedDefaultSettings(): void
     {
-        $exists = DB::table('default_settings')
+        $exists = DB::table('v_default_settings')
             ->where('default_setting_category', 'scheduled_jobs')
             ->where('default_setting_subcategory', 'cdr_webhooks')
             ->exists();
 
         if (! $exists) {
-            DB::table('default_settings')->insert([
+            DB::table('v_default_settings')->insert([
                 'default_setting_uuid' => (string) Str::uuid(),
                 'default_setting_category' => 'scheduled_jobs',
                 'default_setting_subcategory' => 'cdr_webhooks',

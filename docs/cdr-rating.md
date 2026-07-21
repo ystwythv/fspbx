@@ -49,7 +49,7 @@ The scheduler entry (`cdr:rate` every 5 minutes) is gated by the
 Enable it after loading the first tariff:
 
 ```sql
-UPDATE default_settings SET default_setting_value = 'true'
+UPDATE v_default_settings SET default_setting_value = 'true'
 WHERE default_setting_category = 'scheduled_jobs'
   AND default_setting_subcategory = 'cdr_rating';
 ```
