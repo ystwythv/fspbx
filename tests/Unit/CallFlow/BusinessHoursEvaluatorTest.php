@@ -39,7 +39,7 @@ class BusinessHoursEvaluatorTest extends TestCase
         return $bh;
     }
 
-    private function at(string $iso, string $tz = 'UTC'): DateTimeImmutable
+    private function momentAt(string $iso, string $tz = 'UTC'): DateTimeImmutable
     {
         return new DateTimeImmutable($iso, new DateTimeZone($tz));
     }
@@ -55,7 +55,7 @@ class BusinessHoursEvaluatorTest extends TestCase
             $this->period(6, '09:00', '17:00'),
         ]);
         // 2026-04-23 is Thu (wday=5 FreeSWITCH).
-        $r = $this->evaluator->evaluate($bh, $this->at('2026-04-23T10:00:00Z'));
+        $r = $this->evaluator->evaluate($bh, $this->momentAt('2026-04-23T10:00:00Z'));
         $this->assertTrue($r['is_in_hours']);
         $this->assertNotNull($r['period']);
     }
@@ -66,7 +66,7 @@ class BusinessHoursEvaluatorTest extends TestCase
             $this->period(2, '09:00', '17:00'),
         ]);
         // Sat 2026-04-25.
-        $r = $this->evaluator->evaluate($bh, $this->at('2026-04-25T10:00:00Z'));
+        $r = $this->evaluator->evaluate($bh, $this->momentAt('2026-04-25T10:00:00Z'));
         $this->assertFalse($r['is_in_hours']);
         $this->assertNull($r['period']);
     }
@@ -76,7 +76,7 @@ class BusinessHoursEvaluatorTest extends TestCase
         $bh = $this->buildBusinessHour([
             $this->period(5, '09:00', '17:00'),
         ]);
-        $r = $this->evaluator->evaluate($bh, $this->at('2026-04-23T19:00:00Z'));
+        $r = $this->evaluator->evaluate($bh, $this->momentAt('2026-04-23T19:00:00Z'));
         $this->assertFalse($r['is_in_hours']);
     }
 
@@ -90,11 +90,11 @@ class BusinessHoursEvaluatorTest extends TestCase
         );
 
         // 08:30 UTC in July = 09:30 BST — in hours.
-        $r = $this->evaluator->evaluate($bh, $this->at('2026-07-16T08:30:00Z'));
+        $r = $this->evaluator->evaluate($bh, $this->momentAt('2026-07-16T08:30:00Z'));
         $this->assertTrue($r['is_in_hours']);
 
         // 07:30 UTC = 08:30 BST — still out.
-        $r = $this->evaluator->evaluate($bh, $this->at('2026-07-16T07:30:00Z'));
+        $r = $this->evaluator->evaluate($bh, $this->momentAt('2026-07-16T07:30:00Z'));
         $this->assertFalse($r['is_in_hours']);
     }
 
@@ -105,7 +105,7 @@ class BusinessHoursEvaluatorTest extends TestCase
             $this->period(5, '22:00', '02:00'),
         ]);
         // 2026-04-23 is Thursday = FS wday 5; 23:00 should match.
-        $r = $this->evaluator->evaluate($bh, $this->at('2026-04-23T23:00:00Z'));
+        $r = $this->evaluator->evaluate($bh, $this->momentAt('2026-04-23T23:00:00Z'));
         $this->assertTrue($r['is_in_hours']);
     }
 
@@ -121,7 +121,7 @@ class BusinessHoursEvaluatorTest extends TestCase
             [$holiday],
         );
 
-        $r = $this->evaluator->evaluate($bh, $this->at('2026-04-23T10:00:00Z'));
+        $r = $this->evaluator->evaluate($bh, $this->momentAt('2026-04-23T10:00:00Z'));
         $this->assertFalse($r['is_in_hours']);
         $this->assertNotNull($r['holiday']);
     }
@@ -137,7 +137,7 @@ class BusinessHoursEvaluatorTest extends TestCase
             [$holiday],
         );
 
-        $r = $this->evaluator->evaluate($bh, $this->at('2026-04-23T10:00:00Z'));
+        $r = $this->evaluator->evaluate($bh, $this->momentAt('2026-04-23T10:00:00Z'));
         $this->assertTrue($r['is_in_hours']);
         $this->assertNotEmpty($r['warnings']);
     }

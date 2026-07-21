@@ -100,6 +100,16 @@ class Kernel extends ConsoleKernel
             $schedule->command('webhooks:dispatch-recordings')->everyMinute();
         }
 
+        // Rate recent outbound CDRs against the tariff tables
+        if (isset($jobSettings['cdr_rating']) && $jobSettings['cdr_rating'] === "true") {
+            $schedule->command('cdr:rate')->everyFiveMinutes()->withoutOverlapping();
+        }
+
+        // Dispatch cdr.finalized webhooks for subscribed domains
+        if (isset($jobSettings['cdr_webhooks']) && $jobSettings['cdr_webhooks'] === "true") {
+            $schedule->command('webhooks:dispatch-cdr-events')->everyMinute();
+        }
+
         if (isset($jobSettings['delete_old_faxes']) && $jobSettings['delete_old_faxes'] === "true") {
             // Retrieve the days to keep faxes from settings or default to 90 days.
             $daysKeepFax = $jobSettings['days_keep_fax'] ?? 90;

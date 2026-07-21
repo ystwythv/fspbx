@@ -1,0 +1,76 @@
+name: PHP tests
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  phpunit:
+    name: Unit + integration tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: fspbx_testing
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_pgsql, pgsql, simplexml, gd, zip, intl, bcmath, redis
+          coverage: none
+
+      # public/ is provisioned at deploy time (FusionPBX legacy app) and not
+      # in git, but composer autoload.files requires four files from it.
+      # Stub them: nothing in the test suites touches the legacy classes.
+      - name: Stub FusionPBX legacy autoload files
+        run: |
+          mkdir -p public/resources/classes public/resources/tcpdf public/resources/fpdi
+          for f in public/resources/tcpdf/tcpdf.php public/resources/fpdi/fpdi.php; do
+            [ -f "$f" ] || echo '<?php' > "$f"
+          done
+          for c in cache event_socket; do
+            f="public/resources/classes/$c.php"
+            [ -f "$f" ] || printf '<?php\nif (!class_exists("%s")) { class %s { public function __call($m, $a) { return null; } public static function __callStatic($m, $a) { return null; } } }\n' "$c" "$c" > "$f"
+          done
+
+      - name: Install composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare app environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Unit tests
+        run: vendor/bin/phpunit --testsuite Unit
+
+      - name: CDR route protection tests (no DB)
+        run: vendor/bin/phpunit tests/Feature/Api/V1/Cdr/CdrRouteProtectionTest.php
+
+      - name: CDR integration tests (Postgres fixtures)
+        env:
+          CDR_TEST_DB: 'true'
+          DB_TEST_HOST: 127.0.0.1
+          DB_TEST_PORT: '5432'
+          DB_TEST_DATABASE: fspbx_testing
+          DB_TEST_USERNAME: postgres
+          DB_TEST_PASSWORD: postgres
+        run: vendor/bin/phpunit --testsuite Integration

@@ -18,7 +18,7 @@ class TimeConditionEvaluatorTest extends TestCase
         $this->evaluator = new TimeConditionEvaluator();
     }
 
-    private function at(string $iso, string $tz = 'UTC'): DateTimeImmutable
+    private function momentAt(string $iso, string $tz = 'UTC'): DateTimeImmutable
     {
         return new DateTimeImmutable($iso, new DateTimeZone($tz));
     }
@@ -44,7 +44,7 @@ XML;
         ');
 
         // 2026-04-23T10:00 UTC is Thu 10:00 — in the range.
-        $result = $this->evaluator->evaluate($xml, $this->at('2026-04-23T10:00:00Z'), 'UTC');
+        $result = $this->evaluator->evaluate($xml, $this->momentAt('2026-04-23T10:00:00Z'), 'UTC');
         $this->assertSame(['destination_app' => 'transfer', 'destination_data' => '201 XML example.com'], $result['matched_action']);
         $this->assertSame(['destination_app' => 'transfer', 'destination_data' => '202 XML example.com'], $result['fallback_action']);
     }
@@ -61,7 +61,7 @@ XML;
         ');
 
         // 19:00 is outside 9-17 — no match; caller uses fallback.
-        $result = $this->evaluator->evaluate($xml, $this->at('2026-04-23T19:00:00Z'), 'UTC');
+        $result = $this->evaluator->evaluate($xml, $this->momentAt('2026-04-23T19:00:00Z'), 'UTC');
         $this->assertNull($result['matched_action']);
         $this->assertSame('*99201 XML example.com', $result['fallback_action']['destination_data']);
     }
@@ -75,11 +75,11 @@ XML;
         ');
 
         // Thu = FreeSWITCH wday 5, 10:00 — both match.
-        $thu = $this->evaluator->evaluate($xml, $this->at('2026-04-23T10:00:00Z'), 'UTC');
+        $thu = $this->evaluator->evaluate($xml, $this->momentAt('2026-04-23T10:00:00Z'), 'UTC');
         $this->assertNotNull($thu['matched_action']);
 
         // Sun = FreeSWITCH wday 1, 10:00 — wday fails.
-        $sun = $this->evaluator->evaluate($xml, $this->at('2026-04-26T10:00:00Z'), 'UTC');
+        $sun = $this->evaluator->evaluate($xml, $this->momentAt('2026-04-26T10:00:00Z'), 'UTC');
         $this->assertNull($sun['matched_action']);
     }
 
@@ -92,11 +92,11 @@ XML;
         ');
 
         // 03:00 UTC = 04:00 BST in Europe/London on this date — outside 9-17.
-        $result = $this->evaluator->evaluate($xml, $this->at('2026-07-15T03:00:00Z'), 'Europe/London');
+        $result = $this->evaluator->evaluate($xml, $this->momentAt('2026-07-15T03:00:00Z'), 'Europe/London');
         $this->assertNull($result['matched_action']);
 
         // 10:00 UTC = 11:00 BST — inside.
-        $result = $this->evaluator->evaluate($xml, $this->at('2026-07-15T10:00:00Z'), 'Europe/London');
+        $result = $this->evaluator->evaluate($xml, $this->momentAt('2026-07-15T10:00:00Z'), 'Europe/London');
         $this->assertNotNull($result['matched_action']);
     }
 
@@ -112,7 +112,7 @@ XML;
         ');
 
         // Sat = FreeSWITCH wday 7 → second condition.
-        $result = $this->evaluator->evaluate($xml, $this->at('2026-04-25T10:00:00Z'), 'UTC');
+        $result = $this->evaluator->evaluate($xml, $this->momentAt('2026-04-25T10:00:00Z'), 'UTC');
         $this->assertSame('b XML example.com', $result['matched_action']['destination_data']);
     }
 
@@ -124,9 +124,9 @@ XML;
             </condition>
         ');
 
-        $this->assertNotNull($this->evaluator->evaluate($xml, $this->at('2026-04-23T23:30:00Z'), 'UTC')['matched_action']);
-        $this->assertNotNull($this->evaluator->evaluate($xml, $this->at('2026-04-23T04:30:00Z'), 'UTC')['matched_action']);
-        $this->assertNull($this->evaluator->evaluate($xml, $this->at('2026-04-23T12:00:00Z'), 'UTC')['matched_action']);
+        $this->assertNotNull($this->evaluator->evaluate($xml, $this->momentAt('2026-04-23T23:30:00Z'), 'UTC')['matched_action']);
+        $this->assertNotNull($this->evaluator->evaluate($xml, $this->momentAt('2026-04-23T04:30:00Z'), 'UTC')['matched_action']);
+        $this->assertNull($this->evaluator->evaluate($xml, $this->momentAt('2026-04-23T12:00:00Z'), 'UTC')['matched_action']);
     }
 
     public function test_date_time_range(): void
@@ -137,8 +137,8 @@ XML;
             </condition>
         ');
 
-        $this->assertNotNull($this->evaluator->evaluate($xml, $this->at('2026-04-22T12:00:00Z'), 'UTC')['matched_action']);
-        $this->assertNull($this->evaluator->evaluate($xml, $this->at('2026-05-01T12:00:00Z'), 'UTC')['matched_action']);
+        $this->assertNotNull($this->evaluator->evaluate($xml, $this->momentAt('2026-04-22T12:00:00Z'), 'UTC')['matched_action']);
+        $this->assertNull($this->evaluator->evaluate($xml, $this->momentAt('2026-05-01T12:00:00Z'), 'UTC')['matched_action']);
     }
 
     public function test_minute_of_day_boundary(): void
@@ -149,9 +149,9 @@ XML;
             </condition>
         ');
         // 09:00 = 9*60+0+1 = 541 — in range.
-        $this->assertNotNull($this->evaluator->evaluate($xml, $this->at('2026-04-23T09:00:00Z'), 'UTC')['matched_action']);
+        $this->assertNotNull($this->evaluator->evaluate($xml, $this->momentAt('2026-04-23T09:00:00Z'), 'UTC')['matched_action']);
         // 17:00 = 17*60+0+1 = 1021 — out.
-        $this->assertNull($this->evaluator->evaluate($xml, $this->at('2026-04-23T17:00:00Z'), 'UTC')['matched_action']);
+        $this->assertNull($this->evaluator->evaluate($xml, $this->momentAt('2026-04-23T17:00:00Z'), 'UTC')['matched_action']);
     }
 
     public function test_set_and_export_actions_are_skipped(): void
@@ -163,7 +163,7 @@ XML;
               <action application="transfer" data="201 XML example.com"/>
             </condition>
         ');
-        $result = $this->evaluator->evaluate($xml, $this->at('2026-04-23T10:00:00Z'), 'UTC');
+        $result = $this->evaluator->evaluate($xml, $this->momentAt('2026-04-23T10:00:00Z'), 'UTC');
         $this->assertSame('transfer', $result['matched_action']['destination_app']);
         $this->assertSame('201 XML example.com', $result['matched_action']['destination_data']);
     }
@@ -171,6 +171,6 @@ XML;
     public function test_malformed_xml_throws(): void
     {
         $this->expectException(TimeConditionParseException::class);
-        $this->evaluator->evaluate('<not valid', $this->at('2026-04-23T10:00:00Z'), 'UTC');
+        $this->evaluator->evaluate('<not valid', $this->momentAt('2026-04-23T10:00:00Z'), 'UTC');
     }
 }

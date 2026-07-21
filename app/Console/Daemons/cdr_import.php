@@ -152,6 +152,9 @@ if (!class_exists('cdr_import')) {
 			$this->fields[] = "originating_leg_uuid";
 			$this->fields[] = "pdd_ms";
 			$this->fields[] = "rtp_audio_in_mos";
+			$this->fields[] = "rtp_audio_out_mos";
+			$this->fields[] = "rtp_audio_in_jitter_ms";
+			$this->fields[] = "rtp_audio_in_packet_loss";
 			$this->fields[] = "last_app";
 			$this->fields[] = "last_arg";
 			$this->fields[] = "voicemail_message";
@@ -721,6 +724,34 @@ if (!class_exists('cdr_import')) {
 						$rtp_audio_in_mos = urldecode($xml->variables->rtp_audio_in_mos);
 						if (!empty($rtp_audio_in_mos)) {
 							$this->array[$key]['rtp_audio_in_mos'] = $rtp_audio_in_mos;
+						}
+
+						$rtp_audio_out_mos = urldecode($xml->variables->rtp_audio_out_mos);
+						if (is_numeric($rtp_audio_out_mos) && $rtp_audio_out_mos > 0) {
+							$this->array[$key]['rtp_audio_out_mos'] = round((float) $rtp_audio_out_mos, 2);
+						}
+
+						//average inbound jitter (ms) from the min/max variance pair
+						$jitter_min = urldecode($xml->variables->rtp_audio_in_jitter_min_variance);
+						$jitter_max = urldecode($xml->variables->rtp_audio_in_jitter_max_variance);
+						if (is_numeric($jitter_max)) {
+							$jitter_ms = is_numeric($jitter_min)
+								? ((float) $jitter_min + (float) $jitter_max) / 2
+								: (float) $jitter_max;
+							$this->array[$key]['rtp_audio_in_jitter_ms'] = round($jitter_ms, 3);
+						}
+
+						//inbound packet loss percent: FreeSWITCH loss rate, else derived from skip counts
+						$loss_rate = urldecode($xml->variables->rtp_audio_in_jitter_loss_rate);
+						if (is_numeric($loss_rate)) {
+							$this->array[$key]['rtp_audio_in_packet_loss'] = round(min(max((float) $loss_rate, 0), 100), 2);
+						}
+						else {
+							$packet_count = (float) urldecode($xml->variables->rtp_audio_in_packet_count);
+							$skip_count = (float) urldecode($xml->variables->rtp_audio_in_skip_packet_count);
+							if ($packet_count + $skip_count > 0) {
+								$this->array[$key]['rtp_audio_in_packet_loss'] = round(min($skip_count / ($packet_count + $skip_count) * 100, 100), 2);
+							}
 						}
 
 					//store the call leg

@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\AiAgentController;
 use App\Http\Controllers\AccountSettingsController;
+use App\Http\Controllers\ApiTokenSettingsController;
+use App\Http\Controllers\ApiWebhookSettingsController;
 use App\Http\Controllers\ActiveCallsController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AppsController;
@@ -239,6 +241,18 @@ Route::group(['middleware' => 'auth'], function () {
 
     // Account settings
     Route::get('account-settings', [AccountSettingsController::class, 'index'])->name('account-settings.index');
+
+    // Settings → API Tokens (tenant self-service, issue #11)
+    Route::get('api-tokens', [ApiTokenSettingsController::class, 'index'])->name('api-tokens.index');
+    Route::post('api-tokens', [ApiTokenSettingsController::class, 'store'])->name('api-tokens.store');
+    Route::delete('api-tokens/{token_id}', [ApiTokenSettingsController::class, 'destroy'])->name('api-tokens.destroy');
+
+    // Settings → API Webhooks (tenant self-service, issue #9)
+    Route::get('api-webhooks', [ApiWebhookSettingsController::class, 'index'])->name('api-webhooks.index');
+    Route::post('api-webhooks', [ApiWebhookSettingsController::class, 'store'])->name('api-webhooks.store');
+    Route::post('api-webhooks/{webhook_uuid}/rotate-secret', [ApiWebhookSettingsController::class, 'rotateSecret'])->name('api-webhooks.rotate');
+    Route::get('api-webhooks/{webhook_uuid}/deliveries', [ApiWebhookSettingsController::class, 'deliveries'])->name('api-webhooks.deliveries');
+    Route::delete('api-webhooks/{webhook_uuid}', [ApiWebhookSettingsController::class, 'destroy'])->name('api-webhooks.destroy');
 
     // Logs
     Route::get('logs', [LogsController::class, 'index'])->name('logs.index');

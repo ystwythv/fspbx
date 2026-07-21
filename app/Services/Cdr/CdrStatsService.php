@@ -252,7 +252,10 @@ class CdrStatsService
                 'destination_number, ' .
                 'COUNT(*) AS calls, ' .
                 'COALESCE(SUM(billsec),0) AS total_billsec, ' .
-                'COALESCE(AVG(NULLIF(billsec,0)),0) AS avg_billsec'
+                'COALESCE(AVG(NULLIF(billsec,0)),0) AS avg_billsec, ' .
+                'SUM(call_cost) AS total_cost, ' .
+                'COUNT(DISTINCT call_cost_currency) AS cost_currencies, ' .
+                'MIN(call_cost_currency) AS cost_currency'
             )
             ->groupBy('destination_number')
             ->orderByRaw('COUNT(*) DESC')
@@ -264,8 +267,9 @@ class CdrStatsService
             'calls' => (int) $r->calls,
             'total_billsec' => (int) $r->total_billsec,
             'avg_billsec' => (int) round((float) $r->avg_billsec),
-            'cost' => null,
-            'cost_currency' => null,
+            // a single currency per group is reportable; mixed currencies are not summable
+            'cost' => ($r->total_cost !== null && (int) $r->cost_currencies === 1) ? round((float) $r->total_cost, 4) : null,
+            'cost_currency' => ((int) $r->cost_currencies === 1) ? $r->cost_currency : null,
         ])->all();
     }
 
@@ -301,6 +305,9 @@ class CdrStatsService
             'COALESCE(SUM(duration),0) AS total_duration_sec',
             'COALESCE(SUM(billsec),0) AS total_billsec',
             'COALESCE(AVG(NULLIF(duration,0)),0) AS avg_duration_sec',
+            'SUM(call_cost) AS total_cost',
+            'COUNT(DISTINCT call_cost_currency) AS cost_currencies',
+            'MIN(call_cost_currency) AS cost_currency',
         ]);
     }
 
@@ -338,8 +345,11 @@ class CdrStatsService
                 'acd_sec' => $acd,
             ],
             'cost' => [
-                'total' => null,
-                'currency' => null,
+                // reportable only while all rated calls share one currency
+                'total' => ($row->total_cost !== null && (int) ($row->cost_currencies ?? 0) === 1)
+                    ? round((float) $row->total_cost, 4)
+                    : null,
+                'currency' => ((int) ($row->cost_currencies ?? 0) === 1) ? ($row->cost_currency ?? null) : null,
             ],
         ];
     }

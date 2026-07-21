@@ -35,7 +35,8 @@ class CallFlowMermaidRendererTest extends TestCase
 
         $this->assertStringStartsWith("flowchart LR\n", $out);
         $this->assertStringContainsString('n1["Inbound +441225800810"]', $out);
-        $this->assertStringContainsString('n3["Voicemail 810 (810)"]', $out);
+        // composeLabel suppresses "(ext)" when the label already contains it
+        $this->assertStringContainsString('n3["Voicemail 810"]', $out);
         $this->assertStringContainsString('n1 ==>|enter| n2', $out);
         $this->assertStringContainsString('n2 ==>|after hours| n3', $out);
     }
