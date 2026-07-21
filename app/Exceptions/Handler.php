@@ -12,6 +12,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 
@@ -144,7 +145,27 @@ class Handler extends ExceptionHandler
             return response()->json($payload->toArray(), $e->status);
         });
 
-        // 5) Catch-all MUST be last
+        // 5) Framework HTTP exceptions keep their real status — without this
+        // the catch-all turned throttle 429s (and any other HttpException)
+        // into opaque 500s
+        $this->renderable(function (HttpExceptionInterface $e, Request $request) {
+            if (! $request->is('api/v1/*')) return null;
+
+            $status = $e->getStatusCode();
+
+            $payload = ErrorResponseData::from([
+                'error' => ErrorData::from([
+                    'type'    => $status === 429 ? 'rate_limit_error' : 'api_error',
+                    'message' => $e->getMessage() !== '' ? $e->getMessage() : 'HTTP ' . $status,
+                    'doc_url' => 'https://www.fspbx.com/docs/api/v1/errors/',
+                ]),
+            ]);
+
+            // getHeaders() carries Retry-After / X-RateLimit-* on throttle
+            return response()->json($payload->toArray(), $status, $e->getHeaders());
+        });
+
+        // 6) Catch-all MUST be last
         $this->renderable(function (Throwable $e, Request $request) {
             if (! $request->is('api/v1/*')) return null;
 

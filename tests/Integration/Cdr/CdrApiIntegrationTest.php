@@ -245,6 +245,30 @@ class CdrApiIntegrationTest extends CdrIntegrationTestCase
         )->assertStatus(401);
     }
 
+    public function test_stats_rate_limit_returns_429_not_500(): void
+    {
+        $domain = $this->makeDomain();
+        $user = $this->makeUser($domain, ['cdr_api_read']);
+        $token = $this->mintToken($user, $domain);
+
+        $url = "/api/v1/domains/{$domain}/cdr/stats/summary?" . $this->isoWindowAroundNow();
+
+        // cdr-stats bucket is 30/min per token; the 31st must be a clean 429
+        // (a Handler catch-all used to turn it into an opaque 500)
+        $status = null;
+        for ($i = 1; $i <= 31; $i++) {
+            $response = $this->get($url, $this->bearer($token));
+            $status = $response->status();
+            if ($status !== 200) {
+                break;
+            }
+        }
+
+        $this->assertSame(429, $status, "expected 429 after exceeding the limit, got {$status} on request {$i}");
+        $response->assertHeader('Retry-After');
+        $this->assertSame('rate_limit_error', $response->json('error.type'));
+    }
+
     public function test_min_mos_filter(): void
     {
         $domain = $this->makeDomain();
