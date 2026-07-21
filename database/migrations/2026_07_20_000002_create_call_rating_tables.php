@@ -78,7 +78,7 @@ return new class extends Migration
         Schema::dropIfExists('v_call_rates');
         Schema::dropIfExists('v_call_tariffs');
 
-        DB::table('default_settings')
+        DB::table('v_default_settings')
             ->where('default_setting_category', 'scheduled_jobs')
             ->where('default_setting_subcategory', 'cdr_rating')
             ->delete();
@@ -86,13 +86,13 @@ return new class extends Migration
 
     private function seedDefaultSettings(): void
     {
-        $exists = DB::table('default_settings')
+        $exists = DB::table('v_default_settings')
             ->where('default_setting_category', 'scheduled_jobs')
             ->where('default_setting_subcategory', 'cdr_rating')
             ->exists();
 
         if (! $exists) {
-            DB::table('default_settings')->insert([
+            DB::table('v_default_settings')->insert([
                 'default_setting_uuid' => (string) \Illuminate\Support\Str::uuid(),
                 'default_setting_category' => 'scheduled_jobs',
                 'default_setting_subcategory' => 'cdr_rating',
