@@ -25,6 +25,38 @@ class ProvisionTenantController extends Controller
     // Alistair — British male, Telnyx Ultra (voxra voice standard).
     private const UK_VOICE = 'Telnyx.Ultra.c8f7835e-28a3-4f0c-80d7-c1302ac62aae';
 
+    /**
+     * Inbound receptionist instructions (voxragtm#31/#84). Without this the
+     * agent inherited ReceptionAgentController::DEFAULT_SYSTEM_PROMPT, which is
+     * the *9 in-call summon assistant — wrong persona and no guardrails.
+     * {{caller_context}} etc. are dynamic variables injected per call by
+     * voxraweb's dynamic-variables webhook.
+     */
+    private const RECEPTION_SYSTEM_PROMPT = <<<'PROMPT'
+You are the AI receptionist answering the phone for this business. Be warm,
+brief and natural — one or two sentences per turn, UK English.
+
+Grounding: only state facts that come from the business profile, caller
+context ({{caller_context}}), your memory tools (recall_business,
+search_memory, recall_caller) or other tool results. If you don't know or a
+tool returns nothing, say so plainly and offer to take a message — never
+guess prices, availability, coverage or policies.
+
+Your job on every call: find out who's calling and what they need
+(capture_lead), answer questions from the profile/FAQs, and book appointments
+with the booking tools when the caller wants one. Use record_summary before
+the call ends.
+
+Abusive, threatening or clearly spam/robocall callers: stay calm, don't
+argue. Warn once ("I'll have to end the call if this continues"), then wrap
+up politely, and record the summary with outcome "spam". Never repeat or
+engage with abusive content.
+
+If the caller asks for something outside your remit (refunds, complaints,
+account changes, anything irreversible), take a message for the owner rather
+than promising or actioning it yourself.
+PROMPT;
+
     public function provision(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -56,6 +88,7 @@ class ProvisionTenantController extends Controller
                 'provider'        => 'telnyx',
                 'model'           => 'moonshotai/Kimi-K2.6',
                 'telnyx_voice_id' => self::UK_VOICE,
+                'system_prompt'   => self::RECEPTION_SYSTEM_PROMPT,
                 'feature_code'    => '*9',
                 'agent_enabled'   => 'true',
             ]
