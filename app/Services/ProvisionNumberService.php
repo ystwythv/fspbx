@@ -87,11 +87,6 @@ class ProvisionNumberService
      *  agent's extension, and build its public-context dialplan. */
     public function routeDidToAgent(Domain $domain, AiAgent $agent, string $did): void
     {
-        $action = buildDestinationAction(
-            ['type' => 'ai_agents', 'extension' => $agent->agent_extension],
-            $domain->domain_name,
-        );
-
         $dest = new Destinations();
         $dest->fill([
             'destination_uuid'        => (string) Str::uuid(),
@@ -99,11 +94,60 @@ class ProvisionNumberService
             'dialplan_uuid'           => (string) Str::uuid(),
             'destination_type'        => 'inbound',
             'destination_number'      => $did, // +E.164 (connection dnis_number_format = +e164)
-            'destination_actions'     => json_encode([$action]),
+            'destination_actions'     => json_encode($this->agentOnlyActions($domain, $agent)),
             'destination_enabled'     => true,
             'destination_context'     => 'public',
             'destination_description' => 'Voxra reception (auto-provisioned)',
         ]);
+        $dest->save();
+
+        dispatch(new \App\Jobs\BuildDialplanForPhoneNumber($dest->destination_uuid, $domain->domain_name));
+    }
+
+    private function agentOnlyActions(Domain $domain, AiAgent $agent): array
+    {
+        return [buildDestinationAction(
+            ['type' => 'ai_agents', 'extension' => $agent->agent_extension],
+            $domain->domain_name,
+        )];
+    }
+
+    /**
+     * Ring-mobile-first (voxragtm#23): re-point the tenant's Voxra DID so the
+     * owner's mobile rings for ~20s first, then the reception agent answers.
+     * Uses sequential destination actions (the phone-number dialplan template
+     * emits them verbatim): bridge via loopback into the domain's outbound
+     * routing with a timeout + continue_on_fail, falling through to the agent
+     * transfer. Passing ringFirst=false (or no mobile) restores DID → agent.
+     * Idempotent: updates the existing Voxra destination row when present.
+     */
+    public function applyRingFirst(Domain $domain, AiAgent $agent, bool $ringFirst, ?string $ownerMobile): void
+    {
+        $dest = Destinations::where('domain_uuid', $domain->domain_uuid)
+            ->where('destination_type', 'inbound')
+            ->where('destination_description', 'like', 'Voxra reception%')
+            ->first();
+        if (! $dest) {
+            return; // no DID routed yet — activation/number order handles it later
+        }
+
+        $mobile = preg_replace('/[^\d+]/', '', (string) $ownerMobile);
+        if ($ringFirst && $mobile !== '') {
+            $actions = [
+                ['destination_app' => 'set', 'destination_data' => 'hangup_after_bridge=true'],
+                ['destination_app' => 'set', 'destination_data' => 'call_timeout=20'],
+                ['destination_app' => 'set', 'destination_data' => 'continue_on_fail=true'],
+                ['destination_app' => 'bridge', 'destination_data' => 'loopback/' . $mobile . '/' . $domain->domain_name],
+                buildDestinationAction(
+                    ['type' => 'ai_agents', 'extension' => $agent->agent_extension],
+                    $domain->domain_name,
+                ),
+            ];
+        } else {
+            $actions = $this->agentOnlyActions($domain, $agent);
+        }
+
+        $dest->destination_actions = json_encode($actions);
         $dest->save();
 
         dispatch(new \App\Jobs\BuildDialplanForPhoneNumber($dest->destination_uuid, $domain->domain_name));

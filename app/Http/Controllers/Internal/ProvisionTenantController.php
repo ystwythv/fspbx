@@ -52,6 +52,13 @@ argue. Warn once ("I'll have to end the call if this continues"), then wrap
 up politely, and record the summary with outcome "spam". Never repeat or
 engage with abusive content.
 
+Transfers: when the caller genuinely needs the owner right now (urgent, or
+they insist on a person), offer to put them through and use the transfer
+tool. Introduce it first ("let me try to put you through"). If the transfer
+fails or there is no transfer target, take a detailed message instead and
+say the owner will call back. Record transferred calls with outcome
+"transferred".
+
 If the caller asks for something outside your remit (refunds, complaints,
 account changes, anything irreversible), take a message for the owner rather
 than promising or actioning it yourself.
@@ -63,6 +70,10 @@ PROMPT;
             'tenant_id'            => 'required|string|max:64',
             'business_name'        => 'required|string|max:120',
             'requirement_group_id' => 'nullable|string|max:64',
+            // Ring-mobile-first (voxragtm#23): owner's mobile rings ~20s
+            // before the agent answers. Re-sent on settings changes.
+            'owner_mobile'         => 'nullable|string|max:20',
+            'ring_mobile_first'    => 'nullable|boolean',
         ]);
 
         $tenantId = $data['tenant_id'];
@@ -94,6 +105,29 @@ PROMPT;
             ]
         );
 
+        // Subscribe the tenant domain to cdr.finalized → voxraweb, which fires
+        // missed-call text-backs and stamps real call durations (voxragtm#76).
+        // Idempotent; shared secret so voxraweb verifies one HMAC for all
+        // tenants. Best-effort.
+        try {
+            $cdrSecret = (string) config('services.voxra.cdr_webhook_secret', '');
+            $voxraBase = rtrim((string) config('services.voxra.app_url', ''), '/');
+            if ($cdrSecret !== '' && $voxraBase !== '') {
+                $cdrUrl = $voxraBase . '/api/telnyx/call-ended';
+                \App\Models\ApiWebhook::firstOrCreate(
+                    ['domain_uuid' => $domain->domain_uuid, 'url' => $cdrUrl],
+                    [
+                        'secret' => $cdrSecret,
+                        'events' => [\App\Models\ApiWebhook::EVENT_CDR_FINALIZED],
+                        'enabled' => true,
+                        'description' => 'Voxra call-ended (missed-call text-back + durations)',
+                    ]
+                );
+            }
+        } catch (\Throwable $e) {
+            logger('Voxra cdr webhook subscribe failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+        }
+
         // Auto-order + route a DID (voxragtm#23) — gated + spend-capped; returns
         // null unless VOXRA_PROVISION_ORDER_NUMBER is enabled. Best-effort: a
         // number failure must not fail provisioning (domain + agent are done).
@@ -103,6 +137,21 @@ PROMPT;
                 ->orderAndRoute($domain, $agent, $data['requirement_group_id'] ?? null);
         } catch (\Throwable $e) {
             logger('Voxra auto-number failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+        }
+
+        // Ring-mobile-first routing (voxragtm#23) — applies/reverts on every
+        // provision call so a settings toggle in voxraweb just re-provisions.
+        try {
+            if ($request->has('ring_mobile_first')) {
+                app(\App\Services\ProvisionNumberService::class)->applyRingFirst(
+                    $domain,
+                    $agent,
+                    (bool) ($data['ring_mobile_first'] ?? false),
+                    $data['owner_mobile'] ?? null,
+                );
+            }
+        } catch (\Throwable $e) {
+            logger('Voxra ring-first routing failed for ' . $domain->domain_name . ': ' . $e->getMessage());
         }
 
         return response()->json([

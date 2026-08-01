@@ -134,6 +134,11 @@ return [
         'number_country' => env('VOXRA_NUMBER_COUNTRY', 'GB'),
         'number_type' => env('VOXRA_NUMBER_TYPE', 'local'),
         'number_max_monthly_cost' => (float) env('VOXRA_NUMBER_MAX_MONTHLY_COST', 5.0),
+
+        // Shared HMAC secret for cdr.finalized → voxraweb /api/telnyx/call-ended
+        // (missed-call text-back + call durations, voxragtm#76). Same value as
+        // voxraweb's VOXRA_CDR_WEBHOOK_SECRET.
+        'cdr_webhook_secret' => env('VOXRA_CDR_WEBHOOK_SECRET', ''),
     ],
 
     'keygen' => [
