@@ -75,9 +75,24 @@ class ProcessFreeswitchWebhookJob extends SpatieProcessWebhookJob
     public function __construct(WebhookCall $webhookCall)
     {
         $this->webhookCall = $webhookCall;
-        $event = $this->webhookCall->payload['event'];
 
         $event = data_get($webhookCall->payload, 'event');
+
+        // Call-signalling events are time-critical: push_wake.lua / the
+        // ring-group pre-pass hold the inbound leg for only ~8s while the
+        // pushed iPhone wakes and re-REGISTERs. Queueing this job (plus the
+        // freeswitch-webhooks Redis throttle below, which releases with a
+        // 15s backoff under contention with recording/voicemail bursts) can
+        // eat that entire window before APNs is even contacted — observed
+        // 3-11s-late VoIP pushes and the resulting ghost rings on ext 816
+        // (ystwythv/iqcrmapp#15). Run them synchronously inside the webhook
+        // request instead: the Lua sender fire-and-forgets its curl with a
+        // 5s cap, so inline APNs (+1.5s-capped CRM enrichment) never blocks
+        // the switch.
+        if (in_array($event, ['incoming_call', 'call_cancelled'], true)) {
+            $this->connection = 'sync';
+            return;
+        }
 
         $this->queue = match ($event) {
             'send_vm_sms_notification'   => 'messages',
@@ -85,7 +100,6 @@ class ProcessFreeswitchWebhookJob extends SpatieProcessWebhookJob
             // 'transcribe_call'            => 'transcriptions',
             'voicemail_created'          => 'voicemails',
             'vm_notify_attempt_event'    => 'voicemails',
-            'incoming_call'              => 'notifications',
             default                      => 'default',
         };
     }
@@ -93,6 +107,27 @@ class ProcessFreeswitchWebhookJob extends SpatieProcessWebhookJob
     public function handle()
     {
         // $this->webhookCall // contains an instance of `WebhookCall`
+
+        $event = data_get($this->webhookCall->payload, 'event');
+
+        // Synchronous fast path for call signalling — deliberately outside
+        // the Redis throttle: release(15) is meaningless on the sync
+        // connection, and a 15s delay defeats the push entirely (see
+        // constructor). Failures are logged, not retried; the next
+        // ring-group pass re-fires the push anyway.
+        if (in_array($event, ['incoming_call', 'call_cancelled'], true)) {
+            $data = data_get($this->webhookCall->payload, 'data', []);
+            try {
+                if ($event === 'incoming_call') {
+                    SendIncomingCallPushJob::dispatchSync($data);
+                } else {
+                    SendCallCancelledPushJob::dispatchSync($data);
+                }
+            } catch (\Throwable $e) {
+                Log::error("[Webhook] Synchronous $event push failed: " . $e->getMessage());
+            }
+            return true;
+        }
 
         // Allow only 2 tasks every 1 second
         Redis::throttle('freeswitch-webhooks')->allow(2)->every(1)->then(function () {
@@ -130,13 +165,8 @@ class ProcessFreeswitchWebhookJob extends SpatieProcessWebhookJob
                         HandleVoicemailEscalationAttemptEventJob::dispatch($data)->onQueue('voicemails');
                         break;
 
-                    case 'incoming_call':
-                        SendIncomingCallPushJob::dispatch($data);
-                        break;
-
-                    case 'call_cancelled':
-                        SendCallCancelledPushJob::dispatch($data);
-                        break;
+                    // incoming_call / call_cancelled are handled by the
+                    // synchronous fast path above and never reach this queue.
 
                     case 'transcribe_call':
                         $response = $this->transcribeCall($data);
