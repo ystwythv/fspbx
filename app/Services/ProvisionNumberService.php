@@ -24,6 +24,14 @@ class ProvisionNumberService
      *  E.164 number, or null when disabled / nothing suitable. */
     public function orderAndRoute(Domain $domain, AiAgent $agent, ?string $requirementGroupId = null): ?string
     {
+        // Idempotency: provision() is re-run as a settings sync, so a domain
+        // that already has its Voxra DID routed must never order another
+        // (paid) number — return the existing one.
+        $existing = $this->findReceptionDestination($domain);
+        if ($existing) {
+            return $existing->destination_number;
+        }
+
         if (! config('services.voxra.provision_order_number')) {
             return null;
         }
@@ -99,6 +107,7 @@ class ProvisionNumberService
             'destination_context'     => 'public',
             'destination_description' => 'Voxra reception (auto-provisioned)',
         ]);
+        $dest->insert_date = date('Y-m-d H:i:s');
         $dest->save();
 
         dispatch(new \App\Jobs\BuildDialplanForPhoneNumber($dest->destination_uuid, $domain->domain_name));
@@ -123,33 +132,119 @@ class ProvisionNumberService
      */
     public function applyRingFirst(Domain $domain, AiAgent $agent, bool $ringFirst, ?string $ownerMobile): void
     {
-        $dest = Destinations::where('domain_uuid', $domain->domain_uuid)
-            ->where('destination_type', 'inbound')
-            ->where('destination_description', 'like', 'Voxra reception%')
-            ->first();
+        $dest = $this->findReceptionDestination($domain);
         if (! $dest) {
             return; // no DID routed yet — activation/number order handles it later
         }
 
-        $mobile = preg_replace('/[^\d+]/', '', (string) $ownerMobile);
-        if ($ringFirst && $mobile !== '') {
-            $actions = [
-                ['destination_app' => 'set', 'destination_data' => 'hangup_after_bridge=true'],
-                ['destination_app' => 'set', 'destination_data' => 'call_timeout=20'],
-                ['destination_app' => 'set', 'destination_data' => 'continue_on_fail=true'],
-                ['destination_app' => 'bridge', 'destination_data' => 'loopback/' . $mobile . '/' . $domain->domain_name],
-                buildDestinationAction(
-                    ['type' => 'ai_agents', 'extension' => $agent->agent_extension],
-                    $domain->domain_name,
-                ),
-            ];
-        } else {
-            $actions = $this->agentOnlyActions($domain, $agent);
-        }
+        $mobile = $this->resolveRingFirstMobile($domain, $ringFirst, $ownerMobile);
+        $actions = $mobile !== null
+            ? $this->ringFirstActions($domain, $agent, $mobile)
+            : $this->agentOnlyActions($domain, $agent);
 
         $dest->destination_actions = json_encode($actions);
         $dest->save();
 
         dispatch(new \App\Jobs\BuildDialplanForPhoneNumber($dest->destination_uuid, $domain->domain_name));
+    }
+
+    /** The tenant's Voxra reception destination. Deterministic (oldest row
+     *  first) so re-provisions always update the same row. */
+    public function findReceptionDestination(Domain $domain): ?Destinations
+    {
+        return Destinations::where('domain_uuid', $domain->domain_uuid)
+            ->where('destination_type', 'inbound')
+            ->where('destination_description', 'like', 'Voxra reception%')
+            ->orderBy('insert_date')
+            ->orderBy('destination_uuid')
+            ->first();
+    }
+
+    /** The validated E.164 mobile to ring first, or null for agent-only routing. */
+    public function resolveRingFirstMobile(Domain $domain, bool $ringFirst, ?string $ownerMobile): ?string
+    {
+        if (! $ringFirst) {
+            return null;
+        }
+
+        $mobile = self::normaliseOwnerMobile($ownerMobile);
+        if ($mobile === null) {
+            if (trim((string) $ownerMobile) !== '') {
+                logger()->warning('Voxra ring-first disabled for ' . $domain->domain_name
+                    . ': owner_mobile is not a usable E.164 number');
+            }
+            return null;
+        }
+
+        // PSTN loop guard: ringing a DID hosted on this PBX would send the
+        // call out the gateway and straight back inbound, looping forever
+        // (Max-Forwards resets each round trip) at per-leg PSTN cost.
+        if ($this->isHostedNumber($mobile)) {
+            logger()->warning('Voxra ring-first refused for ' . $domain->domain_name
+                . ': owner_mobile ' . $mobile . ' is a DID hosted on this PBX (would loop)');
+            return null;
+        }
+
+        return $mobile;
+    }
+
+    /**
+     * Sequential actions: bridge the owner's mobile for 20s with
+     * press-1-to-accept (group_confirm, as FusionPBX follow-me does) so a
+     * carrier voicemail answering the leg cancels it instead of swallowing
+     * the call, then fall through to the agent. The confirm variables ride
+     * the dial string so they scope to this bridge only, not the agent leg.
+     */
+    public function ringFirstActions(Domain $domain, AiAgent $agent, string $mobile): array
+    {
+        $confirm = 'group_confirm_key=1'
+            . ',group_confirm_file=ivr/ivr-accept_reject_voicemail.wav'
+            . ',group_confirm_cancel_timeout=1';
+
+        return [
+            ['destination_app' => 'set', 'destination_data' => 'hangup_after_bridge=true'],
+            ['destination_app' => 'set', 'destination_data' => 'call_timeout=20'],
+            ['destination_app' => 'set', 'destination_data' => 'continue_on_fail=true'],
+            ['destination_app' => 'bridge', 'destination_data' => '{' . $confirm . '}loopback/' . $mobile . '/' . $domain->domain_name],
+            buildDestinationAction(
+                ['type' => 'ai_agents', 'extension' => $agent->agent_extension],
+                $domain->domain_name,
+            ),
+        ];
+    }
+
+    /**
+     * Normalise an owner mobile for the ring-first bridge: strip
+     * spaces/punctuation, convert GB national 0… (and international 00…) to
+     * +E.164, and reject anything that isn't + followed by 8-15 digits — a
+     * malformed number makes the bridge fail fast with nothing logged.
+     */
+    public static function normaliseOwnerMobile(?string $raw): ?string
+    {
+        $n = preg_replace('/[\s().-]/', '', (string) $raw);
+        if ($n === '') {
+            return null;
+        }
+        if (str_starts_with($n, '00')) {
+            $n = '+' . substr($n, 2);
+        } elseif (str_starts_with($n, '0')) {
+            $n = '+44' . substr($n, 1);
+        }
+
+        return preg_match('/^\+\d{8,15}$/', $n) ? $n : null;
+    }
+
+    /** True when the number is a DID hosted on this PBX (any domain). */
+    public function isHostedNumber(string $e164): bool
+    {
+        $digits = ltrim($e164, '+');
+        $candidates = [$e164, $digits];
+        if (str_starts_with($digits, '44')) {
+            $candidates[] = '0' . substr($digits, 2); // GB national form
+        }
+
+        return Destinations::where('destination_type', 'inbound')
+            ->whereIn('destination_number', $candidates)
+            ->exists();
     }
 }
