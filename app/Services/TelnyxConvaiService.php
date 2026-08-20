@@ -186,6 +186,25 @@ class TelnyxConvaiService
             ];
         }
 
+        // Warm transfer to the owner's mobile (voxragtm#30): Telnyx-native
+        // transfer tool dialling the {{owner_mobile}} dynamic variable, which
+        // voxraweb's dynamic-variables webhook injects from the tenant's
+        // escalation settings (empty when unset — the prompt tells the agent
+        // to take a message instead). from = the caller, so the owner sees
+        // who's being put through and can ring straight back if missed.
+        $enabled = (array) ($agent->tools_enabled ?? []);
+        if (($enabled['transfer_to_owner'] ?? true) === true) {
+            $tools[] = [
+                'type' => 'transfer',
+                'transfer' => [
+                    'targets' => [
+                        ['name' => 'Owner', 'to' => '{{owner_mobile}}'],
+                    ],
+                    'from' => '{{telnyx_end_user_target}}',
+                ],
+            ];
+        }
+
         $body = [
             'tools' => $tools,
             'dynamic_variables_webhook_url' => $dynVarsUrl,

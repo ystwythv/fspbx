@@ -52,6 +52,13 @@ argue. Warn once ("I'll have to end the call if this continues"), then wrap
 up politely, and record the summary with outcome "spam". Never repeat or
 engage with abusive content.
 
+Transfers: when the caller genuinely needs the owner right now (urgent, or
+they insist on a person), offer to put them through and use the transfer
+tool. Introduce it first ("let me try to put you through"). If the transfer
+fails or there is no transfer target, take a detailed message instead and
+say the owner will call back. Record transferred calls with outcome
+"transferred".
+
 If the caller asks for something outside your remit (refunds, complaints,
 account changes, anything irreversible), take a message for the owner rather
 than promising or actioning it yourself.
@@ -63,6 +70,13 @@ PROMPT;
             'tenant_id'            => 'required|string|max:64',
             'business_name'        => 'required|string|max:120',
             'requirement_group_id' => 'nullable|string|max:64',
+            // Ring-mobile-first (voxragtm#23): owner's mobile rings ~20s
+            // before the agent answers. Re-sent on settings changes.
+            'owner_mobile'         => 'nullable|string|max:20',
+            'ring_mobile_first'    => 'nullable|boolean',
+            // Kill-switch (voxragtm#81): voxraweb re-provisions with false when
+            // a tenant toggles Voxra off or hits their minute cap.
+            'agent_enabled'        => 'nullable|boolean',
         ]);
 
         $tenantId = $data['tenant_id'];
@@ -80,19 +94,38 @@ PROMPT;
             $domain->save(); // DomainObserver bootstraps stock dialplans + FS dirs
         }
 
-        // Idempotent upsert of the reception agent on the domain.
+        // Idempotent upsert of the reception agent on the domain. A disabled
+        // agent disables its dialplans, so inbound calls to the DID stop
+        // reaching the assistant.
         $agent = app(ReceptionAgentController::class)->upsertReceptionAgent(
             $domain->domain_uuid,
-            [
-                'agent_name'      => $businessName . ' Reception',
-                'provider'        => 'telnyx',
-                'model'           => 'moonshotai/Kimi-K2.6',
-                'telnyx_voice_id' => self::UK_VOICE,
-                'system_prompt'   => self::RECEPTION_SYSTEM_PROMPT,
-                'feature_code'    => '*9',
-                'agent_enabled'   => 'true',
-            ]
+            $this->receptionAgentInputs($businessName, $request->boolean('agent_enabled', true))
         );
+
+        // Subscribe the tenant domain to cdr.finalized → voxraweb, which fires
+        // missed-call text-backs and stamps real call durations (voxragtm#76).
+        // Idempotent; shared secret so voxraweb verifies one HMAC for all
+        // tenants. Best-effort.
+        try {
+            $cdrSecret = (string) config('services.voxra.cdr_webhook_secret', '');
+            $voxraBase = rtrim((string) config('services.voxra.app_url', ''), '/');
+            if ($cdrSecret !== '' && $voxraBase !== '') {
+                $cdrUrl = $voxraBase . '/api/telnyx/call-ended';
+                // updateOrCreate so a rotated VOXRA_CDR_WEBHOOK_SECRET
+                // propagates on the next re-provision.
+                \App\Models\ApiWebhook::updateOrCreate(
+                    ['domain_uuid' => $domain->domain_uuid, 'url' => $cdrUrl],
+                    [
+                        'secret' => $cdrSecret,
+                        'events' => [\App\Models\ApiWebhook::EVENT_CDR_FINALIZED],
+                        'enabled' => true,
+                        'description' => 'Voxra call-ended (missed-call text-back + durations)',
+                    ]
+                );
+            }
+        } catch (\Throwable $e) {
+            logger('Voxra cdr webhook subscribe failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+        }
 
         // Auto-order + route a DID (voxragtm#23) — gated + spend-capped; returns
         // null unless VOXRA_PROVISION_ORDER_NUMBER is enabled. Best-effort: a
@@ -105,6 +138,21 @@ PROMPT;
             logger('Voxra auto-number failed for ' . $domain->domain_name . ': ' . $e->getMessage());
         }
 
+        // Ring-mobile-first routing (voxragtm#23) — applies/reverts on every
+        // provision call so a settings toggle in voxraweb just re-provisions.
+        try {
+            if ($request->has('ring_mobile_first')) {
+                app(\App\Services\ProvisionNumberService::class)->applyRingFirst(
+                    $domain,
+                    $agent,
+                    (bool) ($data['ring_mobile_first'] ?? false),
+                    $data['owner_mobile'] ?? null,
+                );
+            }
+        } catch (\Throwable $e) {
+            logger('Voxra ring-first routing failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+        }
+
         return response()->json([
             'ok'                  => true,
             'domain_uuid'         => $domain->domain_uuid,
@@ -114,6 +162,21 @@ PROMPT;
             'telnyx_assistant_id' => $agent->telnyx_assistant_id,
             'number'              => $number,
         ]);
+    }
+
+    /** Upsert inputs for the reception agent (agent_enabled is stored as the
+     *  strings 'true'/'false' — FusionPBX toggle convention). */
+    public function receptionAgentInputs(string $businessName, bool $agentEnabled): array
+    {
+        return [
+            'agent_name'      => $businessName . ' Reception',
+            'provider'        => 'telnyx',
+            'model'           => 'moonshotai/Kimi-K2.6',
+            'telnyx_voice_id' => self::UK_VOICE,
+            'system_prompt'   => self::RECEPTION_SYSTEM_PROMPT,
+            'feature_code'    => '*9',
+            'agent_enabled'   => $agentEnabled ? 'true' : 'false',
+        ];
     }
 
     private function uniqueDomainName(string $businessName): string

@@ -142,6 +142,16 @@ class ReceptionAgentToolDefinitions
                 'required' => ['query'],
             ],
             [
+                'name' => 'send_payment_link',
+                'description' => 'Text the caller a secure card-payment link for a deposit or upfront payment (their business Stripe). Confirm the amount out loud first. Only use when the business takes deposits and the caller agrees.',
+                'properties' => [
+                    // Bounds mirror voxraweb's server-side £1–£5000 validation.
+                    'amount_pounds' => ['type' => 'number', 'description' => 'Amount in pounds, e.g. 40 for £40', 'minimum' => 1, 'maximum' => 5000],
+                    'description' => ['type' => 'string', 'description' => 'What the payment is for, shown on the payment page'],
+                ],
+                'required' => ['amount_pounds', 'description'],
+            ],
+            [
                 'name' => 'take_notes',
                 'description' => 'Record a note from the call; notes are kept and included in the post-call summary.',
                 'properties' => ['note' => ['type' => 'string', 'description' => 'The note text to record']],
@@ -188,6 +198,7 @@ class ReceptionAgentToolDefinitions
     public const DATA_TOOLS = [
         'capture_lead', 'check_availability', 'book_appointment',
         'recall_caller', 'remember_about_caller', 'remember', 'recall_business', 'record_summary', 'search_memory',
+        'send_payment_link',
     ];
 
     public static function isDataTool(string $name): bool
