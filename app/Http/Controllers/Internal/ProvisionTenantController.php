@@ -74,6 +74,9 @@ PROMPT;
             // before the agent answers. Re-sent on settings changes.
             'owner_mobile'         => 'nullable|string|max:20',
             'ring_mobile_first'    => 'nullable|boolean',
+            // Kill-switch (voxragtm#81): voxraweb re-provisions with false when
+            // a tenant toggles Voxra off or hits their minute cap.
+            'agent_enabled'        => 'nullable|boolean',
         ]);
 
         $tenantId = $data['tenant_id'];
@@ -91,18 +94,12 @@ PROMPT;
             $domain->save(); // DomainObserver bootstraps stock dialplans + FS dirs
         }
 
-        // Idempotent upsert of the reception agent on the domain.
+        // Idempotent upsert of the reception agent on the domain. A disabled
+        // agent disables its dialplans, so inbound calls to the DID stop
+        // reaching the assistant.
         $agent = app(ReceptionAgentController::class)->upsertReceptionAgent(
             $domain->domain_uuid,
-            [
-                'agent_name'      => $businessName . ' Reception',
-                'provider'        => 'telnyx',
-                'model'           => 'moonshotai/Kimi-K2.6',
-                'telnyx_voice_id' => self::UK_VOICE,
-                'system_prompt'   => self::RECEPTION_SYSTEM_PROMPT,
-                'feature_code'    => '*9',
-                'agent_enabled'   => 'true',
-            ]
+            $this->receptionAgentInputs($businessName, $request->boolean('agent_enabled', true))
         );
 
         // Subscribe the tenant domain to cdr.finalized → voxraweb, which fires
@@ -114,7 +111,9 @@ PROMPT;
             $voxraBase = rtrim((string) config('services.voxra.app_url', ''), '/');
             if ($cdrSecret !== '' && $voxraBase !== '') {
                 $cdrUrl = $voxraBase . '/api/telnyx/call-ended';
-                \App\Models\ApiWebhook::firstOrCreate(
+                // updateOrCreate so a rotated VOXRA_CDR_WEBHOOK_SECRET
+                // propagates on the next re-provision.
+                \App\Models\ApiWebhook::updateOrCreate(
                     ['domain_uuid' => $domain->domain_uuid, 'url' => $cdrUrl],
                     [
                         'secret' => $cdrSecret,
@@ -163,6 +162,21 @@ PROMPT;
             'telnyx_assistant_id' => $agent->telnyx_assistant_id,
             'number'              => $number,
         ]);
+    }
+
+    /** Upsert inputs for the reception agent (agent_enabled is stored as the
+     *  strings 'true'/'false' — FusionPBX toggle convention). */
+    public function receptionAgentInputs(string $businessName, bool $agentEnabled): array
+    {
+        return [
+            'agent_name'      => $businessName . ' Reception',
+            'provider'        => 'telnyx',
+            'model'           => 'moonshotai/Kimi-K2.6',
+            'telnyx_voice_id' => self::UK_VOICE,
+            'system_prompt'   => self::RECEPTION_SYSTEM_PROMPT,
+            'feature_code'    => '*9',
+            'agent_enabled'   => $agentEnabled ? 'true' : 'false',
+        ];
     }
 
     private function uniqueDomainName(string $businessName): string

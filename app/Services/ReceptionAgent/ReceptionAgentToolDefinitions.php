@@ -145,7 +145,8 @@ class ReceptionAgentToolDefinitions
                 'name' => 'send_payment_link',
                 'description' => 'Text the caller a secure card-payment link for a deposit or upfront payment (their business Stripe). Confirm the amount out loud first. Only use when the business takes deposits and the caller agrees.',
                 'properties' => [
-                    'amount_pounds' => ['type' => 'number', 'description' => 'Amount in pounds, e.g. 40 for £40'],
+                    // Bounds mirror voxraweb's server-side £1–£5000 validation.
+                    'amount_pounds' => ['type' => 'number', 'description' => 'Amount in pounds, e.g. 40 for £40', 'minimum' => 1, 'maximum' => 5000],
                     'description' => ['type' => 'string', 'description' => 'What the payment is for, shown on the payment page'],
                 ],
                 'required' => ['amount_pounds', 'description'],
