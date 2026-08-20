@@ -129,10 +129,14 @@ class TelnyxConvaiService
 
         $voxraBase = rtrim((string) config('services.voxra.app_url', ''), '/');
         $secret = (string) config('services.voxra.agent_tool_secret', '');
+        // Shared secret authenticating telephony tool calls back to this PBX
+        // (VerifyTelnyxSignature middleware, voxragtm#13).
+        $toolSecret = (string) config('telnyx.tool_secret', '');
         $dataToolUrl = $voxraBase !== '' ? $voxraBase . '/api/agent/tool' : '';
         $dynVarsUrl = $voxraBase !== ''
             ? $voxraBase . '/api/agent/dynamic-variables' . ($secret !== '' ? '?s=' . urlencode($secret) : '')
-            : $base . '/webhooks/voxra/reception-agent/dynamic-variables';
+            : $base . '/webhooks/voxra/reception-agent/dynamic-variables'
+                . ($toolSecret !== '' ? '?s=' . urlencode($toolSecret) : '');
 
         $defs = \App\Services\ReceptionAgent\ReceptionAgentToolDefinitions::class;
 
@@ -158,6 +162,9 @@ class TelnyxConvaiService
                     ['name' => 'Content-Type', 'value' => 'application/json'],
                     ['name' => 'X-Voxra-Conversation-Id', 'value' => '{{conversation_id}}'],
                 ];
+                if ($toolSecret !== '') {
+                    $headers[] = ['name' => 'X-Voxra-Tool-Secret', 'value' => $toolSecret];
+                }
             }
 
             $tools[] = [
