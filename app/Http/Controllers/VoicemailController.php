@@ -915,6 +915,37 @@ class VoicemailController extends Controller
         return response()->file(Storage::disk('voicemail')->path($filePath));
     }
 
+    /**
+     * STREAM a voicemail message by its UUID. Signed route: the time-limited
+     * recording_url in voicemail.finalized webhooks (voxragtm#25).
+     */
+    public function streamMessage(Request $request, string $uuid)
+    {
+        if (! $request->hasValidSignature()) {
+            abort(403, 'Invalid or expired link.');
+        }
+
+        $message = \App\Models\VoicemailMessages::query()
+            ->with('voicemail:voicemail_uuid,voicemail_id')
+            ->with('domain:domain_uuid,domain_name')
+            ->find($uuid);
+        if (! $message) {
+            abort(404, 'Voicemail message not found.');
+        }
+
+        $base = ($message->domain?->domain_name ?? '') . '/'
+            . ($message->voicemail?->voicemail_id ?? '') . '/msg_'
+            . $message->voicemail_message_uuid;
+
+        foreach ([$base . '.wav', $base . '.mp3'] as $path) {
+            if (Storage::disk('voicemail')->exists($path)) {
+                return response()->file(Storage::disk('voicemail')->path($path));
+            }
+        }
+
+        abort(404, 'Voicemail audio not found.');
+    }
+
     public function applyVoicemailFile()
     {
         try {

@@ -10,8 +10,11 @@ class ApiWebhook extends Model
 
     public const EVENT_CDR_FINALIZED = 'cdr.finalized';
 
+    public const EVENT_VOICEMAIL_FINALIZED = 'voicemail.finalized';
+
     public const SUPPORTED_EVENTS = [
         self::EVENT_CDR_FINALIZED,
+        self::EVENT_VOICEMAIL_FINALIZED,
     ];
 
     protected $table = 'v_api_webhooks';

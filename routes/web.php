@@ -155,6 +155,9 @@ Route::match(['GET', 'HEAD'], '/prov/{path}', [ProvisioningController::class, 's
 Route::get('/call-detail-records/recordings/{uuid}/stream', [CallRecordingController::class, 'stream'])->name('cdrs.recording.stream');
 Route::get('/call-detail-records/recordings/{uuid}/download', [CallRecordingController::class, 'download'])->name('cdrs.recording.download');
 
+// Voicemail message audio — signed recording_url in voicemail.finalized webhooks
+Route::get('/voicemail-messages/{uuid}/stream', [VoicemailController::class, 'streamMessage'])->name('voicemails.message.stream');
+
 Route::group(['middleware' => 'auth'], function () {
 
     // Extensions

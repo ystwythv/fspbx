@@ -214,6 +214,64 @@ class ProvisionNumberService
     }
 
     /**
+     * Voxra Line routing (voxragtm#25): point the tenant's DID at the stock
+     * line extension (follow-me + voicemail) instead of the agent, and back.
+     * Disabling only rewrites when the DID is currently line-routed, so it
+     * never clobbers ring-first routing applied earlier in the same provision
+     * call. Idempotent: updates the existing Voxra destination row.
+     */
+    public function applyLineMode(Domain $domain, AiAgent $agent, bool $lineMode): void
+    {
+        $dest = $this->findReceptionDestination($domain);
+        if (! $dest) {
+            return; // no DID routed yet — activation/number order handles it later
+        }
+
+        $actions = $this->resolveLineModeActions($domain, $agent, $lineMode, $dest->destination_actions);
+        if ($actions === null) {
+            return;
+        }
+
+        $dest->destination_actions = json_encode($actions);
+        $dest->save();
+
+        dispatch(new \App\Jobs\BuildDialplanForPhoneNumber($dest->destination_uuid, $domain->domain_name));
+    }
+
+    /** The destination actions the DID should carry, or null to leave routing
+     *  untouched (line mode off and not currently line-routed). */
+    public function resolveLineModeActions(Domain $domain, AiAgent $agent, bool $lineMode, ?string $currentActionsJson): ?array
+    {
+        if ($lineMode) {
+            return $this->lineActions($domain);
+        }
+
+        if (self::isLineRouted($currentActionsJson, $domain->domain_name)) {
+            // Line → Start upgrade: restore DID → agent (ring-first, when also
+            // requested, was applied by applyRingFirst just before this runs).
+            return $this->agentOnlyActions($domain, $agent);
+        }
+
+        return null;
+    }
+
+    /** DID → line extension; the stock local_extension dialplan then runs
+     *  follow-me and the voicemail fallback. */
+    public function lineActions(Domain $domain): array
+    {
+        return [buildDestinationAction(
+            ['type' => 'extensions', 'extension' => ProvisionLineService::LINE_EXTENSION],
+            $domain->domain_name,
+        )];
+    }
+
+    /** True when the destination actions transfer to the line extension. */
+    public static function isLineRouted(?string $actionsJson, string $domainName): bool
+    {
+        return str_contains((string) $actionsJson, ProvisionLineService::LINE_EXTENSION . ' XML ' . $domainName);
+    }
+
+    /**
      * Normalise an owner mobile for the ring-first bridge: strip
      * spaces/punctuation, convert GB national 0… (and international 00…) to
      * +E.164, and reject anything that isn't + followed by 8-15 digits — a
