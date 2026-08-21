@@ -7,7 +7,10 @@ use App\Models\Domain;
 use App\Models\Extensions;
 use App\Models\FollowMe;
 use App\Models\FusionCache;
+use App\Models\VoicemailGreetings;
 use App\Models\Voicemails;
+use App\Services\Tts\ElevenLabsTtsService;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
@@ -39,13 +42,21 @@ class ProvisionLineService
      *  entries that set the variables it conditions on (≤ 500). */
     public const FALLBACK_DIALPLAN_ORDER = 510;
 
+    /** Marker naming the TTS greeting rows this service owns. Rows with any
+     *  other greeting_name (owner-recorded / UI-uploaded) are never touched. */
+    public const GREETING_NAME = 'Voxra greeting (auto-provisioned)';
+
+    /** greeting_description prefix carrying the text+voice hash for
+     *  idempotence: "voxra-tts:<hash> <spoken text>". */
+    public const GREETING_HASH_PREFIX = 'voxra-tts:';
+
     /**
      * Idempotently create/update the line extension, its follow-me and its
      * voicemail box. Safe to re-run on every provision call.
      *
      * @return array{extension: string, straight_to_voicemail: bool}
      */
-    public function ensureLineExtension(Domain $domain, ?string $ownerMobile): array
+    public function ensureLineExtension(Domain $domain, ?string $ownerMobile, ?string $businessName = null): array
     {
         // Same normalisation + hosted-DID loop guard as ring-mobile-first.
         $mobile = app(ProvisionNumberService::class)
@@ -74,7 +85,8 @@ class ProvisionLineService
 
         $this->upsertFollowMe($domain, $extension, $mobile);
         $extension->save();
-        $this->upsertVoicemailBox($domain);
+        $voicemail = $this->upsertVoicemailBox($domain);
+        $this->ensureVoicemailGreeting($domain, $voicemail, $businessName);
         $this->ensureVoicemailFallbackDialplan($domain);
 
         FusionCache::clear('directory:' . self::LINE_EXTENSION . '@' . $domain->domain_name);
@@ -141,7 +153,7 @@ class ProvisionLineService
         $extension->follow_me_enabled = $enabled;
     }
 
-    private function upsertVoicemailBox(Domain $domain): void
+    private function upsertVoicemailBox(Domain $domain): Voicemails
     {
         $voicemail = Voicemails::where('domain_uuid', $domain->domain_uuid)
             ->where('voicemail_id', self::LINE_EXTENSION)
@@ -164,6 +176,144 @@ class ProvisionLineService
         $voicemail->voicemail_enabled = 'true';
         $voicemail->voicemail_transcription_enabled = 'true';
         $voicemail->save();
+
+        return $voicemail;
+    }
+
+    /**
+     * Branded per-business TTS voicemail greeting (voxragtm#110). Generated
+     * once per text+voice combination via ElevenLabs at provision time
+     * (~2s measured — fine inside the provision request), then selected as
+     * the box's active greeting so the FusionPBX voicemail lua plays it
+     * instead of the stock "the person at extension 9260…" phrase.
+     *
+     * Rules:
+     *  - only rows named GREETING_NAME are ever created/updated — a greeting
+     *    the owner recorded (*98) or uploaded is never overwritten, and if
+     *    the owner selected their own greeting we never steal the selection;
+     *  - idempotent via a text+voice hash carried in greeting_description —
+     *    re-provisioning with unchanged text/voice makes no TTS call;
+     *  - best-effort: missing ELEVENLABS_API_KEY or a TTS failure logs a
+     *    warning and leaves the stock greeting — provisioning never fails.
+     */
+    private function ensureVoicemailGreeting(Domain $domain, Voicemails $voicemail, ?string $businessName): void
+    {
+        try {
+            $businessName = trim((string) $businessName);
+            if ($businessName === '') {
+                return; // nothing to brand the greeting with
+            }
+
+            $voice = (string) config('services.voxra.vm_greeting_voice', '');
+            $template = (string) config('services.voxra.vm_greeting_text', '');
+            $text = trim(str_replace('{business}', $businessName, $template));
+            if ($voice === '' || $text === '') {
+                return;
+            }
+
+            $hash = substr(hash('sha256', $text . '|' . $voice), 0, 16);
+
+            $ours = VoicemailGreetings::where('domain_uuid', $domain->domain_uuid)
+                ->where('voicemail_id', self::LINE_EXTENSION)
+                ->where('greeting_name', self::GREETING_NAME)
+                ->first();
+
+            // Owner recorded/uploaded + selected their own greeting → theirs
+            // wins, permanently. (greeting_id null/-1/0 = no active greeting.)
+            $activeId = (int) ($voicemail->greeting_id ?? 0);
+            if ($activeId > 0 && (int) ($ours?->greeting_id ?? 0) !== $activeId) {
+                return;
+            }
+
+            $relativePath = $domain->domain_name . '/' . self::LINE_EXTENSION
+                . '/greeting_' . ($ours?->greeting_id ?? '') . '.wav';
+            if (
+                $ours
+                && str_starts_with((string) $ours->greeting_description, self::GREETING_HASH_PREFIX . $hash . ' ')
+                && $activeId === (int) $ours->greeting_id
+                && Storage::disk('voicemail')->exists($relativePath)
+            ) {
+                return; // unchanged — no TTS call
+            }
+
+            // ElevenLabsTtsService throws when ELEVENLABS_API_KEY is unset;
+            // raw 16-bit mono PCM at 16 kHz, wrapped in a WAV header below
+            // (same 16-bit mono PCM family as the UI's saved greetings).
+            $pcm = (new ElevenLabsTtsService())->textToSpeech($text, [
+                'voice' => $voice,
+                'response_format' => 'pcm',
+            ]);
+            if (strlen($pcm) < 1000) {
+                throw new \RuntimeException('ElevenLabs returned implausibly short audio (' . strlen($pcm) . ' bytes)');
+            }
+
+            $greetingId = (int) ($ours->greeting_id ?? $this->nextGreetingId($domain));
+            $filename = 'greeting_' . $greetingId . '.wav';
+            $path = $domain->domain_name . '/' . self::LINE_EXTENSION . '/' . $filename;
+
+            Storage::disk('voicemail')->put($path, self::pcmToWav($pcm, 16000));
+            // match the perms FreeSWITCH writes its own voicemail files with
+            @chmod(Storage::disk('voicemail')->path($path), 0660);
+
+            if (! $ours) {
+                $ours = new VoicemailGreetings([
+                    'domain_uuid' => $domain->domain_uuid,
+                    'voicemail_id' => self::LINE_EXTENSION,
+                    'greeting_name' => self::GREETING_NAME,
+                    'insert_date' => date('Y-m-d H:i:s'),
+                ]);
+            }
+            $ours->greeting_id = $greetingId;
+            $ours->greeting_filename = $filename;
+            $ours->greeting_description = self::GREETING_HASH_PREFIX . $hash . ' ' . $text;
+            $ours->update_date = date('Y-m-d H:i:s');
+            $ours->save();
+
+            $voicemail->greeting_id = $greetingId;
+            $voicemail->save();
+
+            logger('Voxra line greeting generated for ' . $domain->domain_name . ' (greeting_' . $greetingId . '.wav)');
+        } catch (\Throwable $e) {
+            // stock greeting keeps playing; provisioning must not fail
+            logger()->warning('Voxra line greeting TTS skipped for ' . $domain->domain_name . ': ' . $e->getMessage());
+        }
+    }
+
+    /** Lowest free greeting_id for the box — same gap-scan the greeting UI
+     *  uses, so we can't collide with an owner-recorded greeting's slot. */
+    private function nextGreetingId(Domain $domain): int
+    {
+        $existing = VoicemailGreetings::where('domain_uuid', $domain->domain_uuid)
+            ->where('voicemail_id', self::LINE_EXTENSION)
+            ->pluck('greeting_id')
+            ->map(fn ($id) => (int) $id)
+            ->sort()
+            ->values();
+
+        $next = 1;
+        foreach ($existing as $id) {
+            if ($id === $next) {
+                $next++;
+            }
+        }
+
+        return $next;
+    }
+
+    /** Wrap raw 16-bit mono little-endian PCM in a RIFF/WAVE header —
+     *  FreeSWITCH-native, no sox/ffmpeg dependency. */
+    public static function pcmToWav(string $pcm, int $sampleRate): string
+    {
+        $channels = 1;
+        $bitsPerSample = 16;
+        $byteRate = intdiv($sampleRate * $channels * $bitsPerSample, 8);
+        $blockAlign = intdiv($channels * $bitsPerSample, 8);
+
+        return 'RIFF' . pack('V', 36 + strlen($pcm)) . 'WAVE'
+            . 'fmt ' . pack('V', 16)
+            . pack('vvVVvv', 1, $channels, $sampleRate, $byteRate, $blockAlign, $bitsPerSample)
+            . 'data' . pack('V', strlen($pcm))
+            . $pcm;
     }
 
     /**
@@ -225,7 +375,13 @@ class ProvisionLineService
      *  hangup_after_bridge=false reset only ever executes after a FAILED
      *  originate (a successful bridge hangs up inside the lua first), so it
      *  can't suppress the normal after-call hangup — it just makes sure the
-     *  voicemail tail runs unencumbered. */
+     *  voicemail tail runs unencumbered.
+     *
+     *  The tail mirrors the stock send_to_voicemail (*99) actions — the
+     *  FusionPBX voicemail lua, NOT mod_voicemail ("voicemail" application):
+     *  only the lua reads v_voicemails.greeting_id / v_voicemail_greetings
+     *  (so the branded TTS greeting plays) and writes v_voicemail_messages
+     *  (so the voicemail.finalized webhook + transcription fire). */
     public static function fallbackDialplanXml(string $dialplanUuid): string
     {
         $ext = self::LINE_EXTENSION;
@@ -240,7 +396,11 @@ class ProvisionLineService
             '    <action application="set" data="hangup_after_bridge=false"/>',
             '    <action application="answer"/>',
             '    <action application="sleep" data="1000"/>',
-            '    <action application="voicemail" data="default ${domain_name} ' . $ext . '"/>',
+            '    <action application="set" data="voicemail_action=save"/>',
+            '    <action application="set" data="voicemail_id=' . $ext . '"/>',
+            '    <action application="set" data="voicemail_profile=default"/>',
+            '    <action application="set" data="send_to_voicemail=true"/>',
+            '    <action application="lua" data="app.lua voicemail"/>',
             '  </condition>',
             '</extension>',
         ]);

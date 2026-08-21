@@ -145,6 +145,18 @@ return [
         // provision time, never hardcoded. Defaults to the Magrathea trunk the
         // reference "Magrathea Outbound" routes bridge to.
         'outbound_gateway' => env('VOXRA_OUTBOUND_GATEWAY', 'magrathea'),
+
+        // Per-tenant TTS voicemail greeting for Voxra Line (voxragtm#110):
+        // generated at provision time via ElevenLabs. The voice is an
+        // ElevenLabs voice id — default "Alice", a stock clear UK-English
+        // voice. The text template's {business} placeholder is replaced with
+        // the tenant's business_name.
+        'vm_greeting_voice' => env('VOXRA_VM_GREETING_VOICE', 'Xb7hH8MSUJpSbSDYk0k2'),
+        'vm_greeting_text' => env(
+            'VOXRA_VM_GREETING_TEXT',
+            "Thanks for calling {business}. We can't get to the phone right now — "
+                . "please leave a message after the tone and we'll get back to you."
+        ),
     ],
 
     'keygen' => [
