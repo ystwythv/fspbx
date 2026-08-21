@@ -154,6 +154,11 @@ class ProcessFreeswitchWebhookJob extends SpatieProcessWebhookJob
                             break;
                         }
 
+                        // voicemail.finalized API webhooks (voxragtm#25) run
+                        // for any subscribed domain, before the escalation
+                        // profile gate below.
+                        $this->queueVoicemailFinalizedWebhooks($data);
+
                         if (!$this->hasEnabledVmNotifyProfile($data)) {
                             break;
                         }
@@ -193,6 +198,44 @@ class ProcessFreeswitchWebhookJob extends SpatieProcessWebhookJob
             && !empty($data['voicemail_uuid'])
             && !empty($data['voicemail_id'])
             && !empty($data['voicemail_message_uuid']);
+    }
+
+    /**
+     * Queue voicemail.finalized API webhooks (voxragtm#25) for domains with an
+     * enabled subscription. The (webhook, event, resource) unique index on
+     * v_api_webhook_deliveries makes the claim atomic, so a replayed FS event
+     * can't double-send. Best-effort: never blocks the escalation flow.
+     */
+    private function queueVoicemailFinalizedWebhooks(array $data): void
+    {
+        try {
+            $webhooks = \App\Models\ApiWebhook::query()
+                ->where('domain_uuid', $data['domain_uuid'])
+                ->where('enabled', true)
+                ->get()
+                ->filter(fn ($w) => $w->subscribesTo(\App\Models\ApiWebhook::EVENT_VOICEMAIL_FINALIZED));
+
+            foreach ($webhooks as $webhook) {
+                $deliveryUuid = (string) \Illuminate\Support\Str::uuid();
+
+                $claimed = \Illuminate\Support\Facades\DB::table('v_api_webhook_deliveries')->insertOrIgnore([
+                    'delivery_uuid' => $deliveryUuid,
+                    'webhook_uuid' => $webhook->webhook_uuid,
+                    'domain_uuid' => $data['domain_uuid'],
+                    'event_type' => \App\Models\ApiWebhook::EVENT_VOICEMAIL_FINALIZED,
+                    'resource_uuid' => $data['voicemail_message_uuid'],
+                    'status' => \App\Models\ApiWebhookDelivery::STATUS_PENDING,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                if ($claimed) {
+                    \App\Jobs\DeliverVoicemailWebhook::dispatch($deliveryUuid);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::error('[Webhook] voicemail.finalized queueing failed: ' . $e->getMessage());
+        }
     }
 
     private function hasEnabledVmNotifyProfile(array $data): bool

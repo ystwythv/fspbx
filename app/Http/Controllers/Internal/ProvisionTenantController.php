@@ -17,6 +17,11 @@ use Illuminate\Support\Str;
  * Called by voxraweb, authed by VerifyVoxraInternalSignature (HMAC over the raw
  * body). Idempotent per tenant (keyed on domain_description = "voxra-tenant:<id>").
  *
+ * line_mode (voxragtm#25) provisions the Voxra Line plan: agent disabled, DID
+ * routed to a stock follow-me extension (ProvisionLineService) that rings the
+ * owner's mobile then falls to transcribed PBX voicemail. Re-provisioning with
+ * line_mode:false + agent_enabled:true is the Line → Start upgrade.
+ *
  * Phone-number ordering is intentionally NOT done here — it spends money
  * (TelnyxNumberService::createOrder) and is a gated follow-up (voxragtm#23).
  */
@@ -77,9 +82,14 @@ PROMPT;
             // Kill-switch (voxragtm#81): voxraweb re-provisions with false when
             // a tenant toggles Voxra off or hits their minute cap.
             'agent_enabled'        => 'nullable|boolean',
+            // Voxra Line (voxragtm#25): £5 no-AI plan — DID rings the owner's
+            // mobile via a stock follow-me extension, then PBX voicemail with
+            // transcription. The agent exists but stays disabled.
+            'line_mode'            => 'nullable|boolean',
         ]);
 
         $tenantId = $data['tenant_id'];
+        $lineMode = $request->boolean('line_mode', false);
         $businessName = trim($data['business_name']) ?: 'Voxra';
         $tag = 'voxra-tenant:' . $tenantId;
 
@@ -99,8 +109,20 @@ PROMPT;
         // reaching the assistant.
         $agent = app(ReceptionAgentController::class)->upsertReceptionAgent(
             $domain->domain_uuid,
-            $this->receptionAgentInputs($businessName, $request->boolean('agent_enabled', true))
+            $this->receptionAgentInputs(
+                $businessName,
+                self::resolveAgentEnabled($request->boolean('agent_enabled', true), $lineMode)
+            )
         );
+
+        // Voxra Line (voxragtm#25): idempotently provision the follow-me line
+        // extension + voicemail box. Missing/unusable owner_mobile still gets
+        // the extension — it becomes a straight-to-voicemail line.
+        $line = null;
+        if ($lineMode) {
+            $line = app(\App\Services\ProvisionLineService::class)
+                ->ensureLineExtension($domain, $data['owner_mobile'] ?? null);
+        }
 
         // Subscribe the tenant domain to cdr.finalized → voxraweb, which fires
         // missed-call text-backs and stamps real call durations (voxragtm#76).
@@ -117,9 +139,12 @@ PROMPT;
                     ['domain_uuid' => $domain->domain_uuid, 'url' => $cdrUrl],
                     [
                         'secret' => $cdrSecret,
-                        'events' => [\App\Models\ApiWebhook::EVENT_CDR_FINALIZED],
+                        'events' => [
+                            \App\Models\ApiWebhook::EVENT_CDR_FINALIZED,
+                            \App\Models\ApiWebhook::EVENT_VOICEMAIL_FINALIZED,
+                        ],
                         'enabled' => true,
-                        'description' => 'Voxra call-ended (missed-call text-back + durations)',
+                        'description' => 'Voxra events (call-ended + voicemail)',
                     ]
                 );
             }
@@ -153,6 +178,15 @@ PROMPT;
             logger('Voxra ring-first routing failed for ' . $domain->domain_name . ': ' . $e->getMessage());
         }
 
+        // Voxra Line routing (voxragtm#25) — after ring-first so enabling line
+        // mode wins, and disabling it restores agent routing only when the DID
+        // is still line-routed (a fresh ring-first rewrite is left alone).
+        try {
+            app(\App\Services\ProvisionNumberService::class)->applyLineMode($domain, $agent, $lineMode);
+        } catch (\Throwable $e) {
+            logger('Voxra line routing failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+        }
+
         return response()->json([
             'ok'                  => true,
             'domain_uuid'         => $domain->domain_uuid,
@@ -161,7 +195,18 @@ PROMPT;
             'feature_code'        => $agent->feature_code,
             'telnyx_assistant_id' => $agent->telnyx_assistant_id,
             'number'              => $number,
+            'line_extension'      => $line['extension'] ?? null,
+            // true when owner_mobile was missing/unusable: the line answers
+            // straight to voicemail until a valid mobile is re-provisioned
+            'line_straight_to_voicemail' => $line['straight_to_voicemail'] ?? null,
         ]);
+    }
+
+    /** Line mode forces the agent off: it exists for the Line → Start upgrade
+     *  but must not answer (voxragtm#25). */
+    public static function resolveAgentEnabled(bool $agentEnabled, bool $lineMode): bool
+    {
+        return $agentEnabled && ! $lineMode;
     }
 
     /** Upsert inputs for the reception agent (agent_enabled is stored as the
