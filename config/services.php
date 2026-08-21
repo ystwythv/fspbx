@@ -139,6 +139,12 @@ return [
         // (missed-call text-back + call durations, voxragtm#76). Same value as
         // voxraweb's VOXRA_CDR_WEBHOOK_SECRET.
         'cdr_webhook_secret' => env('VOXRA_CDR_WEBHOOK_SECRET', ''),
+
+        // Gateway carrying tenant outbound legs (follow-me / ring-first mobile
+        // bridges, voxragtm#110). A v_gateways name or uuid — resolved at
+        // provision time, never hardcoded. Defaults to the Magrathea trunk the
+        // reference "Magrathea Outbound" routes bridge to.
+        'outbound_gateway' => env('VOXRA_OUTBOUND_GATEWAY', 'magrathea'),
     ],
 
     'keygen' => [

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Dialplans;
 use App\Models\Domain;
 use App\Models\Extensions;
 use App\Models\FollowMe;
@@ -13,8 +14,11 @@ use Illuminate\Support\Str;
  * Voxra Line (voxragtm#25): the £5 no-AI plan. The tenant's DID transfers to
  * a stock FusionPBX extension whose follow-me rings the owner's mobile with
  * press-1 answer confirmation, falling back to the extension's voicemail box
- * (transcription enabled). No custom dialplans — the stock local_extension /
- * follow_me / voicemail apps do all the routing; we only write their rows.
+ * (transcription enabled). The stock local_extension / follow_me / voicemail
+ * apps do the routing; we write their rows plus one per-domain dialplan: a
+ * voicemail-fallback wrapper around the stock follow-me run (voxragtm#110) —
+ * see ensureVoicemailFallbackDialplan for why the stock path alone can strand
+ * the caller.
  */
 class ProvisionLineService
 {
@@ -23,6 +27,17 @@ class ProvisionLineService
 
     /** Ring the owner's mobile this long before voicemail answers. */
     public const FOLLOW_ME_TIMEOUT = 25;
+
+    /** Stable marker used to find/update the fallback dialplan on re-provision. */
+    public const FALLBACK_DIALPLAN_DESCRIPTION = 'Voxra line voicemail fallback (auto-provisioned)';
+
+    /** Owning app marker (this provisioning code), not a template app_uuid. */
+    public const FALLBACK_APP_UUID = 'f1c92d7e-5a04-4b38-8c6d-2e9ab4d0c751';
+
+    /** Must sit before the stock global follow-me-destinations entry (order
+     *  520) so it takes over 9260's follow-me run, and after the last stock
+     *  entries that set the variables it conditions on (≤ 500). */
+    public const FALLBACK_DIALPLAN_ORDER = 510;
 
     /**
      * Idempotently create/update the line extension, its follow-me and its
@@ -60,6 +75,7 @@ class ProvisionLineService
         $this->upsertFollowMe($domain, $extension, $mobile);
         $extension->save();
         $this->upsertVoicemailBox($domain);
+        $this->ensureVoicemailFallbackDialplan($domain);
 
         FusionCache::clear('directory:' . self::LINE_EXTENSION . '@' . $domain->domain_name);
 
@@ -78,7 +94,13 @@ class ProvisionLineService
     }
 
     /** Follow-me destination row for the owner's mobile: press-1 confirm so a
-     *  carrier voicemail answering the leg can't swallow the call. */
+     *  carrier voicemail answering the leg can't swallow the call.
+     *
+     *  Number-format story (voxragtm#110): the destination is stored in E.164
+     *  (+44…) — normaliseOwnerMobile's output — the same format ring-first
+     *  dials, and the per-domain "Voxra Outbound" route
+     *  (ProvisionOutboundRouteService) explicitly matches E.164 alongside UK
+     *  national. One format end to end; the route accepts both. */
     public static function followMeDestinationAttributes(string $mobile): array
     {
         return [
@@ -142,5 +164,85 @@ class ProvisionLineService
         $voicemail->voicemail_enabled = 'true';
         $voicemail->voicemail_transcription_enabled = 'true';
         $voicemail->save();
+    }
+
+    /**
+     * Per-domain dialplan wrapping the stock follow-me run with a voicemail
+     * fallback (voxragtm#110).
+     *
+     * Why: the stock follow_me lua only transfers to voicemail (*99<ext>) for
+     * a whitelist of originate dispositions (NO_ANSWER, USER_BUSY, timeouts…).
+     * When the mobile bridge fails with anything else — live failure: the
+     * loopback leg found no outbound route and died with NORMAL_CLEARING
+     * (call 106d25ae-d90a-42a9-bf35-f4935ae470af) — the lua returns without
+     * transferring, and the stock follow-me-destinations entry has no further
+     * actions: the caller leg "has executed the last dialplan instruction"
+     * and hangs up. Dead air, no voicemail.
+     *
+     * Fix: run the identical follow-me actions from our own entry ordered
+     * just before the stock one (FALLBACK_DIALPLAN_ORDER 510 < 520), with a
+     * voicemail tail. On the whitelisted dispositions the lua still transfers
+     * to *99 (the tail never runs); on a completed bridge hangup_after_bridge
+     * (set inside the lua) ends the call; on every other failure the tail
+     * answers and drops the caller into 9260's transcribed voicemail box —
+     * the same terminal the stock local_extension tail uses. When follow-me
+     * is disabled (no usable mobile) the entry doesn't match and the stock
+     * local_extension → voicemail path handles the call as before.
+     */
+    private function ensureVoicemailFallbackDialplan(Domain $domain): void
+    {
+        $existing = Dialplans::where('domain_uuid', $domain->domain_uuid)
+            ->where('dialplan_description', self::FALLBACK_DIALPLAN_DESCRIPTION)
+            ->first();
+
+        $dialplanUuid = $existing?->dialplan_uuid ?? (string) Str::uuid();
+
+        $dialPlan = $existing ?? new Dialplans();
+        if (! $existing) {
+            $dialPlan->dialplan_uuid        = $dialplanUuid;
+            $dialPlan->app_uuid             = self::FALLBACK_APP_UUID;
+            $dialPlan->domain_uuid          = $domain->domain_uuid;
+            $dialPlan->dialplan_order       = self::FALLBACK_DIALPLAN_ORDER;
+            $dialPlan->dialplan_description = self::FALLBACK_DIALPLAN_DESCRIPTION;
+            $dialPlan->insert_date          = date('Y-m-d H:i:s');
+        } else {
+            $dialPlan->update_date          = date('Y-m-d H:i:s');
+        }
+
+        $dialPlan->dialplan_name     = 'Voxra Line voicemail fallback';
+        $dialPlan->dialplan_number   = self::LINE_EXTENSION;
+        $dialPlan->dialplan_context  = $domain->domain_name;
+        $dialPlan->dialplan_continue = 'false';
+        $dialPlan->dialplan_enabled  = 'true';
+        $dialPlan->dialplan_xml      = self::fallbackDialplanXml($dialplanUuid);
+        $dialPlan->save();
+
+        FusionCache::clear('dialplan.' . $domain->domain_name);
+    }
+
+    /** Same shape as the stock follow-me-destinations entry (conditions and
+     *  the unset/lua pair are verbatim), plus the voicemail tail. The
+     *  hangup_after_bridge=false reset only ever executes after a FAILED
+     *  originate (a successful bridge hangs up inside the lua first), so it
+     *  can't suppress the normal after-call hangup — it just makes sure the
+     *  voicemail tail runs unencumbered. */
+    public static function fallbackDialplanXml(string $dialplanUuid): string
+    {
+        $ext = self::LINE_EXTENSION;
+
+        return implode("\n", [
+            '<extension name="Voxra Line voicemail fallback" continue="false" uuid="' . $dialplanUuid . '">',
+            '  <condition field="destination_number" expression="^' . $ext . '$" break="on-false"/>',
+            '  <condition field="${user_exists}" expression="^true$" break="on-false"/>',
+            '  <condition field="${follow_me_enabled}" expression="^true$" break="on-false">',
+            '    <action application="unset" data="call_timeout"/>',
+            '    <action application="lua" data="app.lua follow_me"/>',
+            '    <action application="set" data="hangup_after_bridge=false"/>',
+            '    <action application="answer"/>',
+            '    <action application="sleep" data="1000"/>',
+            '    <action application="voicemail" data="default ${domain_name} ' . $ext . '"/>',
+            '  </condition>',
+            '</extension>',
+        ]);
     }
 }

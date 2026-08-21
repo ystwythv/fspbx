@@ -112,6 +112,25 @@ class ProvisionLineServiceTest extends TestCase
             $t->string('default_setting_subcategory')->nullable();
             $t->string('default_setting_value')->nullable();
         });
+        // voicemail fallback dialplan (voxragtm#110)
+        Schema::create('v_dialplans', function ($t) {
+            $t->string('dialplan_uuid')->primary();
+            $t->string('domain_uuid')->nullable();
+            $t->string('app_uuid')->nullable();
+            $t->string('dialplan_name')->nullable();
+            $t->string('dialplan_number')->nullable();
+            $t->string('dialplan_destination')->nullable();
+            $t->string('dialplan_context')->nullable();
+            $t->string('dialplan_continue')->nullable();
+            $t->text('dialplan_xml')->nullable();
+            $t->string('dialplan_order')->nullable();
+            $t->string('dialplan_enabled')->nullable();
+            $t->string('dialplan_description')->nullable();
+            $t->string('insert_date')->nullable();
+            $t->string('insert_user')->nullable();
+            $t->string('update_date')->nullable();
+            $t->string('update_user')->nullable();
+        });
     }
 
     private function domain(): Domain
@@ -160,6 +179,49 @@ class ProvisionLineServiceTest extends TestCase
         $this->assertSame(1, FollowMe::count());
         $this->assertSame(1, FollowMeDestinations::count());
         $this->assertSame(1, Voicemails::where('voicemail_id', '9260')->count());
+        $this->assertSame(1, \App\Models\Dialplans::count());
+    }
+
+    public function test_provisions_voicemail_fallback_dialplan(): void
+    {
+        app(ProvisionLineService::class)->ensureLineExtension($this->domain(), '07700 900123');
+
+        $dp = \App\Models\Dialplans::where('domain_uuid', 'dom-uuid-1')
+            ->where('dialplan_description', ProvisionLineService::FALLBACK_DIALPLAN_DESCRIPTION)
+            ->first();
+
+        $this->assertNotNull($dp);
+        $this->assertSame('acme.voxra.uk', $dp->dialplan_context);
+        $this->assertSame('9260', $dp->dialplan_number);
+        $this->assertTrue($dp->dialplan_enabled); // model casts 'true' → bool
+        $this->assertSame('false', $dp->dialplan_continue);
+
+        // must pre-empt the stock global follow-me-destinations entry (order
+        // 520), whose lua-only body strands the caller on unlisted originate
+        // dispositions (the live NORMAL_CLEARING failure, voxragtm#110)
+        $this->assertLessThan(520, (int) $dp->dialplan_order);
+
+        // same follow-me run as stock…
+        $this->assertStringContainsString('data="app.lua follow_me"', $dp->dialplan_xml);
+        $this->assertStringContainsString('field="${follow_me_enabled}" expression="^true$"', $dp->dialplan_xml);
+        // …plus the voicemail tail into the line's transcribed box
+        $this->assertStringContainsString(
+            '<action application="voicemail" data="default ${domain_name} 9260"/>',
+            $dp->dialplan_xml
+        );
+        $this->assertStringContainsString('data="hangup_after_bridge=false"', $dp->dialplan_xml);
+    }
+
+    public function test_fallback_dialplan_provisioned_even_without_mobile(): void
+    {
+        // straight-to-voicemail line: entry doesn't match (follow_me_enabled
+        // false) but must already exist for a later mobile re-provision
+        app(ProvisionLineService::class)->ensureLineExtension($this->domain(), null);
+
+        $this->assertSame(1, \App\Models\Dialplans::where(
+            'dialplan_description',
+            ProvisionLineService::FALLBACK_DIALPLAN_DESCRIPTION
+        )->count());
     }
 
     public function test_missing_mobile_creates_straight_to_voicemail_line(): void

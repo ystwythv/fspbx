@@ -115,6 +115,18 @@ PROMPT;
             )
         );
 
+        // Per-domain PSTN outbound route (voxragtm#110): ring-first and Line
+        // follow-me bridge loopback/+44… into the tenant's own domain context,
+        // and the stock bootstrap ships no outbound route there — without this
+        // the loopback leg dies and the caller hears dead air. Every tenant
+        // needs it; idempotent. Best-effort like its siblings, but loudly
+        // logged: mobile legs keep failing until the gateway resolves.
+        try {
+            app(\App\Services\ProvisionOutboundRouteService::class)->ensureOutboundRoute($domain);
+        } catch (\Throwable $e) {
+            logger()->error('Voxra outbound route provisioning failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+        }
+
         // Voxra Line (voxragtm#25): idempotently provision the follow-me line
         // extension + voicemail box. Missing/unusable owner_mobile still gets
         // the extension — it becomes a straight-to-voicemail line.
