@@ -128,12 +128,13 @@ PROMPT;
         }
 
         // Voxra Line (voxragtm#25): idempotently provision the follow-me line
-        // extension + voicemail box. Missing/unusable owner_mobile still gets
-        // the extension — it becomes a straight-to-voicemail line.
+        // extension + voicemail box (branded TTS greeting, voxragtm#110).
+        // Missing/unusable owner_mobile still gets the extension — it becomes
+        // a straight-to-voicemail line.
         $line = null;
         if ($lineMode) {
             $line = app(\App\Services\ProvisionLineService::class)
-                ->ensureLineExtension($domain, $data['owner_mobile'] ?? null);
+                ->ensureLineExtension($domain, $data['owner_mobile'] ?? null, $businessName);
         }
 
         // Subscribe the tenant domain to cdr.finalized → voxraweb, which fires
