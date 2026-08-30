@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Models\Domain;
 use App\Models\Extensions;
 use App\Models\Voicemails;
+use App\Models\DeviceLines;
 use App\Jobs\DeleteAppUser;
 use App\Models\FusionCache;
 use App\Jobs\SuspendAppUser;
@@ -525,6 +526,7 @@ class ExtensionController extends Controller
      * @authenticated
      *
      * @urlParam domain_uuid string required The domain UUID. Example: 4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b
+     * @queryParam include string Optional. Pass `sip_credentials` to receive a one-time `sip_credentials` object ({username, password, realm}) alongside the extension so the registering device can be provisioned. Never available on GET. Example: sip_credentials
      * 
      * @response 201 scenario="Created" {
      *   "extension_uuid": "d2c7b17c-8b0d-4f0f-b5ff-2cfb6d7a4f4b",
@@ -660,7 +662,9 @@ class ExtensionController extends Controller
             'domain_uuid'  => (string) $domain->domain_uuid,
 
             // keep internal-only fields out of docs
-            'password'     => function_exists('generate_password') ? generate_password() : bin2hex(random_bytes(12)),
+            'password'     => !empty($validated['password'])
+                ? (string) $validated['password']
+                : (function_exists('generate_password') ? generate_password() : bin2hex(random_bytes(12))),
             'user_context' => $validated['user_context'] ?? (string) $domain->domain_name,
             'accountcode'  => $validated['accountcode']  ?? (string) $domain->domain_name,
 
@@ -805,8 +809,13 @@ class ExtensionController extends Controller
                 follow_me_enabled: filter_var($extension->follow_me_enabled, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE),
             );
 
+            $body = $payload->toArray();
+            if (self::wantsSipCredentials($request)) {
+                $body['sip_credentials'] = self::sipCredentials($extension);
+            }
+
             return response()
-                ->json($payload->toArray(), 201)
+                ->json($body, 201)
                 ->header('Location', "/api/v1/domains/{$domain_uuid}/extensions/{$extension->extension_uuid}");
         } catch (\Exception $e) {
 
@@ -839,6 +848,7 @@ class ExtensionController extends Controller
      *
      * @urlParam domain_uuid string required The domain UUID. Example: 4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b
      * @urlParam extension_uuid string required The extension UUID. Example: d2c7b17c-8b0d-4f0f-b5ff-2cfb6d7a4f4b
+     * @queryParam include string Optional. Pass `sip_credentials` to receive a one-time `sip_credentials` object ({username, password, realm}) alongside the extension so the registering device can be provisioned. Never available on GET. Example: sip_credentials
      *
      * @response 200 scenario="Success" {
      *   "extension_uuid": "d2c7b17c-8b0d-4f0f-b5ff-2cfb6d7a4f4b",
@@ -1021,6 +1031,12 @@ class ExtensionController extends Controller
             }
         }
 
+        // SIP password (validated alphanumeric in UpdateExtensionRequest)
+        $newSipPassword = !empty($inputs['password']) ? (string) $inputs['password'] : null;
+        if ($newSipPassword !== null) {
+            $update['password'] = $newSipPassword;
+        }
+
         // numeric DB columns
         if (array_key_exists('call_timeout', $inputs)) {
             $update['call_timeout'] = $toNumericString($inputs['call_timeout']);
@@ -1096,12 +1112,23 @@ class ExtensionController extends Controller
                 $touchVoicemailBecauseFields,
                 $newExtNumber,
                 $oldExtNumber,
-                $boolText
+                $boolText,
+                $newSipPassword
             ) {
                 // 1) Update extension (only if something to change)
                 if (! empty($update)) {
                     $extension->fill($update);
                     $extension->save();
+                }
+
+                // 1b) SIP password changed: every provisioned device line for this
+                //     extension registers with the same credential (mirrors
+                //     ExtensionsController::regenerateSipCredentials).
+                if ($newSipPassword !== null) {
+                    DeviceLines::query()
+                        ->where('domain_uuid', $domain_uuid)
+                        ->where('auth_id', $oldExtNumber)
+                        ->update(['password' => $newSipPassword]);
                 }
 
                 // 2) Advanced settings (suspended)
@@ -1324,7 +1351,12 @@ class ExtensionController extends Controller
                 follow_me_enabled: filter_var($fresh->follow_me_enabled, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE),
             );
 
-            return response()->json($payload->toArray(), 200);
+            $body = $payload->toArray();
+            if (self::wantsSipCredentials($request)) {
+                $body['sip_credentials'] = self::sipCredentials($fresh);
+            }
+
+            return response()->json($body, 200);
         } catch (\Exception $e) {
 
             logger('API Extension update QueryException: ' . $e->getMessage() . ' at ' . $e->getFile() . ':' . $e->getLine());
@@ -1392,6 +1424,29 @@ class ExtensionController extends Controller
      *   }
      * }
      */
+
+    /**
+     * `?include=sip_credentials` opt-in on store/update only: the caller has just
+     * set (or asked us to generate) the SIP password and needs it once to
+     * provision the registering device. Never honoured on GET/list.
+     */
+    private static function wantsSipCredentials(Request $request): bool
+    {
+        $include = $request->query('include', '');
+        $parts = is_array($include) ? $include : explode(',', (string) $include);
+
+        return in_array('sip_credentials', array_map('trim', $parts), true);
+    }
+
+    /** @return array{username: string, password: string, realm: string} */
+    private static function sipCredentials(Extensions $extension): array
+    {
+        return [
+            'username' => (string) $extension->extension,
+            'password' => (string) $extension->getRawOriginal('password'),
+            'realm'    => (string) $extension->user_context,
+        ];
+    }
 
     public function destroy(Request $request, string $domain_uuid, string $extension_uuid)
     {
