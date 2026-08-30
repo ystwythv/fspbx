@@ -146,6 +146,12 @@ return [
         // reference "Magrathea Outbound" routes bridge to.
         'outbound_gateway' => env('VOXRA_OUTBOUND_GATEWAY', 'magrathea'),
 
+        // Voxra Complete (voxragtm#45): the SIP registrar the IQ Mobile FMC
+        // platform registers the tenant's mobile extension through
+        // (sim_card_config.sip_proxy). reseller.sip_hostname on iqportal;
+        // SRV → lon1/eu1 :5060 (internal profile, 407-challenged).
+        'fmc_registrar' => env('VOXRA_FMC_REGISTRAR', 'reg.voxra.uk'),
+
         // Per-tenant TTS voicemail greeting for Voxra Line (voxragtm#110):
         // generated at provision time via ElevenLabs. The voice is an
         // ElevenLabs voice id — default "Alice", a stock clear UK-English

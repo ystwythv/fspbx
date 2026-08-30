@@ -22,6 +22,15 @@ use Illuminate\Support\Str;
  * owner's mobile then falls to transcribed PBX voicemail. Re-provisioning with
  * line_mode:false + agent_enabled:true is the Line → Start upgrade.
  *
+ * complete_mode (voxragtm#45) provisions Voxra Complete: agent on, plus a
+ * registerable "mobile extension" (200–299, ProvisionCompleteService) whose
+ * SIP credentials are returned so voxraweb can hand them to iqportal, where
+ * the FMC platform registers the tenant's eSIM as that extension. `did`
+ * stamps the tenant's number as the extension's caller-ID; `sim_msisdn`
+ * routes calls to the SIM's own mobile number into the same extension.
+ * Ring-first / line routing are no-ops in complete mode (the handset rings
+ * natively as the extension; no PSTN loopback).
+ *
  * Phone-number ordering is intentionally NOT done here — it spends money
  * (TelnyxNumberService::createOrder) and is a gated follow-up (voxragtm#23).
  */
@@ -86,10 +95,17 @@ PROMPT;
             // mobile via a stock follow-me extension, then PBX voicemail with
             // transcription. The agent exists but stays disabled.
             'line_mode'            => 'nullable|boolean',
+            // Voxra Complete (voxragtm#45): eSIM registered via FMC as a real
+            // extension. Mutually exclusive with line_mode (complete wins).
+            'complete_mode'        => 'nullable|boolean',
+            'rotate_sip_password'  => 'nullable|boolean',
+            'did'                  => ['nullable', 'string', 'max:20', 'regex:/^\+\d{10,15}$/'],
+            'sim_msisdn'           => ['nullable', 'string', 'max:20', 'regex:/^\+\d{10,15}$/'],
         ]);
 
         $tenantId = $data['tenant_id'];
-        $lineMode = $request->boolean('line_mode', false);
+        $completeMode = $request->boolean('complete_mode', false);
+        $lineMode = self::resolveLineMode($request->boolean('line_mode', false), $completeMode);
         $businessName = trim($data['business_name']) ?: 'Voxra';
         $tag = 'voxra-tenant:' . $tenantId;
 
@@ -137,6 +153,48 @@ PROMPT;
                 ->ensureLineExtension($domain, $data['owner_mobile'] ?? null, $businessName);
         }
 
+        // Voxra Complete (voxragtm#45): the mobile extension is the whole
+        // point of the plan — its failure fails the request (voxraweb
+        // retries the idempotent call). Caller-ID + MSISDN routing are
+        // best-effort follow-ups on the same extension.
+        $mobile = null;
+        if ($completeMode) {
+            $completeSvc = app(\App\Services\ProvisionCompleteService::class);
+            try {
+                $mobile = $completeSvc->ensureMobileExtension(
+                    $domain,
+                    $businessName,
+                    $request->boolean('rotate_sip_password', false)
+                );
+            } catch (\Throwable $e) {
+                logger()->error('Voxra Complete mobile extension failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+
+                return response()->json([
+                    'ok'          => false,
+                    'error'       => 'mobile_extension_failed',
+                    'message'     => $e->getMessage(),
+                    'domain_uuid' => $domain->domain_uuid,
+                    'domain_name' => $domain->domain_name,
+                ], 500);
+            }
+
+            if (! empty($data['did'])) {
+                try {
+                    $completeSvc->applyCallerId($domain, $data['did'], $businessName);
+                } catch (\Throwable $e) {
+                    logger()->error('Voxra Complete caller-ID failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+                }
+            }
+
+            if (! empty($data['sim_msisdn'])) {
+                try {
+                    $completeSvc->ensureMsisdnDestination($domain, $data['sim_msisdn']);
+                } catch (\Throwable $e) {
+                    logger()->error('Voxra Complete MSISDN routing failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+                }
+            }
+        }
+
         // Subscribe the tenant domain to cdr.finalized → voxraweb, which fires
         // missed-call text-backs and stamps real call durations (voxragtm#76).
         // Idempotent; shared secret so voxraweb verifies one HMAC for all
@@ -168,18 +226,24 @@ PROMPT;
         // Auto-order + route a DID (voxragtm#23) — gated + spend-capped; returns
         // null unless VOXRA_PROVISION_ORDER_NUMBER is enabled. Best-effort: a
         // number failure must not fail provisioning (domain + agent are done).
+        // Complete mode: the DID is allocated + routed to the mobile extension
+        // by iqportal (/api/voxra/phone-numbers, mode:extension) — never here.
         $number = null;
         try {
-            $number = app(\App\Services\ProvisionNumberService::class)
-                ->orderAndRoute($domain, $agent, $data['requirement_group_id'] ?? null);
+            if (! $completeMode) {
+                $number = app(\App\Services\ProvisionNumberService::class)
+                    ->orderAndRoute($domain, $agent, $data['requirement_group_id'] ?? null);
+            }
         } catch (\Throwable $e) {
             logger('Voxra auto-number failed for ' . $domain->domain_name . ': ' . $e->getMessage());
         }
 
         // Ring-mobile-first routing (voxragtm#23) — applies/reverts on every
         // provision call so a settings toggle in voxraweb just re-provisions.
+        // No-op in complete mode: the handset already rings first, natively,
+        // as the FMC-registered extension.
         try {
-            if ($request->has('ring_mobile_first')) {
+            if ($request->has('ring_mobile_first') && ! $completeMode) {
                 app(\App\Services\ProvisionNumberService::class)->applyRingFirst(
                     $domain,
                     $agent,
@@ -195,7 +259,9 @@ PROMPT;
         // mode wins, and disabling it restores agent routing only when the DID
         // is still line-routed (a fresh ring-first rewrite is left alone).
         try {
-            app(\App\Services\ProvisionNumberService::class)->applyLineMode($domain, $agent, $lineMode);
+            if (! $completeMode) {
+                app(\App\Services\ProvisionNumberService::class)->applyLineMode($domain, $agent, $lineMode);
+            }
         } catch (\Throwable $e) {
             logger('Voxra line routing failed for ' . $domain->domain_name . ': ' . $e->getMessage());
         }
@@ -212,7 +278,22 @@ PROMPT;
             // true when owner_mobile was missing/unusable: the line answers
             // straight to voicemail until a valid mobile is re-provisioned
             'line_straight_to_voicemail' => $line['straight_to_voicemail'] ?? null,
+            // Voxra Complete: the SIM's registration credentials. Internal
+            // (HMAC) only — never surfaced on the V1 API.
+            'mobile_extension'    => $mobile ? [
+                'extension' => $mobile['extension'],
+                'password'  => $mobile['password'],
+                'sip_host'  => $mobile['sip_host'],
+                'sip_proxy' => $mobile['sip_proxy'],
+            ] : null,
         ]);
+    }
+
+    /** Complete mode wins over line mode: a Complete tenant's handset IS the
+     *  extension, so the Line follow-me/loopback machinery must stay off. */
+    public static function resolveLineMode(bool $lineMode, bool $completeMode): bool
+    {
+        return $lineMode && ! $completeMode;
     }
 
     /** Line mode forces the agent off: it exists for the Line → Start upgrade

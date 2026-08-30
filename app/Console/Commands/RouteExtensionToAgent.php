@@ -2,10 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Models\AiAgent;
 use App\Models\Domain;
 use App\Models\Extensions;
-use App\Models\FusionCache;
+use App\Services\AgentFailoverService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
@@ -48,47 +47,29 @@ class RouteExtensionToAgent extends Command
         }
 
         $disable = (bool) $this->option('disable');
+        $failover = app(AgentFailoverService::class);
 
         if ($disable) {
-            $extension->forward_no_answer_enabled = 'false';
-            $extension->forward_busy_enabled = 'false';
-            $extension->forward_user_not_registered_enabled = 'false';
+            $failover->clearOn($extension);
             $extension->save();
-            $this->clearCache($extension, $domain->domain_name);
+            $failover->clearCache($extension, $domain->domain_name);
             $this->info("Cleared agent failover on extension {$extension->extension}.");
             return self::SUCCESS;
         }
 
-        $agent = AiAgent::reception()
-            ->forDomain($domain->domain_uuid)
-            ->where('agent_enabled', 'true')
-            ->first();
+        $agent = $failover->enabledAgent($domain);
 
-        if (!$agent || !$agent->agent_extension) {
+        if (!$agent) {
             $this->error("No enabled reception agent for {$domain->domain_name} — provision one first (reception-agent:provision).");
             return self::FAILURE;
         }
 
-        $target = (string) $agent->agent_extension;
-
-        $extension->forward_no_answer_enabled = 'true';
-        $extension->forward_no_answer_destination = $target;
-        $extension->forward_busy_enabled = 'true';
-        $extension->forward_busy_destination = $target;
-        $extension->forward_user_not_registered_enabled = 'true';
-        $extension->forward_user_not_registered_destination = $target;
+        $failover->applyTo($extension, $agent);
         $extension->save();
 
-        $this->clearCache($extension, $domain->domain_name);
+        $failover->clearCache($extension, $domain->domain_name);
 
-        $this->info("Extension {$extension->extension}: no-answer/busy/unregistered → reception agent {$target}.");
+        $this->info("Extension {$extension->extension}: no-answer/busy/unregistered → reception agent {$agent->agent_extension}.");
         return self::SUCCESS;
-    }
-
-    private function clearCache(Extensions $extension, string $domainName): void
-    {
-        $context = $extension->user_context ?: $domainName;
-        FusionCache::clear("directory:{$extension->extension}@{$context}");
-        FusionCache::clear('dialplan.' . $domainName);
     }
 }
