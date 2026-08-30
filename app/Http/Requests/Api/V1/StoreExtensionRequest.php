@@ -23,6 +23,9 @@ class StoreExtensionRequest extends FormRequest
             'directory_first_name' => ['required', 'string', 'max:60'],
             'directory_last_name'  => ['nullable', 'string', 'max:60'],
 
+            // SIP registration password (optional; generated server-side when omitted)
+            'password' => ['sometimes', 'string', 'min:12', 'max:64', 'regex:/^[A-Za-z0-9]+$/'],
+
             'voicemail_mail_to' => ['nullable', 'email', 'max:255'],
             'voicemail_sms_to'  => ['nullable', 'string'],
 
@@ -104,6 +107,11 @@ class StoreExtensionRequest extends FormRequest
             'directory_last_name' => [
                 'description' => 'Last name for directory display.',
                 'example' => 'Desk',
+            ],
+
+            'password' => [
+                'description' => 'SIP registration password for this extension (alphanumeric only, 12–64 chars — it travels through form-encoded partner APIs, the Transatel USI and SIP digest auth). If omitted, a random password is generated. Never returned by GET/list; pass ?include=sip_credentials on this call to have it echoed back once under sip_credentials.',
+                'example' => 'Xk9pQ2mV7bR4tL8nW3zY',
             ],
 
             // --- Labels / status ---
