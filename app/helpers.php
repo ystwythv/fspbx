@@ -47,8 +47,17 @@ if (!function_exists('userCheckPermission')) {
 if (!function_exists('isSuperAdmin')) {
     function isSuperAdmin()
     {
-        foreach (Session::get('user.groups') as $group) {
-            if ($group->group_name == "superadmin" && $group->group_level >= 80) {
+        // Web sessions carry the groups; bearer-token API requests (Sanctum) have no
+        // session, so fall back to the authenticated user's groups from the DB. Without
+        // this the V1 extension store 500'd with "foreach() argument must be of type
+        // array|object, null given" for every API caller (iqportal partner API).
+        $groups = Session::get('user.groups');
+        if (!$groups) {
+            $user = auth()->user();
+            $groups = ($user && method_exists($user, 'groups')) ? $user->groups() : [];
+        }
+        foreach ($groups ?? [] as $group) {
+            if ($group && $group->group_name == "superadmin" && $group->group_level >= 80) {
                 return true;
             }
         }
