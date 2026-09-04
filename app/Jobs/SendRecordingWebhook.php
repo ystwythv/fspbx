@@ -40,11 +40,12 @@ class SendRecordingWebhook implements ShouldQueue
         }
 
         $config = $configService->getSettingsForDomain($delivery->domain_uuid);
+        $event = $delivery->event ?: RecordingWebhookConfigService::EVENT_AVAILABLE;
 
-        if (!$config) {
+        if (!$config || !in_array($event, $config['events'], true)) {
             $delivery->update([
                 'status' => RecordingWebhookDelivery::STATUS_SKIPPED,
-                'last_error' => 'Webhook disabled for domain at send time',
+                'last_error' => 'Webhook or event disabled for domain at send time',
             ]);
             return;
         }
@@ -89,31 +90,7 @@ class SendRecordingWebhook implements ShouldQueue
             throw new \RuntimeException('No recording URL available for CDR ' . $cdr->xml_cdr_uuid);
         }
 
-        $payload = [
-            'event' => 'recording.available',
-            'delivery_uuid' => $delivery->uuid,
-            'cdr_uuid' => $cdr->xml_cdr_uuid,
-            'domain' => $cdr->domain->domain_name ?? null,
-            'direction' => $cdr->direction,
-            'extension' => $cdr->extension->extension ?? null,
-            'extension_name' => $cdr->extension->effective_caller_id_name ?? null,
-            'caller_id_name' => $cdr->caller_id_name,
-            'caller_id_number' => $cdr->caller_id_number,
-            'caller_destination' => $cdr->caller_destination,
-            'destination_number' => $cdr->destination_number,
-            'start' => $cdr->start_stamp ? Carbon::parse($cdr->start_stamp)->toIso8601String() : null,
-            'end' => $cdr->end_stamp ? Carbon::parse($cdr->end_stamp)->toIso8601String() : null,
-            'duration' => (int) $cdr->duration,
-            'billsec' => (int) $cdr->billsec,
-            'hangup_cause' => $cdr->hangup_cause,
-            'recording' => [
-                'url' => $urls['audio_url'],
-                'download_url' => $urls['download_url'],
-                'filename' => $urls['filename'],
-                'expires_at' => now()->addSeconds($config['url_ttl'])->toIso8601String(),
-                'format' => strtolower(pathinfo($urls['filename'] ?? '', PATHINFO_EXTENSION)) ?: null,
-            ],
-        ];
+        $payload = $this->buildPayload($event, $delivery, $cdr, $urls, $config['url_ttl']);
 
         $body = json_encode($payload, JSON_UNESCAPED_SLASHES);
         $timestamp = time();
@@ -121,7 +98,7 @@ class SendRecordingWebhook implements ShouldQueue
 
         $response = Http::withHeaders([
             'Content-Type' => 'application/json',
-            'X-Voxra-Event' => 'recording.available',
+            'X-Voxra-Event' => $event,
             'X-Voxra-Delivery' => $delivery->uuid,
             'X-Voxra-Timestamp' => (string) $timestamp,
             'X-Voxra-Signature' => 't=' . $timestamp . ',v0=' . $signature,
@@ -143,7 +120,45 @@ class SendRecordingWebhook implements ShouldQueue
             'status' => RecordingWebhookDelivery::STATUS_SENT,
             'sent_at' => now(),
             'last_error' => null,
+            'storage_type' => $payload['recording']['storage']['type'] ?? null,
         ]);
+    }
+
+    /**
+     * Payload contract — see docs/recording-webhooks.md §2. Identical shape
+     * for recording.available and recording.archived; `recording.storage`
+     * says where the object lives ({type: local} or {type: s3, bucket, key,
+     * endpoint, region}) so a receiver that owns the bucket can keep a durable
+     * pointer rather than the time-limited URLs.
+     */
+    public function buildPayload(string $event, RecordingWebhookDelivery $delivery, CDR $cdr, array $urls, int $urlTtl): array
+    {
+        return [
+            'event' => $event,
+            'delivery_uuid' => $delivery->uuid,
+            'cdr_uuid' => $cdr->xml_cdr_uuid,
+            'domain' => $cdr->domain->domain_name ?? null,
+            'direction' => $cdr->direction,
+            'extension' => $cdr->extension->extension ?? null,
+            'extension_name' => $cdr->extension->effective_caller_id_name ?? null,
+            'caller_id_name' => $cdr->caller_id_name,
+            'caller_id_number' => $cdr->caller_id_number,
+            'caller_destination' => $cdr->caller_destination,
+            'destination_number' => $cdr->destination_number,
+            'start' => $cdr->start_stamp ? Carbon::parse($cdr->start_stamp)->toIso8601String() : null,
+            'end' => $cdr->end_stamp ? Carbon::parse($cdr->end_stamp)->toIso8601String() : null,
+            'duration' => (int) $cdr->duration,
+            'billsec' => (int) $cdr->billsec,
+            'hangup_cause' => $cdr->hangup_cause,
+            'recording' => [
+                'url' => $urls['audio_url'],
+                'download_url' => $urls['download_url'],
+                'filename' => $urls['filename'],
+                'expires_at' => now()->addSeconds($urlTtl)->toIso8601String(),
+                'format' => strtolower(pathinfo($urls['filename'] ?? '', PATHINFO_EXTENSION)) ?: null,
+                'storage' => $urls['storage'] ?? ['type' => 'local'],
+            ],
+        ];
     }
 
     /**
@@ -193,6 +208,11 @@ class SendRecordingWebhook implements ShouldQueue
         }
 
         CDR::where('xml_cdr_uuid', $cdr->xml_cdr_uuid)->update(['record_name' => $mp3Name]);
+        // The dispatcher dedupes on (domain_uuid, record_name): rename the
+        // claim row too or the same call is re-announced under the mp3 name.
+        RecordingWebhookDelivery::where('domain_uuid', $cdr->domain_uuid)
+            ->where('record_name', $cdr->record_name)
+            ->update(['record_name' => $mp3Name]);
         $cdr->record_name = $mp3Name;
         @unlink($wavPath);
 

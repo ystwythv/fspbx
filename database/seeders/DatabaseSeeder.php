@@ -1038,6 +1038,14 @@ class DatabaseSeeder extends Seeder
             ],
             [
                 'default_setting_category'      => 's3_storage',
+                'default_setting_subcategory'   => 'enabled',
+                'default_setting_name'          => 'boolean',
+                'default_setting_value'         => "false",
+                'default_setting_enabled'       => true,
+                'default_setting_description'   => "Archive call recordings to S3-compatible object storage. Override per domain to send a tenant's recordings to their own bucket.",
+            ],
+            [
+                'default_setting_category'      => 's3_storage',
                 'default_setting_subcategory'   => 'access_key',
                 'default_setting_name'          => 'text',
                 'default_setting_value'         => "",

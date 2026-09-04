@@ -9,6 +9,7 @@ class CdrCallDetailData extends Data
     /**
      * @param array<string, mixed>|null $call_flow
      * @param array<int, array<string, mixed>> $related_legs
+     * @param array<string, mixed>|null $recording_storage {type: 'local'} or {type: 's3', bucket, key, endpoint, region}
      */
     public function __construct(
         public string $xml_cdr_uuid,
@@ -38,6 +39,7 @@ class CdrCallDetailData extends Data
         public ?string $cost_currency,
         public bool $has_recording,
         public ?string $recording_url,
+        public ?array $recording_storage,
         public ?string $sip_call_id,
         public ?int $pdd_ms,
         public ?string $read_codec,

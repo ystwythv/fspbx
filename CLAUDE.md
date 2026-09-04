@@ -29,7 +29,9 @@ Per-domain webhooks fire when a call recording becomes available (signed
 POST with time-limited recording URLs). **See `docs/recording-webhooks.md`**
 for the full contract, how to enable a domain, how to build a receiver, and
 operations/troubleshooting. Reference receiver: iqcrm
-(`src/app/api/webhooks/voxra/recording/route.ts`).
+(`src/app/api/webhooks/voxra/recording/route.ts`). Per-domain S3 archive
+(shared or customer-owned bucket) and the `recording.archived` event:
+**`docs/recording-storage.md`**.
 
 ## ElevenLabs integration
 

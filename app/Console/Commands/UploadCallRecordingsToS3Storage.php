@@ -2,17 +2,22 @@
 
 namespace App\Console\Commands;
 
-use Carbon\Carbon;
 use App\Models\CDR;
-use App\Models\Domain;
 use App\Models\DefaultSettings;
-use App\Models\DomainSettings;
 use Illuminate\Console\Command;
 use App\Jobs\SendS3UploadReport;
-use Illuminate\Support\Facades\Log;
-use Symfony\Component\Process\Process;
-use Symfony\Component\Process\Exception\ProcessFailedException;
+use App\Services\RecordingArchiveService;
+use App\Services\S3StorageConfigService;
 
+/**
+ * Nightly sweeper: archives any local recording in an archive-enabled domain
+ * that the per-call queue (recordings:dispatch-archives → ArchiveRecordingToS3)
+ * did not get to — backlog from before a tenant was enabled, jobs that
+ * exhausted retries, files that were still being written at claim time.
+ *
+ * Only domains with s3_storage/enabled=true (effective) are considered; with
+ * none enabled the run is a silent no-op — no failures, no report email.
+ */
 class UploadCallRecordingsToS3Storage extends Command
 {
     protected $signature = 'fs:upload-call-recordings-to-s3-storage';
@@ -20,7 +25,8 @@ class UploadCallRecordingsToS3Storage extends Command
     protected $description = 'Upload archived call recordings to S3-compatible object storage';
 
     public function __construct(
-        protected \App\Services\S3StorageConfigService $s3StorageConfigService
+        protected S3StorageConfigService $s3StorageConfigService,
+        protected RecordingArchiveService $archiveService
     ) {
         parent::__construct();
     }
@@ -34,9 +40,15 @@ class UploadCallRecordingsToS3Storage extends Command
 
     public function uploadRecordings()
     {
-        $limit = $this->getUploadLimit();
+        $targets = $this->s3StorageConfigService->getArchiveTargets();
 
-        $recordingIds = $this->getCallRecordingIds($limit);
+        if (empty($targets)) {
+            $this->info('No domains have S3 archiving enabled.');
+            return;
+        }
+
+        $limit = $this->getUploadLimit();
+        $recordingIds = $this->getCallRecordingIds(array_keys($targets), $limit);
 
         if (empty($recordingIds)) {
             $this->info('No recordings found for upload.');
@@ -45,155 +57,43 @@ class UploadCallRecordingsToS3Storage extends Command
 
         $failed = [];
         $success = [];
-
-        $domainUuids = CDR::whereIn('xml_cdr_uuid', $recordingIds)
-            ->distinct()
-            ->pluck('domain_uuid')
-            ->filter()
-            ->values()
-            ->all();
-
-        $storageSettings = $this->s3StorageConfigService->getSettingsMapForDomains($domainUuids);
-        $defaultSettings = $storageSettings['default'];
-        $domainOverrides = $storageSettings['domains'];
-        $timeZonesByDomain = $this->getTimeZonesByDomain($domainUuids);
-
-        $s3Clients = [];
+        $timeZones = [];
 
         $this->processRecordingsInChunks($recordingIds, function ($rec) use (
             &$failed,
             &$success,
-            &$s3Clients,
-            $defaultSettings,
-            $domainOverrides,
-            $timeZonesByDomain
+            &$timeZones,
+            $targets
         ) {
-            $settings = $domainOverrides[$rec->domain_uuid] ?? $defaultSettings;
+            $settings = $targets[$rec->domain_uuid] ?? null;
 
             if (!$settings) {
-                $failed[] = [
-                    'msg' => 'No s3_storage settings found for domain.',
-                    'name' => $rec->record_name,
-                ];
-                return;
+                return; // domain disabled since selection
             }
 
-            // Capture original path details before any processing
-            $originalRecordPath = $rec->record_path;
-            $originalRecordName = $rec->record_name;
-            $recordingFile = rtrim($originalRecordPath, '/') . '/' . $originalRecordName;
-
-            // 1. Check if file exists. 
-            // If it is missing, it might be because a sibling CDR record sharing the same file
-            // was processed just moments ago, uploaded the file, and deleted the local copy.
-            if (!file_exists($recordingFile)) {
-                // Refresh the model from the DB to see if it was updated by a batch update
-                $rec->refresh();
-
-                if (str_contains($rec->record_path, 'S3')) {
-                    // This was already handled by a previous iteration (shared file).
-                    // We can consider this a success or just skip silently.
-                    return;
-                }
-
-                // The file is truly missing locally and not on S3.
-                CDR::where('xml_cdr_uuid', $rec->xml_cdr_uuid)
-                    ->update([
-                        'record_path' => null,
-                        'record_name' => null
-                    ]);
-
-                $failed[] = [
-                    'msg' => 'Recording file not found. DB entries cleared.',
-                    'name' => $originalRecordName,
-                ];
-                return;
-            }
-
-            $timeZone = $timeZonesByDomain['domains'][$rec->domain_uuid] ?? $timeZonesByDomain['default'];
-
-            $clientKey = $this->s3StorageConfigService->getSettingsHash($settings);
-
-            if (!isset($s3Clients[$clientKey])) {
-                $s3Clients[$clientKey] = $this->s3StorageConfigService->buildClientFromSettings($settings);
-            }
-
-            $s3 = $s3Clients[$clientKey];
-
-            $mp3File = $this->convertToMp3IfNeeded($recordingFile);
-
-            if (!$mp3File || !file_exists($mp3File)) {
-                $failed[] = [
-                    'msg' => 'MP3 conversion failed or file missing.',
-                    'name' => $rec->record_name,
-                ];
-                return;
-            }
+            $timeZones[$rec->domain_uuid] ??= $this->archiveService->timeZoneForDomain($rec->domain_uuid);
 
             try {
-                Log::info('Uploading File: ' . $mp3File);
-
-                $objectKey = $this->buildObjectKey($rec, $settings, $mp3File, $timeZone);
-
-                $localSize = filesize($mp3File);
-
-                $s3->putObject([
-                    'Bucket'     => $settings['bucket'],
-                    'SourceFile' => $mp3File,
-                    'Key'        => $objectKey,
-                ]);
-
-                // Verify it exists and size matches
-                $head = $s3->headObject([
-                    'Bucket' => $settings['bucket'],
-                    'Key'    => $objectKey,
-                ]);
-
-                $remoteSize = (int) ($head['ContentLength'] ?? 0);
-
-                if ($remoteSize !== (int) $localSize) {
-                    throw new \RuntimeException(
-                        "Upload verification failed (size mismatch). Local={$localSize}, Remote={$remoteSize}"
-                    );
-                }
-
-                // 2. MASS UPDATE
-                // Update ALL CDRs that match this filename and path. 
-                // This covers the current $rec AND any other CDRs sharing this file.
-                $recordingStart = Carbon::parse($rec->start_stamp);
-
-                CDR::where('record_name', $originalRecordName)
-                    ->where('record_path', $originalRecordPath)
-                    ->whereBetween('start_stamp', [
-                        $recordingStart->copy()->subDay(),
-                        $recordingStart->copy()->addDay(),
-                    ])
-                    ->update([
-                        'record_path' => 'S3',
-                        'record_name' => $objectKey
-                    ]);
-
-                // Cleanup local files
-                if ($mp3File !== $recordingFile && file_exists($mp3File)) {
-                    unlink($mp3File);
-                }
-
-                if (
-                    strtolower(pathinfo($recordingFile, PATHINFO_EXTENSION)) === 'wav'
-                    && file_exists($recordingFile)
-                ) {
-                    unlink($recordingFile);
-                }
-
-                $success[] = $originalRecordName . ' => ' . $objectKey;
-            } catch (\Exception $ex) {
+                $result = $this->archiveService->archive($rec, $settings, $timeZones[$rec->domain_uuid]);
+            } catch (\Throwable $ex) {
                 logger($ex->getMessage());
 
                 $failed[] = [
                     'msg' => $ex->getMessage(),
                     'name' => $rec->record_name,
                 ];
+                return;
             }
+
+            if ($result['status'] === RecordingArchiveService::STATUS_MISSING) {
+                $failed[] = [
+                    'msg' => 'Recording file not found. DB entries cleared.',
+                    'name' => $rec->record_name,
+                ];
+            } elseif ($result['status'] === RecordingArchiveService::STATUS_ARCHIVED) {
+                $success[] = $rec->record_name . ' => ' . $result['object_key'];
+            }
+            // already_archived: a sibling leg's upload covered this file — nothing to report
         });
 
         $uploadNotificationEmail = DefaultSettings::where('default_setting_category', 's3_storage')
@@ -201,136 +101,14 @@ class UploadCallRecordingsToS3Storage extends Command
             ->where('default_setting_enabled', true)
             ->value('default_setting_value');
 
-        if ($uploadNotificationEmail) {
-            $attributes = [
+        if ($uploadNotificationEmail && ($failed || $success)) {
+            SendS3UploadReport::dispatch([
                 'email'   => $uploadNotificationEmail,
                 'failed'  => $failed,
                 'success' => $success,
-            ];
-
-            SendS3UploadReport::dispatch($attributes)->onQueue('emails');
+            ])->onQueue('emails');
         }
     }
-
-
-    protected function getTimeZonesByDomain(array $domainUuids)
-    {
-        if (empty($domainUuids)) {
-            return [
-                'default' => 'UTC',
-                'domains' => [],
-            ];
-        }
-
-        $defaultTimeZone = DefaultSettings::where('default_setting_category', 'domain')
-            ->where('default_setting_subcategory', 'time_zone')
-            ->where('default_setting_enabled', true)
-            ->value('default_setting_value') ?? 'UTC';
-
-        $rows = DomainSettings::whereIn('domain_uuid', $domainUuids)
-            ->where('domain_setting_subcategory', 'time_zone')
-            ->where('domain_setting_enabled', true)
-            ->get(['domain_uuid', 'domain_setting_value']);
-
-        $domainTimeZones = [];
-
-        foreach ($rows as $row) {
-            if (!empty($row->domain_setting_value)) {
-                $domainTimeZones[$row->domain_uuid] = $row->domain_setting_value;
-            }
-        }
-
-        return [
-            'default' => $defaultTimeZone,
-            'domains' => $domainTimeZones,
-        ];
-    }
-
-    protected function convertToMp3IfNeeded($recordingFile)
-    {
-        $ext = strtolower(pathinfo($recordingFile, PATHINFO_EXTENSION));
-
-        if ($ext !== 'wav') {
-            return $recordingFile;
-        }
-
-        $mp3File = preg_replace('/\.wav$/i', '.mp3', $recordingFile);
-
-        $process = new Process([
-            'ffmpeg',
-            '-nostdin',
-            '-y',
-            '-i',
-            $recordingFile,
-            '-b:a',
-            '16k',
-            '-ac',
-            '1',
-            '-q:a',
-            '5',
-            $mp3File,
-        ]);
-
-        $process->setTimeout(7200); // 2 hours
-
-        try {
-            $process->mustRun();
-            return $mp3File;
-        } catch (ProcessTimedOutException $e) {
-            logger('FFmpeg timed out for file: ' . $recordingFile . '. Error: ' . $e->getMessage());            return null;
-        } catch (ProcessFailedException $e) {
-            logger($e->getMessage());
-            return null;
-        }
-    }
-
-    protected function buildObjectKey($rec, array $settings, $filePath, string $timeZone = 'UTC')
-    {
-        $start = Carbon::parse($rec->start_stamp)->setTimezone($timeZone);
-
-        if (($settings['type'] ?? 'default') === 'default') {
-            $base = $rec->domain_name . '/'
-                . $start->format('Y') . '/'
-                . $start->format('m') . '/'
-                . $start->format('d') . '/';
-        } else {
-            $base = 'recordings/'
-                . $start->format('Y') . '/'
-                . $start->format('m') . '/'
-                . $start->format('d') . '/';
-        }
-
-        $ext = pathinfo($filePath, PATHINFO_EXTENSION);
-
-        $direction = $this->sanitizePathSegment($rec->direction);
-        $callerIdNumber = $this->sanitizePathSegment($rec->caller_id_number);
-        $callerDestination = $this->sanitizePathSegment($rec->caller_destination);
-
-        return $base
-            . $start->format('His')
-            . '_'
-            . $direction
-            . '_'
-            . $callerIdNumber
-            . '_'
-            . $callerDestination
-            . '.'
-            . $ext;
-    }
-
-    protected function sanitizePathSegment($value)
-    {
-        $value = (string) $value;
-        $value = preg_replace('/[^\w\-\+\.]/', '_', $value);
-
-        return trim($value, '_') ?: 'unknown';
-    }
-
-    public function getDomainName($domain_id)
-    {
-        return Domain::where('domain_uuid', $domain_id)->first();
-    }
-
 
     protected function getUploadLimit(): int
     {
@@ -348,11 +126,12 @@ class UploadCallRecordingsToS3Storage extends Command
         return min($limit, 20000);
     }
 
-    protected function getCallRecordingIds(int $limit): array
+    protected function getCallRecordingIds(array $domainUuids, int $limit): array
     {
         $minimumAgeMinutes = 360;
 
         return CDR::query()
+            ->whereIn('domain_uuid', $domainUuids)
             ->whereNotNull('record_name')
             ->where('record_name', '<>', '')
             ->whereNotNull('record_path')
@@ -386,6 +165,17 @@ class UploadCallRecordingsToS3Storage extends Command
                 ->get();
 
             foreach ($recordings as $rec) {
+                // The file may live on the other node — the sweeper runs on one node only
+                if ($rec->record_path !== 'S3') {
+                    $dir = rtrim((string) $rec->record_path, '/');
+                    if ($dir === '' || !is_file($dir . '/' . $rec->record_name)) {
+                        $rec->refresh();
+                        if ($rec->record_path !== 'S3') {
+                            continue;
+                        }
+                    }
+                }
+
                 $callback($rec);
             }
         }

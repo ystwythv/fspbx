@@ -16,6 +16,11 @@ class CallRecordingUrlService
      * Return temporary URLs for a recording by CDR UUID.
      * - Local: returns signed routes to local stream/download endpoints.
      * - S3/S3-compatible: returns presigned object URLs.
+     *
+     * 'storage' describes where the object lives so a consumer that owns the
+     * bucket can keep a durable pointer instead of a time-limited URL:
+     *   ['type' => 's3', 'bucket', 'key', 'endpoint', 'region'] or ['type' => 'local'].
+     * Never includes credentials.
      */
     public function urlsForCdr(string $xmlCdrUuid, int $ttlSeconds = 600): array
     {
@@ -26,34 +31,23 @@ class CallRecordingUrlService
             ->first();
 
         if (!$rec) {
-            return [
-                'audio_url' => null,
-                'download_url' => null,
-                'filename' => null,
-            ];
+            return $this->empty();
         }
 
         if ($rec->record_path === 'S3') {
             $objectKey = $this->resolveS3ObjectKey($rec);
 
             if (!$objectKey) {
-                return [
-                    'audio_url' => null,
-                    'download_url' => null,
-                    'filename' => null,
-                ];
+                return $this->empty();
             }
 
-            $disk = $this->s3StorageConfigService->buildDiskForDomain($rec->domain_uuid);
+            $settings = $this->s3StorageConfigService->getSettingsForDomain($rec->domain_uuid);
 
-            if (!$disk) {
-                return [
-                    'audio_url' => null,
-                    'download_url' => null,
-                    'filename' => null,
-                ];
+            if (!$settings) {
+                return $this->empty();
             }
 
+            $disk = $this->s3StorageConfigService->buildDiskFromSettings($settings);
             $filename = basename($objectKey);
 
             $audioUrl = $disk->temporaryUrl(
@@ -77,6 +71,7 @@ class CallRecordingUrlService
                 'audio_url' => $audioUrl,
                 'download_url' => $downloadUrl,
                 'filename' => $filename,
+                'storage' => self::s3Storage($settings, $objectKey),
             ];
         }
 
@@ -94,6 +89,32 @@ class CallRecordingUrlService
                 ['uuid' => $rec->xml_cdr_uuid]
             ),
             'filename' => $filename,
+            'storage' => ['type' => 'local'],
+        ];
+    }
+
+    public static function s3Storage(array $settings, string $objectKey): array
+    {
+        $region = $settings['region'] ?? 'us-east-1';
+
+        return [
+            'type' => 's3',
+            'bucket' => $settings['bucket'],
+            'key' => $objectKey,
+            'endpoint' => !empty($settings['endpoint'])
+                ? $settings['endpoint']
+                : 'https://s3.' . $region . '.amazonaws.com',
+            'region' => $region,
+        ];
+    }
+
+    private function empty(): array
+    {
+        return [
+            'audio_url' => null,
+            'download_url' => null,
+            'filename' => null,
+            'storage' => null,
         ];
     }
 
