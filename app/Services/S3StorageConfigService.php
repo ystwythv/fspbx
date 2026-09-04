@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Aws\S3\S3Client;
+use App\Models\Domain;
 use App\Models\DefaultSettings;
 use App\Models\DomainSettings;
 use Illuminate\Support\Facades\Storage;
@@ -26,6 +27,15 @@ class S3StorageConfigService
     ];
 
     /**
+     * Per-domain opt-in for archiving recordings to object storage. Resolved
+     * per key (domain value wins over default) independently of the
+     * credential set, so a tenant can be switched on/off without touching
+     * keys. Credentials without enabled=true are still used for *reading*
+     * recordings that are already on S3 (see getSettingsForDomain()).
+     */
+    const ENABLED_KEY = 'enabled';
+
+    /**
      * Return the effective storage settings for a domain.
      * Domain settings override defaults only when all required settings exist.
      */
@@ -46,6 +56,99 @@ class S3StorageConfigService
         }
 
         return null;
+    }
+
+    /**
+     * Effective settings for a domain when — and only when — archiving is
+     * enabled for it. Use this on every write path (upload jobs); use
+     * getSettingsForDomain() on read paths so recordings already on S3 stay
+     * playable after a tenant turns archiving off.
+     */
+    public function getArchiveSettingsForDomain(?string $domainUuid): ?array
+    {
+        if (!$this->isArchiveEnabledForDomain($domainUuid)) {
+            return null;
+        }
+
+        return $this->getSettingsForDomain($domainUuid);
+    }
+
+    public function isArchiveEnabledForDomain(?string $domainUuid): bool
+    {
+        $default = $this->defaultArchiveEnabled();
+
+        if (!$domainUuid) {
+            return $default;
+        }
+
+        $override = DomainSettings::query()
+            ->where('domain_uuid', $domainUuid)
+            ->where('domain_setting_category', 's3_storage')
+            ->where('domain_setting_subcategory', self::ENABLED_KEY)
+            ->where('domain_setting_enabled', true)
+            ->value('domain_setting_value');
+
+        if ($override === null || $override === '') {
+            return $default;
+        }
+
+        return filter_var($override, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * domain_uuid => normalized settings for every domain that has archiving
+     * enabled AND a usable credential set (own override or the defaults).
+     * Domains with enabled=true but no resolvable bucket are omitted — the
+     * caller never has to handle "enabled but unconfigured".
+     */
+    public function getArchiveTargets(): array
+    {
+        $default = $this->defaultArchiveEnabled();
+
+        $overrides = DomainSettings::query()
+            ->where('domain_setting_category', 's3_storage')
+            ->where('domain_setting_subcategory', self::ENABLED_KEY)
+            ->where('domain_setting_enabled', true)
+            ->pluck('domain_setting_value', 'domain_uuid')
+            ->map(fn ($v) => filter_var($v, FILTER_VALIDATE_BOOLEAN));
+
+        if ($default) {
+            $enabledUuids = Domain::query()
+                ->where('domain_enabled', 'true')
+                ->pluck('domain_uuid')
+                ->reject(fn ($uuid) => ($overrides[$uuid] ?? true) === false)
+                ->values()
+                ->all();
+        } else {
+            $enabledUuids = $overrides->filter()->keys()->values()->all();
+        }
+
+        if (empty($enabledUuids)) {
+            return [];
+        }
+
+        $map = $this->getSettingsMapForDomains($enabledUuids);
+        $targets = [];
+
+        foreach ($enabledUuids as $uuid) {
+            $settings = $map['domains'][$uuid] ?? $map['default'];
+            if ($settings) {
+                $targets[$uuid] = $settings;
+            }
+        }
+
+        return $targets;
+    }
+
+    protected function defaultArchiveEnabled(): bool
+    {
+        $value = DefaultSettings::query()
+            ->where('default_setting_category', 's3_storage')
+            ->where('default_setting_subcategory', self::ENABLED_KEY)
+            ->where('default_setting_enabled', true)
+            ->value('default_setting_value');
+
+        return filter_var($value ?? false, FILTER_VALIDATE_BOOLEAN);
     }
 
     /**

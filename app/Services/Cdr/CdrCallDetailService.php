@@ -40,6 +40,8 @@ class CdrCallDetailService
             ])
             ->all();
 
+        $recording = $this->resolveRecording($cdr);
+
         return new CdrCallDetailData(
             xml_cdr_uuid: (string) $cdr->xml_cdr_uuid,
             object: 'cdr_call',
@@ -67,7 +69,8 @@ class CdrCallDetailService
             cost: $cdr->call_cost === null ? null : (float) $cdr->call_cost,
             cost_currency: $cdr->call_cost_currency,
             has_recording: ! empty($cdr->record_name),
-            recording_url: $this->resolveRecordingUrl($cdr),
+            recording_url: $recording['audio_url'] ?? null,
+            recording_storage: $recording['storage'] ?? null,
             sip_call_id: $cdr->sip_call_id,
             pdd_ms: $cdr->pdd_ms === null ? null : (int) $cdr->pdd_ms,
             read_codec: $cdr->read_codec ?? null,
@@ -82,14 +85,13 @@ class CdrCallDetailService
         );
     }
 
-    private function resolveRecordingUrl(CDR $cdr): ?string
+    private function resolveRecording(CDR $cdr): array
     {
         if (empty($cdr->record_name) && empty($cdr->archive_recording?->object_key)) {
-            return null;
+            return [];
         }
 
-        $urls = $this->recordingUrls->urlsForCdr((string) $cdr->xml_cdr_uuid, 1800);
-        return $urls['audio_url'] ?? null;
+        return $this->recordingUrls->urlsForCdr((string) $cdr->xml_cdr_uuid, 1800);
     }
 
     private function decodeCallFlow(CDR $cdr): ?array

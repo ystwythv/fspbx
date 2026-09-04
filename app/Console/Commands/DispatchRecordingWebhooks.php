@@ -7,10 +7,19 @@ use Illuminate\Support\Str;
 use Illuminate\Console\Command;
 use App\Jobs\SendRecordingWebhook;
 use App\Models\RecordingWebhookDelivery;
+use App\Services\S3StorageConfigService;
 use App\Services\RecordingWebhookConfigService;
 
 class DispatchRecordingWebhooks extends Command
 {
+    /**
+     * When a domain archives to S3, hold recording.available until the file
+     * is in the bucket so the payload carries the customer's presigned URL
+     * and storage block. If the archive hasn't landed after this long, send
+     * with the local URL anyway — recording.archived (if subscribed) follows.
+     */
+    const ARCHIVE_GRACE_MINUTES = 30;
+
     /**
      * The name and signature of the console command.
      *
@@ -27,7 +36,7 @@ class DispatchRecordingWebhooks extends Command
      */
     protected $description = 'Queue call recording webhooks for domains that have them enabled';
 
-    public function handle(RecordingWebhookConfigService $configService)
+    public function handle(RecordingWebhookConfigService $configService, S3StorageConfigService $s3Config)
     {
         $configs = $configService->getEnabledDomainConfigs();
 
@@ -40,69 +49,16 @@ class DispatchRecordingWebhooks extends Command
         }
 
         $lookback = now()->subHours(max(1, (int) $this->option('lookback-hours')));
+        $archiveTargets = $s3Config->getArchiveTargets();
         $dispatched = 0;
 
         foreach ($configs as $domainUuid => $config) {
-            $cdrs = CDR::query()
-                ->where('domain_uuid', $domainUuid)
-                ->whereNotNull('record_name')
-                ->where('record_name', '!=', '')
-                ->whereIn('direction', $config['directions'])
-                ->where('start_stamp', '>=', $lookback)
-                ->whereNotNull('end_stamp')
-                ->whereNotExists(function ($query) {
-                    $query->selectRaw('1')
-                        ->from('recording_webhook_deliveries')
-                        ->whereColumn('recording_webhook_deliveries.domain_uuid', 'v_xml_cdr.domain_uuid')
-                        ->whereColumn('recording_webhook_deliveries.record_name', 'v_xml_cdr.record_name');
-                })
-                ->orderBy('start_stamp')
-                ->get([
-                    'xml_cdr_uuid',
-                    'domain_uuid',
-                    'record_path',
-                    'record_name',
-                    'direction',
-                    'billsec',
-                    'start_stamp',
-                ]);
+            $archiving = isset($archiveTargets[$domainUuid]);
 
-            // Ring group / transfer legs share one recording file — send one
-            // webhook per file, using the leg that carried the conversation
-            $primaryLegs = $cdrs->groupBy('record_name')->map(function ($legs) {
-                return $legs->sortByDesc('billsec')->first();
-            });
+            $dispatched += $this->dispatchAvailable($domainUuid, $config, $lookback, $archiving);
 
-            foreach ($primaryLegs as $cdr) {
-                // Locally-stored recordings can only be served by the node that
-                // holds the file: the webhook URL is signed with this node's
-                // APP_KEY and points at this node's APP_URL. Leave the CDR
-                // unclaimed so the node that recorded the call dispatches it.
-                if (!$this->recordingIsServableHere($cdr)) {
-                    continue;
-                }
-
-                // insertOrIgnore + unique(domain_uuid, record_name) is the atomic
-                // claim: whichever cluster node inserts the row sends the webhook
-                $inserted = RecordingWebhookDelivery::insertOrIgnore([
-                    'uuid' => (string) Str::uuid(),
-                    'domain_uuid' => $cdr->domain_uuid,
-                    'xml_cdr_uuid' => $cdr->xml_cdr_uuid,
-                    'record_name' => $cdr->record_name,
-                    'url' => $config['url'],
-                    'status' => RecordingWebhookDelivery::STATUS_PENDING,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-
-                if ($inserted === 1) {
-                    $delivery = RecordingWebhookDelivery::where('domain_uuid', $cdr->domain_uuid)
-                        ->where('record_name', $cdr->record_name)
-                        ->first();
-
-                    SendRecordingWebhook::dispatch($delivery->uuid);
-                    $dispatched++;
-                }
+            if (in_array(RecordingWebhookConfigService::EVENT_ARCHIVED, $config['events'], true)) {
+                $dispatched += $this->dispatchArchived($domainUuid, $config, $lookback);
             }
         }
 
@@ -111,6 +67,154 @@ class DispatchRecordingWebhooks extends Command
         }
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * recording.available — one per recording file, sent from the node that
+     * can serve it. For archiving domains, fresh local files are left for a
+     * later minute (see ARCHIVE_GRACE_MINUTES) so the archive job can move
+     * them first; once record_path='S3' any node can send.
+     */
+    private function dispatchAvailable(string $domainUuid, array $config, $lookback, bool $archiving): int
+    {
+        $event = RecordingWebhookConfigService::EVENT_AVAILABLE;
+        $count = 0;
+
+        $cdrs = $this->candidateCdrs($domainUuid, $config, $lookback, $event)->get([
+            'xml_cdr_uuid',
+            'domain_uuid',
+            'record_path',
+            'record_name',
+            'direction',
+            'billsec',
+            'start_stamp',
+        ]);
+
+        foreach ($this->primaryLegs($cdrs) as $cdr) {
+            // Locally-stored recordings can only be served by the node that
+            // holds the file: the webhook URL is signed with this node's
+            // APP_KEY and points at this node's APP_URL. Leave the CDR
+            // unclaimed so the node that recorded the call dispatches it.
+            if (!$this->recordingIsServableHere($cdr)) {
+                continue;
+            }
+
+            if (
+                $archiving
+                && $cdr->record_path !== 'S3'
+                && now()->diffInMinutes($cdr->start_stamp) < self::ARCHIVE_GRACE_MINUTES
+            ) {
+                continue;
+            }
+
+            if ($this->claim($cdr, $config, $event)) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * recording.archived — only for files whose recording.available went out
+     * while the recording was still local; when available already carried
+     * the S3 storage block there is nothing new to say.
+     */
+    private function dispatchArchived(string $domainUuid, array $config, $lookback): int
+    {
+        $event = RecordingWebhookConfigService::EVENT_ARCHIVED;
+        $count = 0;
+
+        $cdrs = $this->candidateCdrs($domainUuid, $config, $lookback, $event)
+            ->where('record_path', 'S3')
+            ->whereExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('recording_webhook_deliveries')
+                    ->whereColumn('recording_webhook_deliveries.domain_uuid', 'v_xml_cdr.domain_uuid')
+                    ->whereColumn('recording_webhook_deliveries.record_name', 'v_xml_cdr.record_name')
+                    ->where('recording_webhook_deliveries.event', RecordingWebhookConfigService::EVENT_AVAILABLE)
+                    ->where('recording_webhook_deliveries.status', RecordingWebhookDelivery::STATUS_SENT)
+                    ->where('recording_webhook_deliveries.storage_type', RecordingWebhookDelivery::STORAGE_LOCAL);
+            })
+            ->get([
+                'xml_cdr_uuid',
+                'domain_uuid',
+                'record_path',
+                'record_name',
+                'direction',
+                'billsec',
+                'start_stamp',
+            ]);
+
+        foreach ($this->primaryLegs($cdrs) as $cdr) {
+            if ($this->claim($cdr, $config, $event)) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    private function candidateCdrs(string $domainUuid, array $config, $lookback, string $event)
+    {
+        return CDR::query()
+            ->where('domain_uuid', $domainUuid)
+            ->whereNotNull('record_name')
+            ->where('record_name', '!=', '')
+            ->whereIn('direction', $config['directions'])
+            ->where('start_stamp', '>=', $lookback)
+            ->whereNotNull('end_stamp')
+            ->whereNotExists(function ($query) use ($event) {
+                $query->selectRaw('1')
+                    ->from('recording_webhook_deliveries')
+                    ->whereColumn('recording_webhook_deliveries.domain_uuid', 'v_xml_cdr.domain_uuid')
+                    ->whereColumn('recording_webhook_deliveries.record_name', 'v_xml_cdr.record_name')
+                    ->where('recording_webhook_deliveries.event', $event);
+            })
+            ->orderBy('start_stamp');
+    }
+
+    /**
+     * Ring group / transfer legs share one recording file — send one webhook
+     * per file, using the leg that carried the conversation.
+     */
+    private function primaryLegs($cdrs)
+    {
+        return $cdrs->groupBy('record_name')->map(function ($legs) {
+            return $legs->sortBy('xml_cdr_uuid')->sortByDesc('billsec')->first();
+        });
+    }
+
+    /**
+     * insertOrIgnore + unique(domain_uuid, record_name, event) is the atomic
+     * claim: whichever cluster node inserts the row sends the webhook.
+     */
+    private function claim($cdr, array $config, string $event): bool
+    {
+        $inserted = RecordingWebhookDelivery::insertOrIgnore([
+            'uuid' => (string) Str::uuid(),
+            'domain_uuid' => $cdr->domain_uuid,
+            'xml_cdr_uuid' => $cdr->xml_cdr_uuid,
+            'record_name' => $cdr->record_name,
+            'event' => $event,
+            'url' => $config['url'],
+            'status' => RecordingWebhookDelivery::STATUS_PENDING,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        if ($inserted !== 1) {
+            return false;
+        }
+
+        $delivery = RecordingWebhookDelivery::where('domain_uuid', $cdr->domain_uuid)
+            ->where('record_name', $cdr->record_name)
+            ->where('event', $event)
+            ->first();
+
+        SendRecordingWebhook::dispatch($delivery->uuid);
+
+        return true;
     }
 
     /**

@@ -37,7 +37,7 @@ class Kernel extends ConsoleKernel
         $s3UploadTime = $this->getScheduledJobTime($jobSettings, 's3_upload_calls_time', '01:00');
         $backupTime = $this->getScheduledJobTime($jobSettings, 'backup_time', '02:00');
 
-        // Upload call recordings to AWS
+        // Nightly S3 archive sweeper (catches anything the per-call queue missed)
         if (
             isset($jobSettings['s3_upload_calls_' . $this->getMacAddress()])
             && $jobSettings['s3_upload_calls_' . $this->getMacAddress()] === "true"
@@ -93,6 +93,12 @@ class Kernel extends ConsoleKernel
         // Process scheduled jobs
         if (isset($jobSettings['wake_up_calls']) && $jobSettings['wake_up_calls'] === "true") {
             $schedule->job(new ProcessWakeupCalls())->everyMinute();
+        }
+
+        // Queue per-call S3 archive jobs for archive-enabled domains (runs on
+        // both nodes; the claim row decides which one takes each file)
+        if (isset($jobSettings['recording_archive']) && $jobSettings['recording_archive'] === "true") {
+            $schedule->command('recordings:dispatch-archives')->everyMinute()->withoutOverlapping();
         }
 
         // Dispatch call recording webhooks for enabled domains

@@ -9,12 +9,18 @@ class RecordingWebhookConfigService
 {
     const CATEGORY = 'recording_webhook';
 
+    const EVENT_AVAILABLE = 'recording.available';
+    const EVENT_ARCHIVED = 'recording.archived';
+
+    const EVENTS = [self::EVENT_AVAILABLE, self::EVENT_ARCHIVED];
+
     protected array $subcategories = [
         'enabled',
         'url',
         'secret',
         'url_ttl',
         'directions',
+        'events',
     ];
 
     /**
@@ -84,11 +90,17 @@ class RecordingWebhookConfigService
             explode(',', strtolower($settings['directions'] ?? 'inbound,outbound,local'))
         )));
 
+        $events = array_values(array_intersect(
+            self::EVENTS,
+            array_filter(array_map('trim', explode(',', strtolower($settings['events'] ?? self::EVENT_AVAILABLE))))
+        ));
+
         return [
             'url' => $url,
             'secret' => $secret,
             'url_ttl' => max(60, (int) ($settings['url_ttl'] ?? 3600)),
             'directions' => $directions ?: ['inbound', 'outbound', 'local'],
+            'events' => $events ?: [self::EVENT_AVAILABLE],
         ];
     }
 

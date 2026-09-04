@@ -3,21 +3,22 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 
-class RecordingWebhookDelivery extends Model
+/**
+ * One row per recording file queued for S3 archive. The unique
+ * (domain_uuid, record_name) index is the atomic cross-node claim — record_name
+ * is the ORIGINAL local filename; object_key holds where it ended up.
+ */
+class RecordingArchive extends Model
 {
-    use HasFactory, \App\Models\Traits\TraitUuid;
+    use \App\Models\Traits\TraitUuid;
 
     const STATUS_PENDING = 'pending';
-    const STATUS_SENT = 'sent';
+    const STATUS_ARCHIVED = 'archived';
     const STATUS_FAILED = 'failed';
     const STATUS_SKIPPED = 'skipped';
 
-    const STORAGE_LOCAL = 'local';
-    const STORAGE_S3 = 's3';
-
-    protected $table = "recording_webhook_deliveries";
+    protected $table = 'recording_archives';
 
     protected $primaryKey = 'uuid';
     public $incrementing = false;
@@ -27,17 +28,16 @@ class RecordingWebhookDelivery extends Model
         'domain_uuid',
         'xml_cdr_uuid',
         'record_name',
-        'event',
-        'storage_type',
-        'url',
         'status',
         'attempts',
         'last_error',
-        'sent_at',
+        'bucket',
+        'object_key',
+        'archived_at',
     ];
 
     protected $casts = [
-        'sent_at' => 'datetime',
+        'archived_at' => 'datetime',
     ];
 
     public function cdr()

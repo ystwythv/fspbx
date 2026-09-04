@@ -55,6 +55,7 @@ non-empty `url` **and** `secret`.
 | `secret` | text | — | HMAC-SHA256 signing key, shared with the receiver |
 | `url_ttl` | numeric | `3600` | seconds the recording URLs in the payload stay valid (min 60) |
 | `directions` | text | `inbound,outbound,local` | comma-separated CDR directions that trigger a webhook |
+| `events` | text | `recording.available` | comma-separated events to send: `recording.available`, `recording.archived` (see §2a) |
 
 Via the UI: Domain Settings → add settings under category `recording_webhook`.
 
@@ -99,7 +100,7 @@ all, check that first, then `php artisan schedule:list | grep dispatch-recording
 
 | Header | Example | Meaning |
 |---|---|---|
-| `X-Voxra-Event` | `recording.available` | event type (only this one today) |
+| `X-Voxra-Event` | `recording.available` | event type: `recording.available` or `recording.archived` |
 | `X-Voxra-Delivery` | `<uuid>` | delivery attempt group — stable across retries |
 | `X-Voxra-Timestamp` | `1751500000` | unix seconds when signed |
 | `X-Voxra-Signature` | `t=1751500000,v0=<hex>` | HMAC signature (below) |
@@ -143,9 +144,30 @@ TypeScript reference: `src/lib/voxra/verify-recording-webhook.ts` in iqcrm.
     "download_url": "https://app.voxra.uk/…signed…",
     "filename": "b50b24b1-….wav",
     "expires_at": "2026-07-02T17:04:00+00:00",
-    "format": "wav"
+    "format": "wav",
+    "storage": { "type": "local" }
   }
 }
+```
+
+When the recording has been archived to S3 (see `docs/recording-storage.md`)
+the storage block describes the object — never credentials:
+
+```json
+  "recording": {
+    "url": "https://customer-bucket.s3.eu-west-2.amazonaws.com/recordings/…?X-Amz-…",
+    "download_url": "…",
+    "filename": "090012_inbound_447911123456_01234567890.mp3",
+    "expires_at": "…",
+    "format": "mp3",
+    "storage": {
+      "type": "s3",
+      "bucket": "customer-bucket",
+      "key": "recordings/2026/09/04/090012_inbound_447911123456_01234567890.mp3",
+      "endpoint": "https://s3.eu-west-2.amazonaws.com",
+      "region": "eu-west-2"
+    }
+  }
 ```
 
 Field notes:
@@ -163,6 +185,23 @@ Field notes:
 - `recording.url` / `download_url` are **time-limited** (`url_ttl`, default
   1h) — either a Laravel signed route (local file) or a presigned S3 URL.
   Fetch promptly; persist the audio yourself if you need it long-term.
+- `recording.storage.type` is `local` or `s3`. For `s3`, `bucket` + `key`
+  are a durable pointer — a receiver that owns the bucket can store those
+  and never depend on Voxra URLs or Voxra retention.
+
+### 2a. `recording.archived`
+
+Opt-in per domain via `events`. Sent after a recording is moved to S3 **only
+if** its `recording.available` went out while the file was still local
+(`storage.type = local`). Same payload shape as above with the `storage`
+block populated and fresh presigned URLs; `cdr_uuid` is the same, so dedupe
+on `(event, cdr_uuid)`. For domains that archive within the dispatcher's
+grace window, `recording.available` already carries the S3 storage block and
+no `recording.archived` is sent for that file.
+
+Receivers must 2xx unknown-but-well-formed events they don't act on
+(the iqcrm receiver currently 422s unknown events — fine while iqmobile.uk
+is not subscribed to `recording.archived`; change it before subscribing).
 
 ### Response & retry semantics
 
@@ -180,6 +219,8 @@ Field notes:
 - [ ] Ack < 30s; heavy work async
 - [ ] Idempotent on `cdr_uuid`
 - [ ] Fetch recording before `expires_at`; handle `wav` and `mp3`
+- [ ] Tolerate the `recording.storage` block; if subscribed to
+      `recording.archived`, handle both events (same shape)
 - [ ] If you do async work after acking, make it crash-safe: persist the
       recording URL + expiry, track a status that can never get stuck
       (see "lessons" below), and sweep/retry stale work on a schedule
@@ -219,7 +260,11 @@ Hard-won lessons baked into that implementation:
 ## 4. Operations
 
 Delivery state lives in `recording_webhook_deliveries`
-(status: `pending` → `sent` | `failed` | `skipped`):
+(status: `pending` → `sent` | `failed` | `skipped`; one row per
+`(domain_uuid, record_name, event)`; `storage_type` records whether the
+sent payload pointed at a `local` file or an `s3` object). When a file is
+archived, `record_name` on its delivery rows is renamed to the object key
+along with the CDRs so the dedupe key stays valid.
 
 ```php
 // recent deliveries
@@ -241,6 +286,7 @@ Common failure signatures:
 | no deliveries created at all | domain not enabled/url/secret missing, or `scheduled_jobs`/`recording_webhooks` off |
 | job class errors after deploy | **Horizon must be restarted after deploying new job code**: `supervisorctl restart horizon:horizon_00` on both nodes |
 | receiver got the webhook but can't fetch audio | receiver processed after `url_ttl` expired — raise `url_ttl` or fetch sooner |
+| archiving domain: `recording.available` arrives ~30 min after the call | expected when the S3 archive hasn't landed within the grace window — check `recording_archives` (see `docs/recording-storage.md`) |
 
 Deploys: `ansible-playbook -i hosts.ini voxra.yml --tags fspbx --private-key
 ~/.ssh/id_ed25519` from iqm-ansible (check PLAY RECAP, not exit code), then
@@ -248,8 +294,10 @@ restart Horizon on both nodes.
 
 ## 5. Adding a new event type (future work)
 
-Follow the same pattern: a scanner (or hook) that claims work atomically in a
-deliveries table, a queued job that signs with the same header scheme, and a
-new `X-Voxra-Event` value. Keep the signature scheme identical so receivers
-can share one verifier. Candidate next event: `transcription.completed`
+Follow the same pattern: a scanner (or hook) that claims work atomically in
+the deliveries table keyed by `(domain_uuid, record_name, event)`, reuse
+`SendRecordingWebhook::buildPayload()` / the same header scheme, and add the
+event name to `RecordingWebhookConfigService::EVENTS`. Keep the signature
+scheme identical so receivers can share one verifier. `recording.archived`
+is the worked example. Candidate next event: `transcription.completed`
 (fired from `CallTranscriptionService` when AssemblyAI transcripts land).
