@@ -408,7 +408,6 @@ Route::group(['middleware' => ['auth:sanctum', 'api.cookie.auth']], function () 
     // Domains 
     Route::post('domains', [DomainController::class, 'store'])->name('domains.store');
     Route::put('domains/{domain}', [DomainController::class, 'update'])->name('domains.update');
-    Route::post('domains/{domain}/outbound-route', [DomainController::class, 'ensureOutboundRoute'])->name('domains.outbound-route');
     Route::get('domains/data', [DomainController::class, 'getData'])->name('domains.data');
     Route::post('domains/item-options', [DomainController::class, 'getItemOptions'])->name('domains.item.options');
     Route::post('domains/bulk-delete', [DomainController::class, 'bulkDelete'])->name('domains.bulk.delete');

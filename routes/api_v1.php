@@ -42,6 +42,8 @@ Route::middleware(['auth:sanctum', 'api.token.auth', 'throttle:api'])->group(fun
 
     Route::patch('/domains/{domain_uuid}', [DomainController::class, 'update'])
         ->middleware('user.authorize:domain_edit');
+    Route::post('/domains/{domain_uuid}/outbound-route', [DomainController::class, 'ensureOutboundRoute'])
+        ->middleware('user.authorize:domain_edit');
 
     Route::delete('/domains/{domain_uuid}', [DomainController::class, 'destroy'])
         ->middleware('user.authorize:domain_delete');
