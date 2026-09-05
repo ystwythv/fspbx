@@ -15,6 +15,7 @@ use App\Services\Auth\PermissionService;
 use App\Data\Api\V1\DomainListResponseData;
 use App\Http\Requests\Api\V1\StoreDomainRequest;
 use App\Http\Requests\Api\V1\UpdateDomainRequest;
+use App\Services\ProvisionOutboundRouteService;
 
 class DomainController extends Controller
 {
@@ -292,6 +293,14 @@ class DomainController extends Controller
                 return $domain->fresh();
             });
 
+            // A tenant created through the API (IQ portal complete-signup / domain API)
+            // otherwise gets the stock dialplans only, which carry no PSTN outbound
+            // route: the SIM's own calls reach the domain context via the FMC and fall
+            // off the end of the dialplan with 480 (iqportal#1314, Greenhouse 2026-09-05).
+            // Same idempotent provisioning the Voxra tenant flow already runs; best-effort
+            // so a gateway lookup problem cannot fail the domain creation.
+            $this->ensureOutboundRouteBestEffort($domain);
+
             $payload = new DomainData(
                 domain_uuid: (string) $domain->domain_uuid,
                 object: 'domain',
@@ -382,6 +391,61 @@ class DomainController extends Controller
      *   }
      * }
      */
+    /**
+     * POST /api/v1/domains/{domain}/outbound-route
+     *
+     * Idempotently provision (or refresh) the tenant's PSTN outbound route. Used by the IQ
+     * portal for domains created before store() did this automatically, and as a repair
+     * action. Returns the dialplan that now carries the route.
+     */
+    public function ensureOutboundRoute(Request $request, string $domain_uuid)
+    {
+        $user = $request->user();
+        if (! $user) {
+            throw new ApiException(401, 'authentication_error', 'Unauthenticated.', 'unauthenticated');
+        }
+
+        $domain = Domain::where('domain_uuid', $domain_uuid)->firstOrFail();
+
+        try {
+            $dialplan = app(ProvisionOutboundRouteService::class)->ensureOutboundRoute($domain);
+        } catch (\Throwable $e) {
+            logger()->error('API outbound route provisioning failed for ' . $domain->domain_name, ['exception' => $e]);
+
+            throw new ApiException(500, 'api_error', 'Could not provision the outbound route.');
+        }
+
+        if (! $dialplan) {
+            throw new ApiException(
+                409,
+                'invalid_request_error',
+                'Outbound gateway not configured or disabled on the PBX (VOXRA_OUTBOUND_GATEWAY).',
+                'outbound_gateway_unavailable'
+            );
+        }
+
+        return response()->json([
+            'object' => 'outbound_route',
+            'domain_uuid' => (string) $domain->domain_uuid,
+            'domain_name' => (string) $domain->domain_name,
+            'dialplan_uuid' => (string) $dialplan->dialplan_uuid,
+            'dialplan_name' => (string) $dialplan->dialplan_name,
+            'dialplan_enabled' => $dialplan->dialplan_enabled === 'true' || $dialplan->dialplan_enabled === true,
+        ], 200);
+    }
+
+    private function ensureOutboundRouteBestEffort(Domain $domain): void
+    {
+        try {
+            $dialplan = app(ProvisionOutboundRouteService::class)->ensureOutboundRoute($domain);
+            if (! $dialplan) {
+                logger()->warning('API domain created without an outbound route (gateway unresolved): ' . $domain->domain_name);
+            }
+        } catch (\Throwable $e) {
+            logger()->error('API domain outbound route provisioning failed for ' . $domain->domain_name, ['exception' => $e]);
+        }
+    }
+
     public function update(UpdateDomainRequest $request, string $domain_uuid)
     {
 
