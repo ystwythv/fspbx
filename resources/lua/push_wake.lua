@@ -426,7 +426,14 @@ log("INFO", string.format("ring_target=%s contacts=%d bridge=%s",
 
 session:execute("set", "continue_on_fail=USER_BUSY,NO_ANSWER,USER_NOT_REGISTERED,NO_ROUTE_DESTINATION,UNALLOCATED_NUMBER,RECOVERY_ON_TIMER_EXPIRE,CALL_REJECTED")
 session:execute("set", "hangup_after_bridge=true")
-session:execute("bridge", bridge_str)
+-- Carry the tenant domain on the outbound INVITE. The extension dial-string
+-- normally does this ({sip_invite_domain=${domain_name}}...), but we bridge
+-- straight to the registered contacts, so without it the From host is the
+-- PBX IP. The FMC platform (iqm-fmc-origination) disambiguates extensions
+-- that exist in several Voxra tenants by matching the From host against the
+-- SIM's sip_host (ystwythv/iqm-fmc-origination#66).
+local bridge_vars = string.format("{sip_invite_domain=%s}", domain_name)
+session:execute("bridge", bridge_vars .. bridge_str)
 
 -- After bridge: if a leg answered the bridge succeeds and the channel is
 -- gone (session no longer ready). If the bridge failed for any of the
