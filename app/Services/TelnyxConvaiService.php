@@ -205,6 +205,19 @@ class TelnyxConvaiService
             ];
         }
 
+        // Native hang-up (voxragtm#84): lets the agent end abusive/spam calls
+        // itself; voxraweb additionally schedules a hard PBX hang-up when
+        // record_summary carries a spam/abuse outcome, so the call terminates
+        // within a bounded time even if the model doesn't use this.
+        if (($enabled['hangup'] ?? true) === true) {
+            $tools[] = [
+                'type' => 'hangup',
+                'hangup' => [
+                    'description' => 'End the call. Use after saying goodbye, and always after recording a spam or abuse outcome.',
+                ],
+            ];
+        }
+
         $body = [
             'tools' => $tools,
             'dynamic_variables_webhook_url' => $dynVarsUrl,
