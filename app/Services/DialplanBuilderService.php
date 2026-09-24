@@ -8,6 +8,18 @@ use App\Models\DialplanDetails;
 
 class DialplanBuilderService
 {
+    /** Voxra tenant domains are tagged "voxra-tenant:<id>" at provisioning. */
+    public static function isVoxraTenantDomain(?string $domainUuid): bool
+    {
+        if (! $domainUuid) {
+            return false;
+        }
+
+        return \App\Models\Domain::where('domain_uuid', $domainUuid)
+            ->where('domain_description', 'like', 'voxra-tenant:%')
+            ->exists();
+    }
+
     public function buildDialplanForPhoneNumber(Destinations $phoneNumber, $domainName): void
     {
 
@@ -19,6 +31,9 @@ class DialplanBuilderService
             'fax_data' => $phoneNumber->fax()->first() ?? null,
             'dialplan_continue' => 'false',
             'destination_condition_field' => get_domain_setting('destination'),
+            // Voxra pre-answer spam screening (voxragtm#84) — only for Voxra
+            // tenant domains; other customers on this PBX are untouched.
+            'voxra_screen' => self::isVoxraTenantDomain($phoneNumber->domain_uuid),
         ];
 
         // Render the Blade template and get the XML content as a string
