@@ -114,6 +114,11 @@ Route::post('/internal/voxra/provision-tenant', [
     \App\Http\Controllers\Internal\ProvisionTenantController::class, 'provision',
 ])->middleware(\App\Http\Middleware\VerifyVoxraInternalSignature::class);
 
+// voxraweb → delete a tenant's / one caller's call audio now (GDPR erasure). voxragtm#83
+Route::post('/internal/voxra/purge-media', [
+    \App\Http\Controllers\Internal\VoxraPurgeMediaController::class, 'purge',
+])->middleware(\App\Http\Middleware\VerifyVoxraInternalSignature::class);
+
 // ElevenLabs Conversational AI tool callbacks (transfer, lookup_user, etc).
 Route::post('/webhooks/voxra/reception-agent/tool', [
     \App\Http\Controllers\Webhooks\ReceptionAgentToolController::class, 'handle',

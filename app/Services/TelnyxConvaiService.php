@@ -367,6 +367,112 @@ class TelnyxConvaiService
             ->toArray();
     }
 
+    /**
+     * Voxra call policy on an assistant (voxragtm#83):
+     *  - recording on/off (telephony_settings.recording_settings.enabled) when
+     *    $recording is not null — per tenant, from voxraweb settings;
+     *  - the greeting can't be talked over, so callers always hear the
+     *    AI/recording disclosure in full;
+     *  - a default for the {{recording_notice}} prompt variable, used when the
+     *    dynamic-variables webhook doesn't answer in time.
+     * Nested settings objects are replaced wholesale by the API, so each is
+     * merged into the assistant's current value.
+     *
+     * POST /v2/ai/assistants/{assistant_id}
+     */
+    public function applyVoxraCallPolicy(string $assistantId, ?bool $recording): array
+    {
+        $current = $this->getAssistant($assistantId);
+
+        $telephony = (array) ($current['telephony_settings'] ?? []);
+        if ($recording !== null) {
+            $rec = (array) ($telephony['recording_settings'] ?? []);
+            $rec['enabled'] = $recording;
+            $rec += ['channels' => 'dual', 'format' => 'mp3'];
+            $telephony['recording_settings'] = $rec;
+        }
+
+        $interruption = (array) ($current['interruption_settings'] ?? []);
+        $interruption['disable_greeting_interruption'] = true;
+
+        $vars = (array) ($current['dynamic_variables'] ?? []);
+        $vars['recording_notice'] = $recording === false
+            ? 'This call is not audio-recorded, but a written transcript and summary are kept so the business can follow up.'
+            : \App\Services\Voxra\VoxraDisclosure::DEFAULT_RECORDING_NOTICE;
+
+        $body = [
+            'interruption_settings' => $interruption,
+            'dynamic_variables' => $vars,
+        ];
+        if ($telephony !== []) {
+            $body['telephony_settings'] = $telephony;
+        }
+
+        $response = $this->http()->post("v2/ai/assistants/{$assistantId}", $body);
+        if (!$response->successful()) {
+            logger('Telnyx call policy error: ' . $response->body());
+            throw new RuntimeException('Failed to apply Voxra call policy: ' . $this->errorDetail($response));
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * List AI conversations. $filters are Telnyx's PostgREST-style query
+     * params, e.g. ['metadata->assistant_id' => 'eq.assistant-…',
+     * 'created_at' => 'lt.2026-06-01T00:00:00Z'].
+     * GET /v2/ai/conversations
+     */
+    public function listConversations(array $filters, int $limit = 100): array
+    {
+        $response = $this->http()->get('v2/ai/conversations', array_merge($filters, [
+            'limit' => $limit,
+            'order' => 'created_at.asc',
+        ]));
+        if (!$response->successful()) {
+            throw new RuntimeException('Failed to list Telnyx conversations: ' . $this->errorDetail($response));
+        }
+
+        return (array) ($response->json('data') ?? []);
+    }
+
+    /** DELETE /v2/ai/conversations/{id}. True when gone (incl. already gone). */
+    public function deleteConversation(string $conversationId): bool
+    {
+        $response = $this->http()->delete("v2/ai/conversations/{$conversationId}");
+
+        return $response->successful() || $response->status() === 404;
+    }
+
+    /**
+     * List call recordings. $filters use Telnyx's filter[...] params, e.g.
+     * ['filter[call_leg_id]' => '…'] or ['filter[created_at][lte]' => '…'].
+     * GET /v2/recordings
+     */
+    public function listRecordings(array $filters, int $page = 1, int $pageSize = 250): array
+    {
+        $response = $this->http()->get('v2/recordings', array_merge($filters, [
+            'page[number]' => $page,
+            'page[size]' => $pageSize,
+        ]));
+        if (!$response->successful()) {
+            throw new RuntimeException('Failed to list Telnyx recordings: ' . $this->errorDetail($response));
+        }
+
+        return [
+            'data' => (array) ($response->json('data') ?? []),
+            'total_pages' => (int) ($response->json('meta.total_pages') ?? 1),
+        ];
+    }
+
+    /** DELETE /v2/recordings/{id}. True when gone (incl. already gone). */
+    public function deleteRecording(string $recordingId): bool
+    {
+        $response = $this->http()->delete("v2/recordings/{$recordingId}");
+
+        return $response->successful() || $response->status() === 404;
+    }
+
     private function errorDetail(\Illuminate\Http\Client\Response $response): string
     {
         $errors = $response->json('errors');

@@ -116,6 +116,16 @@ class Kernel extends ConsoleKernel
             $schedule->command('webhooks:dispatch-cdr-events')->everyMinute();
         }
 
+        // Voxra call-audio retention (voxragtm#83): PBX recordings, voicemail
+        // audio and Telnyx AI recordings/conversations for Voxra tenants older
+        // than 90 days. Always on — it's what the privacy policy promises —
+        // and scoped to Voxra domains only. Runs on each node for its own
+        // files; Telnyx deletes are idempotent (404 = already gone).
+        $schedule->command('voxra:purge-media', ['--days' => (int) config('services.voxra.retention_days', 90)])
+            ->dailyAt('03:15')
+            ->timezone('Europe/London')
+            ->withoutOverlapping();
+
         if (isset($jobSettings['delete_old_faxes']) && $jobSettings['delete_old_faxes'] === "true") {
             // Retrieve the days to keep faxes from settings or default to 90 days.
             $daysKeepFax = $jobSettings['days_keep_fax'] ?? 90;

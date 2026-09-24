@@ -166,8 +166,19 @@ return [
         'vm_greeting_text' => env(
             'VOXRA_VM_GREETING_TEXT',
             "Thanks for calling {business}. We can't get to the phone right now — "
-                . "please leave a message after the tone and we'll get back to you."
+                . "please leave a message after the tone and we'll get back to you. "
+                . "Messages are recorded and transcribed."
         ),
+
+        // Call-audio retention (voxragtm#83, `voxra:purge-media`): Voxra tenant
+        // domains (voxra-tenant:*) are always in scope; these add Voxra's own
+        // lines — the platform demo line's PBX domain and Telnyx assistant.
+        'retention_extra_domains' => env('VOXRA_RETENTION_EXTRA_DOMAINS', 'lon1.voxra.uk'),
+        'retention_extra_assistants' => env(
+            'VOXRA_RETENTION_EXTRA_ASSISTANTS',
+            'assistant-1cce66d5-5e04-421c-8103-ca008fa4ad0f'
+        ),
+        'retention_days' => (int) env('VOXRA_RETENTION_DAYS', 90),
     ],
 
     'keygen' => [

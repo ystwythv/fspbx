@@ -84,6 +84,9 @@ class ProvisionLineService
         }
 
         $this->upsertFollowMe($domain, $extension, $mobile);
+        // Calls the owner answers on their mobile are never recorded
+        // (voxragtm#83) — only the voicemail they leave is.
+        $extension->user_record = null;
         $extension->save();
         $voicemail = $this->upsertVoicemailBox($domain);
         $this->ensureVoicemailGreeting($domain, $voicemail, $businessName);

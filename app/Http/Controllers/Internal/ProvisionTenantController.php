@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Internal;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\ReceptionAgentController;
+use App\Models\AiAgent;
 use App\Models\Domain;
+use App\Services\Voxra\VoxraDisclosure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -85,6 +87,13 @@ say the owner will call back. Record transferred calls with outcome
 If the caller asks for something outside your remit (refunds, complaints,
 account changes, anything irreversible), take a message for the owner rather
 than promising or actioning it yourself.
+
+## AI disclosure and call recording (voxragtm#83)
+Your greeting has already told the caller you are an AI assistant. Never
+claim or imply you are a human, even if asked to pretend; if anyone asks,
+say plainly that you're the business's AI assistant. If the caller asks
+whether the call is recorded or what happens to their information:
+{{recording_notice}}
 PROMPT;
 
     public function provision(Request $request): JsonResponse
@@ -110,6 +119,11 @@ PROMPT;
             'rotate_sip_password'  => 'nullable|boolean',
             'did'                  => ['nullable', 'string', 'max:20', 'regex:/^\+\d{10,15}$/'],
             'sim_msisdn'           => ['nullable', 'string', 'max:20', 'regex:/^\+\d{10,15}$/'],
+            // AI + recording disclosure (voxragtm#83): the assistant's opening
+            // line (voxraweb builds it from the tenant's wording choice) and
+            // whether Telnyx records the call audio. Omitted → keep current.
+            'greeting'             => 'nullable|string|max:500',
+            'recording_enabled'    => 'nullable|boolean',
         ]);
 
         $tenantId = $data['tenant_id'];
@@ -132,13 +146,31 @@ PROMPT;
         // Idempotent upsert of the reception agent on the domain. A disabled
         // agent disables its dialplans, so inbound calls to the DID stop
         // reaching the assistant.
-        $agent = app(ReceptionAgentController::class)->upsertReceptionAgent(
-            $domain->domain_uuid,
-            $this->receptionAgentInputs(
-                $businessName,
-                self::resolveAgentEnabled($request->boolean('agent_enabled', true), $lineMode)
-            )
+        $recording = $request->has('recording_enabled') ? $request->boolean('recording_enabled') : null;
+        $existing = AiAgent::reception()->forDomain($domain->domain_uuid)->first();
+        $inputs = $this->receptionAgentInputs(
+            $businessName,
+            self::resolveAgentEnabled($request->boolean('agent_enabled', true), $lineMode)
         );
+        $inputs['first_message'] = self::resolveGreeting(
+            $data['greeting'] ?? null,
+            $existing?->first_message,
+            $businessName,
+            $recording,
+        );
+        $agent = app(ReceptionAgentController::class)->upsertReceptionAgent($domain->domain_uuid, $inputs);
+
+        // Recording switch + disclosure guards on the Telnyx assistant
+        // (voxragtm#83). Best-effort, loudly logged: the greeting above
+        // already carries the disclosure.
+        if ($agent->telnyx_assistant_id) {
+            try {
+                app(\App\Services\TelnyxConvaiService::class)
+                    ->applyVoxraCallPolicy($agent->telnyx_assistant_id, $recording);
+            } catch (\Throwable $e) {
+                logger()->error('Voxra call policy (recording/disclosure) failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+            }
+        }
 
         // Per-domain PSTN outbound route (voxragtm#110): ring-first and Line
         // follow-me bridge loopback/+44… into the tenant's own domain context,
@@ -296,6 +328,27 @@ PROMPT;
                 'sip_proxy' => $mobile['sip_proxy'],
             ] : null,
         ]);
+    }
+
+    /**
+     * The reception agent's greeting (voxragtm#83). A supplied greeting is
+     * used — with the AI/recording disclosure added if it lacks it. Without
+     * one the agent keeps its current greeting, unless that doesn't disclose
+     * (e.g. the old generic "Hi, how can I help with this call?"), in which
+     * case it gets the default Voxra greeting. Recording state unknown →
+     * assume on (Telnyx's default), so the caller is never under-told.
+     */
+    public static function resolveGreeting(?string $greeting, ?string $current, string $businessName, ?bool $recording): string
+    {
+        $rec = $recording ?? true;
+        if ($greeting !== null && trim($greeting) !== '') {
+            return VoxraDisclosure::ensure($greeting, $businessName, $rec);
+        }
+        if ($current !== null && VoxraDisclosure::mentionsAi($current) && ($recording === false || VoxraDisclosure::mentionsRecording($current))) {
+            return $current;
+        }
+
+        return VoxraDisclosure::defaultGreeting($businessName, $rec);
     }
 
     /** Complete mode wins over line mode: a Complete tenant's handset IS the

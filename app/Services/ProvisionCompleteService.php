@@ -75,6 +75,11 @@ class ProvisionCompleteService
         $extension->ring_target              = 'fmc';
         $extension->call_timeout             = self::CALL_TIMEOUT;
         $extension->enabled                  = 'true';
+        // Owner-answered calls are never recorded (voxragtm#83): the privacy
+        // policy covers AI-answered call recordings only, and recording here
+        // would need its own caller announcement. Re-asserted so a portal
+        // toggle can't quietly start recording the owner's calls.
+        $extension->user_record              = null;
 
         $this->applyAgentFailover($domain, $extension);
         $extension->save();
