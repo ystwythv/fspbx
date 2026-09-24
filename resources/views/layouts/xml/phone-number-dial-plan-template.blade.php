@@ -64,7 +64,7 @@
             <action application="set" data="inbound-proxy-media=true" />
         @endif
 
-        @if (config('services.voxra.screen_inbound', true) && $phone_number->destination_type_fax != 1)
+        @if (!empty($voxra_screen) && config('services.voxra.screen_inbound', true) && $phone_number->destination_type_fax != 1)
             {{-- Voxra pre-answer spam screening (voxragtm#84): before any routing
                  (AI agent / owner mobile / voicemail). Fails open. --}}
             <action application="lua" data="lua/voxra_screen_call.lua" />
