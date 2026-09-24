@@ -100,6 +100,15 @@ Route::post('/internal/voxra/reception-agent/summon-by-uuid', [
     \App\Http\Controllers\Internal\ReceptionAgentSummonController::class, 'summonByUuid',
 ])->middleware(\App\Http\Middleware\VerifyVoxraInternalSignature::class);
 
+// Spam/abuse handling (voxragtm#84): pre-answer screening (FreeSWITCH Lua →
+// voxraweb) and spam-outcome hard hang-up (voxraweb → PBX).
+Route::post('/internal/voxra/screen-call', [
+    \App\Http\Controllers\Internal\VoxraCallScreenController::class, 'screen',
+])->middleware(\App\Http\Middleware\VerifyVoxraInternalSignature::class);
+Route::post('/internal/voxra/hangup-call', [
+    \App\Http\Controllers\Internal\VoxraCallScreenController::class, 'hangup',
+])->middleware(\App\Http\Middleware\VerifyVoxraInternalSignature::class);
+
 // voxraweb → provision a tenant's PBX (domain + reception agent) on activation. voxragtm#42
 Route::post('/internal/voxra/provision-tenant', [
     \App\Http\Controllers\Internal\ProvisionTenantController::class, 'provision',

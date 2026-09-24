@@ -140,6 +140,11 @@ return [
         // voxraweb's VOXRA_CDR_WEBHOOK_SECRET.
         'cdr_webhook_secret' => env('VOXRA_CDR_WEBHOOK_SECRET', ''),
 
+        // Pre-answer spam screening (voxragtm#84): every inbound destination
+        // asks voxraweb /api/pbx/screen (signed with cdr_webhook_secret) before
+        // routing. Fails open. Kill switch: VOXRA_SCREEN_INBOUND=false.
+        'screen_inbound' => env('VOXRA_SCREEN_INBOUND', true),
+
         // Gateway carrying tenant outbound legs (follow-me / ring-first mobile
         // bridges, voxragtm#110). A v_gateways name or uuid — resolved at
         // provision time, never hardcoded. Defaults to the Magrathea trunk the

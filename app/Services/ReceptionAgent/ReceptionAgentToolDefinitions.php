@@ -129,9 +129,18 @@ class ReceptionAgentToolDefinitions
                 'description' => 'At the end of the call, record a one or two sentence summary of what happened (and the outcome) to the customer\'s timeline.',
                 'properties' => [
                     'summary' => ['type' => 'string', 'description' => 'What happened on this call, briefly'],
-                    'outcome' => ['type' => 'string', 'description' => 'Optional: booked | message | transferred | spam | no_action'],
+                    'outcome' => ['type' => 'string', 'description' => 'Optional: booked | message | transferred | spam | abuse | no_action. spam/abuse ends the call automatically a few seconds later.'],
                 ],
                 'required' => ['summary'],
+            ],
+            [
+                'name' => 'lookup_business_info',
+                'description' => 'Check the business\'s own information BEFORE stating any price, coverage area, opening hours or policy. Returns the facts to answer from, or grounded=false with a fixed script: then do NOT answer from general knowledge — say the `say` line, offer the transfer if offer_transfer is true, otherwise take a message.',
+                'properties' => [
+                    'question' => ['type' => 'string', 'description' => 'What the caller asked, in their words'],
+                    'topic' => ['type' => 'string', 'enum' => ['price', 'coverage', 'hours', 'policy', 'general'], 'description' => 'What kind of fact is needed'],
+                ],
+                'required' => ['question', 'topic'],
             ],
             [
                 'name' => 'search_memory',
@@ -198,7 +207,7 @@ class ReceptionAgentToolDefinitions
     public const DATA_TOOLS = [
         'capture_lead', 'check_availability', 'book_appointment',
         'recall_caller', 'remember_about_caller', 'remember', 'recall_business', 'record_summary', 'search_memory',
-        'send_payment_link',
+        'send_payment_link', 'lookup_business_info',
     ];
 
     public static function isDataTool(string $name): bool
