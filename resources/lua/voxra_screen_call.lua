@@ -77,13 +77,36 @@ local prompt = resp:match('"prompt"%s*:%s*"([%w_]+)"') or "rejected"
 log("NOTICE", string.format("rejecting call %s from %s to %s (%s)", call_uuid, caller, dest, reason))
 session:setVariable("voxra_screen_reason", reason)
 
+-- Voxra's own British-English prompts (Telnyx "Alistair", the assistant's
+-- default voice; regenerate with resources/sounds/voxra/generate.sh). Picked at
+-- the leg's sample rate; falls back to FreeSWITCH's stock prompt if the file
+-- is missing on this host.
+local SOUNDS_DIR = "/var/www/fspbx/resources/sounds/voxra"
+local STOCK = {
+    anonymous = "ivr/ivr-not_accept_anonymous_calls.wav",
+    rejected = "ivr/ivr-call_rejected.wav",
+}
+
+local function file_exists(path)
+    local f = io.open(path, "rb")
+    if f then f:close() return true end
+    return false
+end
+
+local function prompt_file(name)
+    local rate = tonumber(session:getVariable("read_rate") or "") or 8000
+    local dirs = rate >= 16000 and { "16000", "8000" } or { "8000", "16000" }
+    for _, d in ipairs(dirs) do
+        local path = string.format("%s/%s/voxra-call-%s.wav", SOUNDS_DIR, d, name)
+        if file_exists(path) then return path end
+    end
+    log("WARNING", "Voxra prompt " .. name .. " missing - using stock prompt")
+    return STOCK[name]
+end
+
 if session:ready() then
     session:execute("pre_answer")
     session:sleep(300)
-    if prompt == "anonymous" then
-        session:execute("playback", "ivr/ivr-not_accept_anonymous_calls.wav")
-    else
-        session:execute("playback", "ivr/ivr-call_rejected.wav")
-    end
+    session:execute("playback", prompt_file(prompt == "anonymous" and "anonymous" or "rejected"))
 end
 session:hangup("CALL_REJECTED")
