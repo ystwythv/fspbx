@@ -24,6 +24,9 @@ class TelnyxConvaiService
      */
     public const DEFAULT_VOICE = 'Telnyx.Ultra.c8f7835e-28a3-4f0c-80d7-c1302ac62aae';
 
+    /** Mirrors voxraweb's default for tenants that haven't set one. */
+    public const DEFAULT_URGENT_DEFINITION = "anything that can't wait for a normal call-back: a risk to someone's health or safety, damage happening now, or a problem caused by work the business has just done";
+
     private string $apiKey;
     private string $baseUrl;
     private int $timeout;
@@ -167,38 +170,61 @@ class TelnyxConvaiService
                 }
             }
 
-            $tools[] = [
-                'type' => 'webhook',
-                'webhook' => [
-                    'name' => $t['name'],
-                    'description' => $t['description'],
-                    'url' => $url,
-                    'method' => 'POST',
-                    'headers' => $headers,
-                    'body_parameters' => [
-                        'type' => 'object',
-                        'properties' => array_merge([
-                            'tool_name' => ['type' => 'string', 'enum' => [$t['name']]],
-                        ], $t['properties']),
-                        'required' => array_values(array_unique(array_merge(['tool_name'], $t['required']))),
-                    ],
+            $webhook = [
+                'name' => $t['name'],
+                'description' => $t['description'],
+                'url' => $url,
+                'method' => 'POST',
+                'headers' => $headers,
+                'body_parameters' => [
+                    'type' => 'object',
+                    'properties' => array_merge([
+                        'tool_name' => ['type' => 'string', 'enum' => [$t['name']]],
+                    ], $t['properties']),
+                    'required' => array_values(array_unique(array_merge(['tool_name'], $t['required']))),
                 ],
             ];
+            // Response field → dynamic variable (e.g. alert_owner's transfer_to
+            // → {{owner_transfer_to}}, the owner-transfer target, voxragtm#122).
+            if (!empty($t['store_as_variables'])) {
+                $webhook['store_fields_as_variables'] = array_map(
+                    fn ($var, $path) => ['name' => $var, 'value_path' => $path],
+                    array_keys($t['store_as_variables']),
+                    array_values($t['store_as_variables'])
+                );
+            }
+            if (!empty($t['filler'])) {
+                $webhook['messages'] = [
+                    ['type' => 'request_response_delayed', 'content' => $t['filler'], 'timing_ms' => 1500],
+                ];
+            }
+
+            $tool = ['type' => 'webhook', 'webhook' => $webhook];
+            // Tool-level (a timeout nested in `webhook` is ignored by Telnyx).
+            if (!empty($t['timeout_ms'])) {
+                $tool['timeout_ms'] = (int) $t['timeout_ms'];
+            }
+            $tools[] = $tool;
         }
 
         // Warm transfer to the owner's mobile (voxragtm#30): Telnyx-native
-        // transfer tool dialling the {{owner_mobile}} dynamic variable, which
-        // voxraweb's dynamic-variables webhook injects from the tenant's
-        // escalation settings (empty when unset — the prompt tells the agent
-        // to take a message instead). from = the caller, so the owner sees
-        // who's being put through and can ring straight back if missed.
+        // transfer tool. from = the caller, so the owner sees who's being put
+        // through and can ring straight back if missed.
+        // Target {{owner_transfer_to}} (voxragtm#122): NOT set at call start —
+        // only alert_owner's response fills it (store_fields_as_variables),
+        // after voxraweb has recorded the urgent lead and alerted the owner.
+        // So a transfer can't happen before the owner has been told; tried
+        // early it has nothing to dial and the agent is told to alert first.
+        // Without alert_owner enabled, fall back to {{owner_mobile}} (set by
+        // the dynamic-variables webhook) rather than lose transfers.
         $enabled = (array) ($agent->tools_enabled ?? []);
         if (($enabled['transfer_to_owner'] ?? true) === true) {
+            $gated = ($enabled['alert_owner'] ?? true) === true;
             $tools[] = [
                 'type' => 'transfer',
                 'transfer' => [
                     'targets' => [
-                        ['name' => 'Owner', 'to' => '{{owner_mobile}}'],
+                        ['name' => 'Owner', 'to' => $gated ? '{{owner_transfer_to}}' : '{{owner_mobile}}'],
                     ],
                     'from' => '{{telnyx_end_user_target}}',
                 ],
@@ -396,9 +422,18 @@ class TelnyxConvaiService
         $interruption['disable_greeting_interruption'] = true;
 
         $vars = (array) ($current['dynamic_variables'] ?? []);
-        $vars['recording_notice'] = $recording === false
-            ? 'This call is not audio-recorded, but a written transcript and summary are kept so the business can follow up.'
-            : \App\Services\Voxra\VoxraDisclosure::DEFAULT_RECORDING_NOTICE;
+        // Recording unknown (null) keeps the current notice — a prompt/tools
+        // re-sync must not flip a recording-off tenant's answer to "recorded".
+        if ($recording !== null || !isset($vars['recording_notice'])) {
+            $vars['recording_notice'] = $recording === false
+                ? 'This call is not audio-recorded, but a written transcript and summary are kept so the business can follow up.'
+                : \App\Services\Voxra\VoxraDisclosure::DEFAULT_RECORDING_NOTICE;
+        }
+        // Default for the prompt's {{urgent_definition}} (voxragtm#122) when
+        // the dynamic-variables webhook is slow; voxraweb sends the tenant's own.
+        if (empty($vars['urgent_definition'])) {
+            $vars['urgent_definition'] = self::DEFAULT_URGENT_DEFINITION;
+        }
 
         $body = [
             'interruption_settings' => $interruption,

@@ -16,7 +16,10 @@ class ReceptionAgentToolDefinitions
 {
     /**
      * @param array<string,bool> $enabled per-tool on/off map (agent->tools_enabled)
-     * @return array<int, array{name:string, description:string, properties:array<string,mixed>, required:array<int,string>}>
+     * Optional keys (Telnyx only): store_as_variables (dynamic variable =>
+     * response path), filler (spoken if the webhook is slow), timeout_ms.
+     *
+     * @return array<int, array{name:string, description:string, properties:array<string,mixed>, required:array<int,string>, store_as_variables?:array<string,string>, filler?:string, timeout_ms?:int}>
      */
     public static function list(array $enabled): array
     {
@@ -58,6 +61,28 @@ class ReceptionAgentToolDefinitions
                 'required' => ['extension'],
             ],
             [
+                // voxragtm#122 (bloom.emergency): urgent calls must reach the
+                // owner even if a transfer then fails. voxraweb records the
+                // urgent lead + WhatsApp/SMS/push-alerts the owner, and only
+                // then returns transfer_to, which Telnyx stores as
+                // {{owner_transfer_to}} — the transfer tool's only target. So
+                // the order (details → alert → transfer) is enforced in code.
+                'name' => 'alert_owner',
+                'description' => 'Urgent call, or the caller needs the owner now: alert the owner straight away (WhatsApp/SMS + app push) with the caller\'s name, call-back number and the problem. Call this BEFORE any transfer — the transfer only works after this succeeds. Needs the caller\'s name and the specific problem; the call-back number defaults to the number they are calling from (confirm it with them). Returns transfer_available: only then may you offer to put them through.',
+                'properties' => [
+                    'caller_name' => ['type' => 'string', 'description' => "Caller's name"],
+                    'callback_number' => ['type' => 'string', 'description' => 'Number the owner should call back on — the number they are calling from unless they give another'],
+                    'problem' => ['type' => 'string', 'description' => 'What has happened / what they need, in a sentence'],
+                    'urgency' => ['type' => 'string', 'enum' => ['emergency', 'urgent'], 'description' => 'emergency = risk to health/safety or damage happening now; otherwise urgent'],
+                ],
+                'required' => ['caller_name', 'callback_number', 'problem'],
+                // Telnyx store_fields_as_variables: response field → dynamic variable.
+                'store_as_variables' => ['owner_transfer_to' => 'transfer_to'],
+                'filler' => 'Bear with me a moment while I alert the owner.',
+                // WhatsApp attempt + SMS fallback can exceed the 5s default.
+                'timeout_ms' => 10000,
+            ],
+            [
                 'name' => 'capture_lead',
                 'description' => 'Record who is calling and what they need — use this as you qualify a new caller. Capture their name, the job/enquiry, their postcode and how urgent it is. Safe to call more than once as you learn more; it updates the same lead. If the caller has rung before, the result tells you (returning_caller) and what they last wanted, so you can greet them accordingly.',
                 'properties' => [
@@ -65,7 +90,7 @@ class ReceptionAgentToolDefinitions
                     'caller_number' => ['type' => 'string', 'description' => "Caller's phone number (ask if not already known)"],
                     'postcode' => ['type' => 'string', 'description' => 'Job/site postcode or area'],
                     'job_description' => ['type' => 'string', 'description' => 'What the caller needs, in a sentence'],
-                    'urgency' => ['type' => 'string', 'enum' => ['emergency', 'urgent', 'routine'], 'description' => 'How urgent the job is'],
+                    'urgency' => ['type' => 'string', 'enum' => ['emergency', 'urgent', 'routine'], 'description' => 'How urgent the job is. urgent/emergency (per the business\'s urgent definition) alerts the owner immediately — for those use alert_owner instead.'],
                 ],
                 'required' => ['job_description'],
             ],
@@ -205,7 +230,7 @@ class ReceptionAgentToolDefinitions
      * stay on this PBX.
      */
     public const DATA_TOOLS = [
-        'capture_lead', 'check_availability', 'book_appointment',
+        'alert_owner', 'capture_lead', 'check_availability', 'book_appointment',
         'recall_caller', 'remember_about_caller', 'remember', 'recall_business', 'record_summary', 'search_memory',
         'send_payment_link', 'lookup_business_info',
     ];
