@@ -43,6 +43,10 @@ class VoxraMediaPurgeService
 
     private array $log = [];
 
+    /** Every Voxra domain (all tenants + Voxra's own lines), for path/CDR ownership checks. */
+    private array $scopeNames = [];
+    private array $scopeUuids = [];
+
     public function __construct(private ?TelnyxConvaiService $telnyx = null)
     {
     }
@@ -80,7 +84,7 @@ class VoxraMediaPurgeService
      * Run a purge. $opts: days (age sweep), tenant_id, scope (age|caller|all),
      * caller_numbers, dry_run, limit (max items per store), telnyx (bool).
      *
-     * @return array{counts: array<string,int>, log: string[]}
+     * @return array{counts: array<string,int>, by_domain: array<string,array<string,int>>, log: string[]}
      */
     public function purge(array $opts): array
     {
@@ -91,15 +95,20 @@ class VoxraMediaPurgeService
         $cutoff = $scope === 'age' ? Carbon::now()->subDays(max(1, (int) ($opts['days'] ?? config('services.voxra.recording_retention_days', 10)))) : null;
         $numbers = $scope === 'caller' ? self::numberVariants((array) ($opts['caller_numbers'] ?? [])) : [];
         if ($scope === 'caller' && $numbers === []) {
-            return ['counts' => [], 'log' => ['caller scope with no caller numbers — nothing to do']];
+            return ['counts' => [], 'by_domain' => [], 'log' => ['caller scope with no caller numbers — nothing to do']];
         }
 
         $domains = $this->domains($opts['tenant_id'] ?? null);
+        $all = $this->domains();
+        $this->scopeNames = array_map(fn ($d) => $d->domain_name, $all);
+        $this->scopeUuids = array_map(fn ($d) => $d->domain_uuid, $all) ?: ['00000000-0000-0000-0000-000000000000'];
+        $byDomain = [];
         $counts = [
             'domains' => count($domains),
             'pbx_recordings' => 0,
             'pbx_recording_files_orphaned' => 0,
             'pbx_voicemails' => 0,
+            'pbx_recordings_skipped_non_voxra_dir' => 0,
             'telnyx_conversations' => 0,
             'telnyx_recordings' => 0,
             'errors' => 0,
@@ -107,13 +116,17 @@ class VoxraMediaPurgeService
 
         foreach ($domains as $domain) {
             $cdr = $this->purgeCdrRecordings($domain, $cutoff, $numbers, $dry, $limit, $counts);
-            $counts['pbx_recordings'] += $cdr;
             // Stray files only once the CDR-linked ones are done, so a file a
             // CDR still points at is always removed through its CDR first.
-            if (($scope === 'age' || $scope === 'all') && $cdr < $limit) {
-                $counts['pbx_recording_files_orphaned'] += $this->purgeOrphanRecordingFiles($domain, $cutoff ?? Carbon::now(), $dry, $limit);
-            }
-            $counts['pbx_voicemails'] += $this->purgeVoicemails($domain, $cutoff, $numbers, $dry, $limit, $counts);
+            $orphans = ($scope === 'age' || $scope === 'all') && $cdr < $limit
+                ? $this->purgeOrphanRecordingFiles($domain, $cutoff ?? Carbon::now(), $dry, $limit)
+                : 0;
+            $vm = $this->purgeVoicemails($domain, $cutoff, $numbers, $dry, $limit, $counts);
+            $counts['pbx_recordings'] += $cdr;
+            $counts['pbx_recording_files_orphaned'] += $orphans;
+            $counts['pbx_voicemails'] += $vm;
+            $byDomain[$domain->domain_name] = ['pbx_recordings' => $cdr, 'pbx_recording_files_orphaned' => $orphans, 'pbx_voicemails' => $vm];
+            $this->note(sprintf('domain %s: recordings=%d orphan_files=%d voicemails=%d', $domain->domain_name, $cdr, $orphans, $vm));
         }
 
         if (($opts['telnyx'] ?? true) && $this->telnyx) {
@@ -138,7 +151,7 @@ class VoxraMediaPurgeService
         logger()->info($summary);
         $this->note($summary);
 
-        return ['counts' => $counts, 'log' => $this->log];
+        return ['counts' => $counts, 'by_domain' => $byDomain, 'log' => $this->log];
     }
 
     private function purgeCdrRecordings(Domain $domain, ?Carbon $cutoff, array $numbers, bool $dry, int $limit, array &$counts): int
@@ -166,17 +179,13 @@ class VoxraMediaPurgeService
                 continue;
             }
             if (!$this->insideRoot($path, self::RECORDINGS_ROOT . '/' . $domain->domain_name)) {
-                // Some Voxra calls (e.g. WhatsApp calling on lon1.voxra.uk)
-                // record under another domain's directory. The CDR is this
-                // call's, so the file goes too — unless a CDR of another
-                // domain also points at it, or it's outside the recordings root.
-                $shared = DB::table('v_xml_cdr')
-                    ->where('record_name', $row->record_name)
-                    ->where('domain_uuid', '!=', $domain->domain_uuid)
-                    ->exists();
-                if ($shared || !$this->insideRoot($path, self::RECORDINGS_ROOT)) {
-                    $this->note("skip recording outside the domain's directory: {$path}");
-                    $counts['errors']++;
+                // Some Voxra calls (WhatsApp calling on lon1.voxra.uk) are
+                // recorded under another domain's directory. Only delete when
+                // that directory is itself a Voxra domain's and no non-Voxra
+                // CDR points at the file; never touch other customers' trees.
+                if (!$this->insideVoxraRoot($path) || $this->referencedOutsideVoxra((string) $row->record_name)) {
+                    $this->note("skip recording in a non-Voxra directory: {$path}");
+                    $counts['pbx_recordings_skipped_non_voxra_dir']++;
                     continue;
                 }
             }
@@ -193,6 +202,27 @@ class VoxraMediaPurgeService
     }
 
     /** Files on disk older than the cutoff with no CDR pointing at them. */
+    /** Is $path inside a recordings directory of an in-scope (Voxra) domain? */
+    private function insideVoxraRoot(string $path): bool
+    {
+        foreach ($this->scopeNames as $name) {
+            if ($this->insideRoot($path, self::RECORDINGS_ROOT . '/' . $name)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Does a CDR of a domain outside the Voxra scope reference this recording? */
+    private function referencedOutsideVoxra(string $recordName): bool
+    {
+        return DB::table('v_xml_cdr')
+            ->where('record_name', $recordName)
+            ->whereNotIn('domain_uuid', $this->scopeUuids)
+            ->exists();
+    }
+
     private function purgeOrphanRecordingFiles(Domain $domain, Carbon $cutoff, bool $dry, int $limit): int
     {
         $root = self::RECORDINGS_ROOT . '/' . $domain->domain_name;

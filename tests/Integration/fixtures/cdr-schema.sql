@@ -191,3 +191,22 @@ CREATE TABLE IF NOT EXISTS v_xml_cdr (
     call_cost_rate_uuid uuid,
     status text
 );
+
+-- Voxra media retention (voxragtm#83): the FusionPBX columns/tables the
+-- purge reads that the CDR API tests don't need.
+ALTER TABLE v_domains ADD COLUMN IF NOT EXISTS domain_description text;
+ALTER TABLE v_xml_cdr ADD COLUMN IF NOT EXISTS start_stamp timestamptz;
+
+CREATE TABLE IF NOT EXISTS v_voicemails (
+    voicemail_uuid uuid PRIMARY KEY,
+    domain_uuid uuid,
+    voicemail_id text
+);
+
+CREATE TABLE IF NOT EXISTS v_voicemail_messages (
+    voicemail_message_uuid uuid PRIMARY KEY,
+    domain_uuid uuid,
+    voicemail_uuid uuid,
+    created_epoch bigint,
+    caller_id_number text
+);
