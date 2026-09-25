@@ -187,4 +187,55 @@ class VoxraRecordingPolicyTest extends TestCase
         $this->assertCount(1, $events);
         $this->assertStringContainsString('--days=10', (string) $events->first()->command);
     }
+
+    /** A temp tree with one old and one new file per path; returns the root. */
+    private function mediaTree(array $old, array $new): string
+    {
+        $root = sys_get_temp_dir() . '/voxra-purge-' . bin2hex(random_bytes(4));
+        foreach ([[$old, strtotime('-120 days')], [$new, time()]] as [$paths, $mtime]) {
+            foreach ($paths as $rel) {
+                @mkdir(dirname($root . '/' . $rel), 0777, true);
+                file_put_contents($root . '/' . $rel, 'x');
+                touch($root . '/' . $rel, $mtime);
+            }
+        }
+
+        return $root;
+    }
+
+    public function test_orphan_recording_sweep_recurses_archive_but_keeps_prompts(): void
+    {
+        // Real layout (voxragtm#132): archive/YYYY/Mon/DD/, prompts at the domain root.
+        $root = $this->mediaTree(
+            ['archive/2026/Jun/01/a.wav', 'archive/2026/Jun/01/b.mp3', 'ai_generated_20260406.wav'],
+            ['archive/2026/Sep/20/c.wav']
+        );
+
+        $n = (new VoxraMediaPurgeService())->purgeOrphanRecordingFiles($root . '/archive', Carbon::now()->subDays(90), false, 100);
+
+        $this->assertSame(2, $n);
+        $this->assertFileDoesNotExist($root . '/archive/2026/Jun/01/a.wav');
+        $this->assertFileDoesNotExist($root . '/archive/2026/Jun/01/b.mp3');
+        $this->assertFileExists($root . '/archive/2026/Sep/20/c.wav');
+        $this->assertFileExists($root . '/ai_generated_20260406.wav');
+    }
+
+    public function test_orphan_voicemail_sweep_keeps_greetings_and_new_messages(): void
+    {
+        $root = $this->mediaTree(
+            ['700/msg_old.wav', '700/intro_msg_old.mp3', '700/greeting_1.wav', '700/recorded_name.wav'],
+            ['700/msg_new.wav']
+        );
+        $svc = new VoxraMediaPurgeService();
+
+        $this->assertSame(2, $svc->purgeOrphanVoicemailFiles($root, Carbon::now()->subDays(90), true, 100));
+        $this->assertFileExists($root . '/700/msg_old.wav'); // dry run
+
+        $this->assertSame(2, $svc->purgeOrphanVoicemailFiles($root, Carbon::now()->subDays(90), false, 100));
+        $this->assertFileDoesNotExist($root . '/700/msg_old.wav');
+        $this->assertFileDoesNotExist($root . '/700/intro_msg_old.mp3');
+        $this->assertFileExists($root . '/700/msg_new.wav');
+        $this->assertFileExists($root . '/700/greeting_1.wav');
+        $this->assertFileExists($root . '/700/recorded_name.wav');
+    }
 }

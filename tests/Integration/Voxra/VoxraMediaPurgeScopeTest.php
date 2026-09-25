@@ -19,7 +19,10 @@ class VoxraMediaPurgeScopeTest extends CdrIntegrationTestCase
     {
         parent::setUp();
         DB::statement('TRUNCATE v_voicemails, v_voicemail_messages');
-        config(['services.voxra.retention_extra_domains' => 'lon1.voxra.uk']);
+        config([
+            'services.voxra.retention_extra_domains' => 'lon1.voxra.uk',
+            'services.voxra.retention_pbx_domains' => '',
+        ]);
     }
 
     private function domain(string $name, ?string $description): string
@@ -105,5 +108,35 @@ class VoxraMediaPurgeScopeTest extends CdrIntegrationTestCase
         $this->assertTrue($this->recordingKept($telOld), 'tel.et untouched');
         $this->assertFalse(DB::table('v_voicemail_messages')->where('voicemail_message_uuid', $vmVoxra)->exists());
         $this->assertTrue(DB::table('v_voicemail_messages')->where('voicemail_message_uuid', $vmIq)->exists(), 'iqmobile.uk voicemail untouched');
+    }
+
+    public function test_pbx_only_domain_keeps_its_own_90_days(): void
+    {
+        // voxragtm#132: iqmobile.uk joins the sweep at 90 days, never 10.
+        config(['services.voxra.retention_pbx_domains' => 'iqmobile.uk', 'services.voxra.retention_pbx_days' => 90]);
+        $voxra = $this->domain('acme.voxra.uk', 'voxra-tenant:t-1');
+        $platform = $this->domain('lon1.voxra.uk', 'WhatsApp Business Calling digest realm');
+        $iqmobile = $this->domain('iqmobile.uk', 'IQ Mobile');
+        $telet = $this->domain('tel.et', null);
+
+        $voxraOld = $this->cdr($voxra, 'acme.voxra.uk', 11);
+        $platformForeign = $this->cdr($platform, 'iqmobile.uk', 11);
+        $iqOld = $this->cdr($iqmobile, 'iqmobile.uk', 100);
+        $iqRecent = $this->cdr($iqmobile, 'iqmobile.uk', 50);
+        $telOld = $this->cdr($telet, 'tel.et', 400);
+        $vmIqOld = $this->voicemail($iqmobile, 100);
+        $vmIqRecent = $this->voicemail($iqmobile, 50);
+
+        $res = (new VoxraMediaPurgeService(null))->purge(['scope' => 'age', 'days' => 10, 'telnyx' => false]);
+
+        $this->assertSame(0, $res['counts']['errors']);
+        $this->assertSame(3, $res['counts']['domains']);
+        $this->assertFalse($this->recordingKept($voxraOld));
+        $this->assertFalse($this->recordingKept($iqOld), 'iqmobile.uk past 90 days');
+        $this->assertTrue($this->recordingKept($iqRecent), 'iqmobile.uk inside 90 days, though past 10');
+        $this->assertTrue($this->recordingKept($platformForeign), 'Voxra file in iqmobile.uk directory still left');
+        $this->assertTrue($this->recordingKept($telOld), 'tel.et untouched');
+        $this->assertFalse(DB::table('v_voicemail_messages')->where('voicemail_message_uuid', $vmIqOld)->exists());
+        $this->assertTrue(DB::table('v_voicemail_messages')->where('voicemail_message_uuid', $vmIqRecent)->exists());
     }
 }

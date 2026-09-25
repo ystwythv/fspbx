@@ -183,6 +183,11 @@ return [
             'assistant-1cce66d5-5e04-421c-8103-ca008fa4ad0f'
         ),
         'recording_retention_days' => (int) env('VOXRA_RECORDING_RETENTION_DAYS', 10),
+        // Non-Voxra domains whose PBX recordings/voicemail the same sweep
+        // purges at their own period (Telnyx untouched) — IQ Mobile keeps
+        // 90 days (voxragtm#132).
+        'retention_pbx_domains' => env('VOXRA_RETENTION_PBX_DOMAINS', 'iqmobile.uk'),
+        'retention_pbx_days' => (int) env('VOXRA_RETENTION_PBX_DAYS', 90),
     ],
 
     'keygen' => [
