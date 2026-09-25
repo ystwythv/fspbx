@@ -166,9 +166,19 @@ class VoxraMediaPurgeService
                 continue;
             }
             if (!$this->insideRoot($path, self::RECORDINGS_ROOT . '/' . $domain->domain_name)) {
-                $this->note("skip recording outside the domain's directory: {$path}");
-                $counts['errors']++;
-                continue;
+                // Some Voxra calls (e.g. WhatsApp calling on lon1.voxra.uk)
+                // record under another domain's directory. The CDR is this
+                // call's, so the file goes too — unless a CDR of another
+                // domain also points at it, or it's outside the recordings root.
+                $shared = DB::table('v_xml_cdr')
+                    ->where('record_name', $row->record_name)
+                    ->where('domain_uuid', '!=', $domain->domain_uuid)
+                    ->exists();
+                if ($shared || !$this->insideRoot($path, self::RECORDINGS_ROOT)) {
+                    $this->note("skip recording outside the domain's directory: {$path}");
+                    $counts['errors']++;
+                    continue;
+                }
             }
             if (!$dry) {
                 $this->unlinkVariants($path);
