@@ -25,7 +25,10 @@ class VoxraMediaPurgeScopeTest extends CdrIntegrationTestCase
     {
         parent::setUp();
         DB::statement('TRUNCATE v_voicemails, v_voicemail_messages');
-        config(['services.voxra.retention_extra_domains' => '']);
+        config([
+            'services.voxra.retention_extra_domains' => '',
+            'services.voxra.retention_pbx_domains' => '',
+        ]);
         $this->root = sys_get_temp_dir() . '/voxra-purge-' . Str::random(8);
         $this->rec = $this->root . '/recordings';
         $this->vm = $this->root . '/voicemail';
@@ -216,5 +219,38 @@ class VoxraMediaPurgeScopeTest extends CdrIntegrationTestCase
         $this->assertSame(0, $res['counts']['errors']);
         $this->assertTrue($this->recordingKept($shared));
         $this->assertFileExists($this->fileOf($shared, 'bravo.voxra.uk'), 'orphan sweep also leaves it');
+    }
+
+    public function test_pbx_only_domain_keeps_its_own_90_days(): void
+    {
+        // voxragtm#132: iqmobile.uk joins the sweep at 90 days, never 10.
+        config(['services.voxra.retention_pbx_domains' => 'iqmobile.uk', 'services.voxra.retention_pbx_days' => 90]);
+        $voxra = $this->domain('acme.voxra.uk', 'voxra-tenant:t-1');
+        $wa = $this->domain('lon1.voxra.uk', 'WhatsApp Business Calling digest realm for this node. Managed by ansible whatsapp-sip.yml.');
+        $iqmobile = $this->domain('iqmobile.uk', 'iqmobile');
+        $telet = $this->domain('tel.et', null);
+
+        $voxraOld = $this->cdr($voxra, 'acme.voxra.uk', 11);
+        // WhatsApp call (IQ Mobile's), 11 days old: past Voxra's 10, inside IQ Mobile's 90.
+        $waRecent = $this->cdr($wa, 'iqmobile.uk', 11);
+        $iqOld = $this->cdr($iqmobile, 'iqmobile.uk', 100);
+        $iqRecent = $this->cdr($iqmobile, 'iqmobile.uk', 50);
+        $telOld = $this->cdr($telet, 'tel.et', 400);
+        $vmIqOld = $this->voicemail($iqmobile, 100);
+        $vmIqRecent = $this->voicemail($iqmobile, 50);
+
+        $res = $this->svc()->purge(['scope' => 'age', 'days' => 10, 'telnyx' => false]);
+
+        $this->assertSame(0, $res['counts']['errors']);
+        $this->assertSame(2, $res['counts']['domains'], 'acme.voxra.uk + iqmobile.uk; never lon1.voxra.uk');
+        $this->assertFalse($this->recordingKept($voxraOld));
+        $this->assertFalse($this->recordingKept($iqOld), 'iqmobile.uk past 90 days');
+        $this->assertTrue($this->recordingKept($iqRecent), 'iqmobile.uk inside 90 days, though past 10');
+        $this->assertFileExists($this->fileOf($iqRecent, 'iqmobile.uk'));
+        $this->assertTrue($this->recordingKept($waRecent), 'lon1.voxra.uk WhatsApp CDR untouched');
+        $this->assertFileExists($this->fileOf($waRecent, 'iqmobile.uk'), 'not swept at the Voxra 10 days');
+        $this->assertTrue($this->recordingKept($telOld), 'tel.et untouched');
+        $this->assertFalse(DB::table('v_voicemail_messages')->where('voicemail_message_uuid', $vmIqOld)->exists());
+        $this->assertTrue(DB::table('v_voicemail_messages')->where('voicemail_message_uuid', $vmIqRecent)->exists());
     }
 }
