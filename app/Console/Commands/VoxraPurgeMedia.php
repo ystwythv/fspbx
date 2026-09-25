@@ -10,7 +10,9 @@ use Illuminate\Console\Command;
  * Voxra call-audio retention (voxragtm#83): delete PBX call recordings,
  * voicemail audio, Telnyx AI call recordings and Telnyx conversation copies
  * older than --days (default services.voxra.recording_retention_days,
- * VOXRA_RECORDING_RETENTION_DAYS, 10) for Voxra tenant domains only. Scheduled
+ * VOXRA_RECORDING_RETENTION_DAYS, 10) for Voxra tenant domains, plus PBX-only
+ * media for services.voxra.retention_pbx_domains at retention_pbx_days (90,
+ * voxragtm#132). Scheduled
  * daily in the Kernel; safe to run by hand.
  *
  *   php artisan voxra:purge-media --dry-run            # what would go
