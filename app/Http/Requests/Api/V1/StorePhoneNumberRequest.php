@@ -55,6 +55,9 @@ class StorePhoneNumberRequest extends FormRequest
                     'company_directory',
                     'check_voicemail',
                     'hangup',
+                    // Voxra reception agent (iqportal "ai_agent" number routing,
+                    // voxragtm#133) — extension = the agent's extension digits.
+                    'ai_agents',
                 ]),
             ],
             'routing_options.*.extension' => [
@@ -96,6 +99,11 @@ class StorePhoneNumberRequest extends FormRequest
         $routing = $this->input('routing_options', []);
         if (is_array($routing) && count($routing)) {
             foreach ($routing as $i => $r) {
+                // iqportal sends the singular "ai_agent"; the dialplan helper
+                // and routing-options UI use "ai_agents".
+                if (is_array($r) && ($r['type'] ?? null) === 'ai_agent') {
+                    $routing[$i]['type'] = $r['type'] = 'ai_agents';
+                }
                 if (array_key_exists('extension', $r) && $r['extension'] !== null && $r['extension'] !== '') {
                     $v = preg_replace('/[^\d+]+/', '', (string) $r['extension']);
                     // allow one leading +
