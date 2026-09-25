@@ -370,7 +370,8 @@ end
 -- ring_target=both → ring every registered contact (app + fmc + other) in
 --                    parallel; first to answer wins.
 -- ring_target=fmc  → ring ONLY the FMC reg-bot's contact (the SIM leg).
---                    No app/webrtc legs — on no answer, voicemail.
+--                    No app/webrtc legs — on no answer, the extension's
+--                    forward (Voxra: the AI agent), else voicemail.
 -- ring_target=app  → ring ONLY device=app webrtc contact(s). No SIM leg —
 --                    on no answer, voicemail.
 -- The bridge string is comma-separated = parallel hunt; continue_on_fail
@@ -406,6 +407,37 @@ local function goto_voicemail(reason)
     end
 end
 
+-- Honour the extension's own call-forward settings before voicemail
+-- (voxragtm#122). Voxra Pro/Complete mobile extensions (ring_target=fmc)
+-- forward no-answer / busy / not-registered to the tenant's AI agent; the
+-- directory exposes them as forward_*_enabled/_destination channel variables
+-- (set by the user_exists lookup before this script runs). Stock
+-- local_extension applies them, but this script ends the call itself, so it
+-- must too — otherwise an unregistered eSIM, or an owner who doesn't pick
+-- up, sends the caller to FusionPBX voicemail ("extension two zero zero is
+-- not available") instead of the Voxra receptionist.
+local function forward_target(kind)
+    if session:getVariable("forward_" .. kind .. "_enabled") ~= "true" then return nil end
+    local dest = session:getVariable("forward_" .. kind .. "_destination") or ""
+    dest = dest:gsub("%s", "")
+    if dest == "" or dest == destination_number then return nil end
+    return dest
+end
+
+local function failover_or_voicemail(reason, kinds)
+    for _, kind in ipairs(kinds) do
+        local dest = forward_target(kind)
+        if dest then
+            log("INFO", string.format("%s for %s — forward_%s to %s", reason, aor, kind, dest))
+            if session:ready() then
+                session:execute("transfer", dest .. " XML " .. domain_name)
+            end
+            return
+        end
+    end
+    goto_voicemail(reason)
+end
+
 local contacts = get_contacts()
 local matched = {}
 for _, c in ipairs(contacts) do
@@ -415,7 +447,8 @@ for _, c in ipairs(contacts) do
 end
 
 if #matched == 0 then
-    goto_voicemail(string.format("ring_target=%s with no matching contacts", ring_target))
+    failover_or_voicemail(string.format("ring_target=%s with no matching contacts", ring_target),
+        { "user_not_registered", "no_answer" })
     return
 end
 
@@ -440,5 +473,12 @@ session:execute("bridge", bridge_vars .. bridge_str)
 -- continue_on_fail reasons (no answer / busy / not registered / etc.) the
 -- channel is still alive — drop the caller into voicemail.
 if session:ready() then
-    goto_voicemail("bridge failed")
+    local cause = session:getVariable("originate_disposition") or session:getVariable("last_bridge_hangup_cause") or ""
+    if cause == "USER_BUSY" then
+        failover_or_voicemail("bridge failed (" .. cause .. ")", { "busy", "no_answer" })
+    elseif cause == "USER_NOT_REGISTERED" or cause == "NO_ROUTE_DESTINATION" or cause == "UNALLOCATED_NUMBER" then
+        failover_or_voicemail("bridge failed (" .. cause .. ")", { "user_not_registered", "no_answer" })
+    else
+        failover_or_voicemail("bridge failed (" .. (cause ~= "" and cause or "no answer") .. ")", { "no_answer" })
+    end
 end
