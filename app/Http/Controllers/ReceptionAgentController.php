@@ -308,6 +308,16 @@ PROMPT;
      * qualify/book tools work on a call the caller reached without pressing *9.
      * Telnyx-only; no-op otherwise. Upserts by (domain_uuid, agent_extension).
      */
+    /**
+     * Rebuild a reception agent's inbound (9250) dialplan from the current
+     * template — voxra:resync-reception-agents uses this so template changes
+     * reach existing tenants without a full re-provision.
+     */
+    public function regenerateInboundReceptionDialPlan(AiAgent $agent): void
+    {
+        $this->generateInboundReceptionDialPlan($agent);
+    }
+
     private function generateInboundReceptionDialPlan(AiAgent $agent): void
     {
         if (

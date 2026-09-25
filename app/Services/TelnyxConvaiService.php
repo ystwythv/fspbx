@@ -29,6 +29,9 @@ class TelnyxConvaiService
 
     private string $apiKey;
     private string $baseUrl;
+    /** Ceiling on Telnyx waiting for the dynamic-variables webhook (ms). */
+    public const DYNAMIC_VARIABLES_TIMEOUT_MS = 1500;
+
     private int $timeout;
 
     public function __construct()
@@ -247,6 +250,12 @@ class TelnyxConvaiService
         $body = [
             'tools' => $tools,
             'dynamic_variables_webhook_url' => $dynVarsUrl,
+            // Telnyx holds the call — no answer, no greeting — until this
+            // webhook replies or times out. voxraweb answers within 1 s
+            // (its own deadline); pin the ceiling so the greeting never
+            // waits longer, falling back to the assistant's default
+            // variables (applyVoxraCallPolicy). First-word latency.
+            'dynamic_variables_webhook_timeout_ms' => self::DYNAMIC_VARIABLES_TIMEOUT_MS,
         ];
 
         $response = $this->http()->post("v2/ai/assistants/{$agent->telnyx_assistant_id}", $body);
