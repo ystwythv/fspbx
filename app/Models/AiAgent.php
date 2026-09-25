@@ -91,13 +91,50 @@ class AiAgent extends Model
         return $this->agent_extension . ' - ' . $this->agent_name;
     }
 
+    /** AI-agent extension range (inclusive). */
+    public const AGENT_EXTENSION_MIN = 9250;
+    public const AGENT_EXTENSION_MAX = 9299;
+
     /**
-     * Generates a unique sequence number in the 9250-9299 range.
+     * Numbers inside the agent range that other Voxra features own, so no
+     * allocator may hand them to an agent (voxragtm#110): 9260 is the Voxra
+     * Line follow-me/voicemail extension (ProvisionLineService). An agent on
+     * 9260 would collide with the Line extension's dialplan and voicemail box
+     * the moment the tenant moves to (or back to) Line.
+     */
+    public const RESERVED_AGENT_EXTENSIONS = [\App\Services\ProvisionLineService::LINE_EXTENSION];
+
+    /**
+     * First free agent extension in 9250-9299, skipping $used and the
+     * reserved numbers. Pure — shared by every agent allocator.
+     *
+     * @param  iterable<int|string>  $used
+     */
+    public static function firstFreeAgentExtension(iterable $used): ?string
+    {
+        $taken = [];
+        foreach ($used as $u) {
+            $taken[(string) $u] = true;
+        }
+        foreach (self::RESERVED_AGENT_EXTENSIONS as $r) {
+            $taken[(string) $r] = true;
+        }
+
+        for ($ext = self::AGENT_EXTENSION_MIN; $ext <= self::AGENT_EXTENSION_MAX; $ext++) {
+            if (! isset($taken[(string) $ext])) {
+                return (string) $ext;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Generates a unique sequence number in the 9250-9299 range (never a
+     * reserved one — see RESERVED_AGENT_EXTENSIONS).
      */
     public function generateUniqueSequenceNumber(): ?string
     {
-        $rangeStart = 9250;
-        $rangeEnd = 9299;
         $domainUuid = session('domain_uuid');
 
         $usedExtensions = Dialplans::where('domain_uuid', $domainUuid)
@@ -108,17 +145,8 @@ class AiAgent extends Model
             )
             ->merge(
                 Extensions::where('domain_uuid', $domainUuid)->pluck('extension')
-            )
-            ->map(fn($value) => (string) $value)
-            ->unique()
-            ->values();
+            );
 
-        for ($ext = $rangeStart; $ext <= $rangeEnd; $ext++) {
-            if (!$usedExtensions->contains((string) $ext)) {
-                return (string) $ext;
-            }
-        }
-
-        return null;
+        return self::firstFreeAgentExtension($usedExtensions);
     }
 }
