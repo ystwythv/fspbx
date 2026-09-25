@@ -58,12 +58,15 @@ class VoxraAlertOwnerTest extends TestCase
         return $sent['tools'];
     }
 
-    public function test_alert_owner_needs_name_number_and_problem_and_is_a_voxraweb_data_tool(): void
+    public function test_alert_owner_needs_number_and_problem_and_is_a_voxraweb_data_tool(): void
     {
         $def = collect(ReceptionAgentToolDefinitions::list([]))->firstWhere('name', 'alert_owner');
 
         $this->assertNotNull($def);
-        $this->assertSame(['caller_name', 'callback_number', 'problem'], $def['required']);
+        // Name asked for but not required: a caller who refuses it must still
+        // get the owner alerted (voxragtm#84, QA bloom.abuse).
+        $this->assertSame(['callback_number', 'problem'], $def['required']);
+        $this->assertArrayHasKey('caller_declined_name', $def['properties']);
         $this->assertTrue(ReceptionAgentToolDefinitions::isDataTool('alert_owner'));
         $this->assertStringContainsString('BEFORE any transfer', $def['description']);
     }
@@ -77,7 +80,7 @@ class VoxraAlertOwnerTest extends TestCase
         $this->assertSame('https://voxra.test/api/agent/tool', $alert['webhook']['url']);
         $this->assertSame([['name' => 'owner_transfer_to', 'value_path' => 'transfer_to']], $alert['webhook']['store_fields_as_variables']);
         $this->assertSame(10000, $alert['timeout_ms']);
-        $this->assertSame(['tool_name', 'caller_name', 'callback_number', 'problem'], $alert['webhook']['body_parameters']['required']);
+        $this->assertSame(['tool_name', 'callback_number', 'problem'], $alert['webhook']['body_parameters']['required']);
 
         // Other webhook tools carry no variable mapping.
         $capture = collect($tools)->first(fn ($t) => ($t['webhook']['name'] ?? null) === 'capture_lead');
@@ -85,6 +88,26 @@ class VoxraAlertOwnerTest extends TestCase
 
         $transfer = collect($tools)->firstWhere('type', 'transfer');
         $this->assertSame('{{owner_transfer_to}}', $transfer['transfer']['targets'][0]['to']);
+    }
+
+    public function test_report_abuse_is_a_voxraweb_data_tool_and_the_prompt_puts_abuse_first(): void
+    {
+        $def = collect(ReceptionAgentToolDefinitions::list([]))->firstWhere('name', 'report_abuse');
+        $this->assertNotNull($def);
+        $this->assertTrue(ReceptionAgentToolDefinitions::isDataTool('report_abuse'));
+        $this->assertSame([], $def['required']);
+        $this->assertArrayHasKey('genuine_need', $def['properties']);
+
+        $tools = $this->syncedTools($this->agent());
+        $abuse = collect($tools)->first(fn ($t) => ($t['webhook']['name'] ?? null) === 'report_abuse');
+        $this->assertSame('https://voxra.test/api/agent/tool', $abuse['webhook']['url']);
+        $this->assertNotNull(collect($tools)->firstWhere('type', 'hangup'));
+
+        $p = ProvisionTenantController::RECEPTION_SYSTEM_PROMPT;
+        $this->assertStringContainsString("I'll need to end the call if the language continues", $p);
+        $this->assertStringContainsString('Frustrated isn\'t abusive', $p);
+        $this->assertLessThan(strpos($p, '## Urgent calls and transfers'), strpos($p, 'call report_abuse'));
+        $this->assertStringContainsString('caller_declined_name true', $p);
     }
 
     public function test_transfer_falls_back_to_owner_mobile_when_alert_owner_is_disabled(): void
