@@ -381,6 +381,11 @@ class ElevenLabsConvaiService
         };
 
         foreach (\App\Services\ReceptionAgent\ReceptionAgentToolDefinitions::list($enabled) as $t) {
+            // alert_owner gates the Telnyx-native owner transfer via dynamic
+            // variables (voxragtm#122); ElevenLabs agents have neither.
+            if ($t['name'] === 'alert_owner') {
+                continue;
+            }
             $defs[] = $make($t['name'], $t['description'], $t['properties'], $t['required']);
         }
 
