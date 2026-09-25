@@ -9,7 +9,8 @@ use Illuminate\Console\Command;
 /**
  * Voxra call-audio retention (voxragtm#83): delete PBX call recordings,
  * voicemail audio, Telnyx AI call recordings and Telnyx conversation copies
- * older than --days (default 90) for Voxra tenant domains only. Scheduled
+ * older than --days (default services.voxra.recording_retention_days,
+ * VOXRA_RECORDING_RETENTION_DAYS, 10) for Voxra tenant domains only. Scheduled
  * daily in the Kernel; safe to run by hand.
  *
  *   php artisan voxra:purge-media --dry-run            # what would go
@@ -19,7 +20,7 @@ use Illuminate\Console\Command;
 class VoxraPurgeMedia extends Command
 {
     protected $signature = 'voxra:purge-media
-        {--days=90 : Retention period in days (age sweep)}
+        {--days= : Retention period in days (age sweep; default VOXRA_RECORDING_RETENTION_DAYS, 10)}
         {--tenant= : Only this voxraweb tenant id}
         {--all : Every item for --tenant regardless of age (account erasure)}
         {--limit=500 : Maximum items per store per domain in this run}
@@ -48,7 +49,7 @@ class VoxraPurgeMedia extends Command
 
         $result = (new VoxraMediaPurgeService($telnyx))->purge([
             'scope' => $this->option('all') ? 'all' : 'age',
-            'days' => (int) $this->option('days'),
+            'days' => (int) ($this->option('days') ?: config('services.voxra.recording_retention_days', 10)),
             'tenant_id' => $tenant,
             'limit' => (int) $this->option('limit'),
             'dry_run' => (bool) $this->option('dry-run'),

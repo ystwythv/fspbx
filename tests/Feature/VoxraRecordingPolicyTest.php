@@ -140,7 +140,7 @@ class VoxraRecordingPolicyTest extends TestCase
         $this->fakeTelnyxStore();
         $svc = new VoxraMediaPurgeService(app(TelnyxConvaiService::class));
 
-        [$convs, $recs] = $svc->purgeTelnyx([self::OURS], Carbon::now()->subDays(90), [], true, 100);
+        [$convs, $recs] = $svc->purgeTelnyx([self::OURS], Carbon::now()->subDays(10), [], true, 100);
 
         $this->assertSame(1, $convs);
         $this->assertSame(2, $recs); // rec-conv via the conversation + rec-ours by target
@@ -152,7 +152,7 @@ class VoxraRecordingPolicyTest extends TestCase
         $this->fakeTelnyxStore();
         $svc = new VoxraMediaPurgeService(app(TelnyxConvaiService::class));
 
-        $svc->purgeTelnyx([self::OURS], Carbon::now()->subDays(90), [], false, 100);
+        $svc->purgeTelnyx([self::OURS], Carbon::now()->subDays(10), [], false, 100);
 
         Http::assertSent(fn (Request $r) => $r->method() === 'DELETE' && str_ends_with($r->url(), '/v2/ai/conversations/conv-old'));
         Http::assertSent(fn (Request $r) => $r->method() === 'DELETE' && str_ends_with($r->url(), '/v2/recordings/rec-conv'));
@@ -167,11 +167,24 @@ class VoxraRecordingPolicyTest extends TestCase
         $svc = new VoxraMediaPurgeService(app(TelnyxConvaiService::class));
         Carbon::setTestNow('2026-12-31 12:00:00');
 
-        $svc->purgeTelnyx([self::OURS], Carbon::now()->subDays(90), [], true, 100);
+        $svc->purgeTelnyx([self::OURS], Carbon::now()->subDays(10), [], true, 100);
 
-        Http::assertSent(fn (Request $r) => str_contains(urldecode($r->url()), 'created_at=lt.2026-10-02T12:00:00Z')
+        Http::assertSent(fn (Request $r) => str_contains(urldecode($r->url()), 'created_at=lt.2026-12-21T12:00:00Z')
             && str_contains(urldecode($r->url()), 'metadata->assistant_id=eq.' . self::OURS));
-        Http::assertSent(fn (Request $r) => str_contains(urldecode($r->url()), 'filter[created_at][lte]=2026-10-02T12:00:00Z'));
+        Http::assertSent(fn (Request $r) => str_contains(urldecode($r->url()), 'filter[created_at][lte]=2026-12-21T12:00:00Z'));
         Carbon::setTestNow();
+    }
+
+    public function test_audio_retention_defaults_to_ten_days(): void
+    {
+        // Privacy policy: call audio kept 10 days (confirmed 2026-09-25).
+        $this->assertSame(10, (int) config('services.voxra.recording_retention_days'));
+
+        // The Kernel reads scheduled_jobs settings from the DB via this cache key.
+        \Illuminate\Support\Facades\Cache::put('scheduled_jobs_settings', [], 120);
+        $events = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
+            ->filter(fn ($e) => str_contains((string) $e->command, 'voxra:purge-media'));
+        $this->assertCount(1, $events);
+        $this->assertStringContainsString('--days=10', (string) $events->first()->command);
     }
 }
