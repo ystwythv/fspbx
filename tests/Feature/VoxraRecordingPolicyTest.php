@@ -179,6 +179,9 @@ class VoxraRecordingPolicyTest extends TestCase
     {
         // Privacy policy: call audio kept 10 days (confirmed 2026-09-25).
         $this->assertSame(10, (int) config('services.voxra.recording_retention_days'));
+        // Voxra customers only: lon1.voxra.uk (WhatsApp calling realm for IQ
+        // Mobile's numbers) is no longer in the default scope.
+        $this->assertSame('', (string) config('services.voxra.retention_extra_domains'));
 
         // The Kernel reads scheduled_jobs settings from the DB via this cache key.
         \Illuminate\Support\Facades\Cache::put('scheduled_jobs_settings', [], 120);

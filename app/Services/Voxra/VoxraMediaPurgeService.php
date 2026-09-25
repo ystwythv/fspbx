@@ -26,9 +26,13 @@ use Throwable;
  *    keeps it under the account-lifetime rule, so the Telnyx copy (held in
  *    the US, voxragtm#131) goes with the audio at the same 10 days.
  *
- * Scope is Voxra tenants only (domain_description "voxra-tenant:<id>", plus
+ * Scope is Voxra customers only (domain_description "voxra-tenant:<id>", plus
  * services.voxra.retention_extra_domains / _assistants for Voxra's own lines)
- * — other domains on these PBXs (e.g. iqmobile.uk) have their own policies.
+ * — other domains on these PBXs (iqmobile.uk, tel.et, reseller domains, and
+ * the lon1/eu1.voxra.uk WhatsApp Business Calling realms that carry IQ
+ * Mobile's WhatsApp calls) have their own policies. Nothing under a non-Voxra
+ * domain's recordings directory is ever deleted, even when a Voxra CDR
+ * points there; such rows are skipped and counted, not treated as errors.
  *
  * Three modes:
  *  - age sweep (daily `voxra:purge-media`): everything older than N days;
@@ -41,6 +45,17 @@ class VoxraMediaPurgeService
     public const RECORDINGS_ROOT = '/var/lib/freeswitch/recordings';
     public const VOICEMAIL_ROOT = '/var/lib/freeswitch/storage/voicemail/default';
 
+    /**
+     * Domain descriptions that mark a PBX domain as not a Voxra customer's.
+     * These are refused even if listed in retention_extra_domains: the
+     * WhatsApp Business Calling digest realms (lon1/eu1.voxra.uk, IQ Mobile's
+     * and Aerix's WhatsApp numbers) and iqportal reseller domains.
+     */
+    public const NON_VOXRA_DESCRIPTIONS = ['WhatsApp Business Calling%', 'reseller:%'];
+
+    private string $recordingsRoot = self::RECORDINGS_ROOT;
+    private string $voicemailRoot = self::VOICEMAIL_ROOT;
+
     private array $log = [];
 
     /** Every Voxra domain (all tenants + Voxra's own lines), for path/CDR ownership checks. */
@@ -51,6 +66,15 @@ class VoxraMediaPurgeService
     {
     }
 
+    /** Point the service at other storage roots (tests). */
+    public function withRoots(string $recordings, string $voicemail): static
+    {
+        $this->recordingsRoot = rtrim($recordings, '/');
+        $this->voicemailRoot = rtrim($voicemail, '/');
+
+        return $this;
+    }
+
     /** Voxra tenant domains (optionally one tenant's). */
     public function domains(?string $tenantId = null): array
     {
@@ -59,8 +83,17 @@ class VoxraMediaPurgeService
         }
         $extra = self::csv((string) config('services.voxra.retention_extra_domains', ''));
 
-        return Domain::where('domain_description', 'like', 'voxra-tenant:%')
-            ->when($extra !== [], fn ($q) => $q->orWhereIn('domain_name', $extra))
+        return Domain::where(fn ($q) => $q
+                ->where('domain_description', 'like', 'voxra-tenant:%')
+                ->when($extra !== [], fn ($w) => $w->orWhere(fn ($x) => $x
+                    ->whereIn('domain_name', $extra)
+                    ->where(fn ($y) => $y
+                        ->whereNull('domain_description')
+                        ->orWhere(function ($z) {
+                            foreach (self::NON_VOXRA_DESCRIPTIONS as $pattern) {
+                                $z->where('domain_description', 'not like', $pattern);
+                            }
+                        })))))
             ->get()
             ->all();
     }
@@ -178,11 +211,12 @@ class VoxraMediaPurgeService
                 $counts['errors']++;
                 continue;
             }
-            if (!$this->insideRoot($path, self::RECORDINGS_ROOT . '/' . $domain->domain_name)) {
-                // Some Voxra calls (WhatsApp calling on lon1.voxra.uk) are
-                // recorded under another domain's directory. Only delete when
-                // that directory is itself a Voxra domain's and no non-Voxra
-                // CDR points at the file; never touch other customers' trees.
+            if (!$this->insideRoot($path, $this->recordingsRoot . '/' . $domain->domain_name)) {
+                // A Voxra CDR whose file sits under another domain's
+                // directory. Only delete when that directory is itself a
+                // Voxra domain's and no non-Voxra CDR points at the file;
+                // never touch other customers' trees (skipped, not an error,
+                // so the nightly run stays green).
                 if (!$this->insideVoxraRoot($path) || $this->referencedOutsideVoxra((string) $row->record_name)) {
                     $this->note("skip recording in a non-Voxra directory: {$path}");
                     $counts['pbx_recordings_skipped_non_voxra_dir']++;
@@ -201,12 +235,11 @@ class VoxraMediaPurgeService
         return $n;
     }
 
-    /** Files on disk older than the cutoff with no CDR pointing at them. */
     /** Is $path inside a recordings directory of an in-scope (Voxra) domain? */
     private function insideVoxraRoot(string $path): bool
     {
         foreach ($this->scopeNames as $name) {
-            if ($this->insideRoot($path, self::RECORDINGS_ROOT . '/' . $name)) {
+            if ($this->insideRoot($path, $this->recordingsRoot . '/' . $name)) {
                 return true;
             }
         }
@@ -223,9 +256,10 @@ class VoxraMediaPurgeService
             ->exists();
     }
 
+    /** Files on disk older than the cutoff with no CDR pointing at them. */
     private function purgeOrphanRecordingFiles(Domain $domain, Carbon $cutoff, bool $dry, int $limit): int
     {
-        $root = self::RECORDINGS_ROOT . '/' . $domain->domain_name;
+        $root = $this->recordingsRoot . '/' . $domain->domain_name;
         if (!is_dir($root)) {
             return 0;
         }
@@ -239,6 +273,11 @@ class VoxraMediaPurgeService
                 continue;
             }
             if ($file->getMTime() >= $cutoff->getTimestamp()) {
+                continue;
+            }
+            if ($this->referencedOutsideVoxra($file->getFilename())) {
+                // Filed under a Voxra directory but a non-Voxra CDR owns it.
+                $this->note('skip file referenced by a non-Voxra CDR: ' . $file->getPathname());
                 continue;
             }
             if (!$dry) {
@@ -264,7 +303,7 @@ class VoxraMediaPurgeService
 
         $n = 0;
         foreach ($rows as $row) {
-            $dir = self::VOICEMAIL_ROOT . '/' . $domain->domain_name . '/' . $row->voicemail_id;
+            $dir = $this->voicemailRoot . '/' . $domain->domain_name . '/' . $row->voicemail_id;
             if (!$dry) {
                 $this->unlinkVariants($dir . '/msg_' . $row->voicemail_message_uuid . '.wav');
                 @unlink($dir . '/intro_msg_' . $row->voicemail_message_uuid . '.wav');
