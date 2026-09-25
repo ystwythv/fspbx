@@ -68,14 +68,17 @@ class ReceptionAgentToolDefinitions
                 // {{owner_transfer_to}} — the transfer tool's only target. So
                 // the order (details → alert → transfer) is enforced in code.
                 'name' => 'alert_owner',
-                'description' => 'Urgent call, or the caller needs the owner now: alert the owner straight away (WhatsApp/SMS + app push) with the caller\'s name, call-back number and the problem. Call this BEFORE any transfer — the transfer only works after this succeeds. Needs the caller\'s name and the specific problem; the call-back number defaults to the number they are calling from (confirm it with them). Returns transfer_available: only then may you offer to put them through.',
+                'description' => 'Urgent call, or the caller needs the owner now: alert the owner straight away (WhatsApp/SMS + app push) with the caller\'s name, call-back number and the problem. Call this BEFORE any transfer — the transfer only works after this succeeds. Needs the specific problem and the caller\'s name — but if they won\'t give a name, set caller_declined_name true instead of asking again. The call-back number defaults to the number they are calling from (confirm it with them). Returns transfer_available: only then may you offer to put them through.',
                 'properties' => [
-                    'caller_name' => ['type' => 'string', 'description' => "Caller's name"],
+                    'caller_name' => ['type' => 'string', 'description' => "Caller's name (leave out if they won't give it)"],
+                    'caller_declined_name' => ['type' => 'boolean', 'description' => 'true when the caller refuses to give a name — the owner is alerted with their number and the problem'],
                     'callback_number' => ['type' => 'string', 'description' => 'Number the owner should call back on — the number they are calling from unless they give another'],
                     'problem' => ['type' => 'string', 'description' => 'What has happened / what they need, in a sentence'],
                     'urgency' => ['type' => 'string', 'enum' => ['emergency', 'urgent'], 'description' => 'emergency = risk to health/safety or damage happening now; otherwise urgent'],
                 ],
-                'required' => ['caller_name', 'callback_number', 'problem'],
+                // Name is not required (voxragtm#84 QA bloom.abuse): a caller who
+                // refuses it must still get the owner alerted, not a loop.
+                'required' => ['callback_number', 'problem'],
                 // Telnyx store_fields_as_variables: response field → dynamic variable.
                 'store_as_variables' => ['owner_transfer_to' => 'transfer_to'],
                 'filler' => 'Bear with me a moment while I alert the owner.',
@@ -146,6 +149,19 @@ class ReceptionAgentToolDefinitions
                 'description' => 'Recall what the owner has told you about how the business operates (pricing, policies, preferences), so you can answer accurately. Optionally filter by category.',
                 'properties' => [
                     'category' => ['type' => 'string', 'description' => 'Optional category to filter by'],
+                ],
+                'required' => [],
+            ],
+            [
+                // voxragtm#84 (QA bloom.abuse): "warn once, then end it" counted
+                // in code — voxraweb returns the warning the first time and, on
+                // the next call, logs the call as abuse (no AI minutes, no
+                // owner follow-ups), keeps any genuine request as a message and
+                // has the PBX hang up a few seconds later.
+                'name' => 'report_abuse',
+                'description' => 'The caller has insulted, sworn at or threatened YOU (not just frustration about their problem). First call: returns a calm warning to say, then keep helping. Call it again if it continues: that logs the call as abuse and ends it — say its goodbye line and use the hangup tool. Pass genuine_need if they have a real request, so the owner can call them back.',
+                'properties' => [
+                    'genuine_need' => ['type' => 'string', 'description' => 'Their real request in a few words, if they have one (e.g. "refund for yesterday\'s cut"); omit if none'],
                 ],
                 'required' => [],
             ],
@@ -232,7 +248,7 @@ class ReceptionAgentToolDefinitions
     public const DATA_TOOLS = [
         'alert_owner', 'capture_lead', 'check_availability', 'book_appointment',
         'recall_caller', 'remember_about_caller', 'remember', 'recall_business', 'record_summary', 'search_memory',
-        'send_payment_link', 'lookup_business_info',
+        'send_payment_link', 'lookup_business_info', 'report_abuse',
     ];
 
     public static function isDataTool(string $name): bool
