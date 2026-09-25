@@ -104,8 +104,14 @@ class VoxraAlertOwnerTest extends TestCase
         $this->assertNotNull(collect($tools)->firstWhere('type', 'hangup'));
 
         $p = ProvisionTenantController::RECEPTION_SYSTEM_PROMPT;
-        $this->assertStringContainsString("I'll need to end the call if the language continues", $p);
+        // The warning's wording lives only in report_abuse's response: with it
+        // in the prompt the model recited it 8 times and never called the
+        // tool or hung up (QA batch e9cfed14).
+        $this->assertStringNotContainsString('language continues', $p);
+        $this->assertStringContainsString('BEFORE you say anything', $p);
+        $this->assertStringContainsString('call the hangup tool immediately', $p);
         $this->assertStringContainsString('Frustrated isn\'t abusive', $p);
+        $this->assertStringContainsString('Call this FIRST', $def['description']);
         $this->assertLessThan(strpos($p, '## Urgent calls and transfers'), strpos($p, 'call report_abuse'));
         $this->assertStringContainsString('caller_declined_name true', $p);
     }
