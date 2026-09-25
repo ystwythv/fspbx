@@ -16,7 +16,9 @@ use Illuminate\Support\Str;
  * the 200–299 block whose credentials voxraweb hands to iqportal
  * (sim_card_config.sip_username / sip_password / sip_host / sip_proxy),
  * with ring_target=fmc, the DDI as outbound caller-ID, and no-answer /
- * busy / unregistered failover to the reception agent. Unlike the Voxra
+ * busy / unregistered failover to the reception agent (push_wake.lua honours
+ * those forwards for ring_target=fmc; the box's voicemail is off while an
+ * agent exists). Unlike the Voxra
  * Line extension (9260, never registers) the password here IS the SIM's
  * registration secret, so it is preserved across re-provisions.
  */
@@ -81,10 +83,16 @@ class ProvisionCompleteService
         // toggle can't quietly start recording the owner's calls.
         $extension->user_record              = null;
 
-        $this->applyAgentFailover($domain, $extension);
+        $hasAgent = $this->applyAgentFailover($domain, $extension);
         $extension->save();
 
-        $this->upsertVoicemailBox($domain, (string) $extension->extension);
+        // With an agent the mobile extension's own voicemail box is off:
+        // every unanswered call (unregistered eSIM, phone off, no answer,
+        // busy, rejected) forwards to the AI, which takes the message — a
+        // caller must never hear "extension two zero zero is not available"
+        // (voxragtm#45 / QA run 8aba57e5). Without an agent the box is the
+        // only safety net, so it stays on.
+        $this->upsertVoicemailBox($domain, (string) $extension->extension, ! $hasAgent);
 
         FusionCache::clear('directory:' . $extension->extension . '@' . $domain->domain_name);
         FusionCache::clear('dialplan.' . $domain->domain_name);
@@ -221,15 +229,19 @@ class ProvisionCompleteService
         return Str::random(24);
     }
 
-    private function applyAgentFailover(Domain $domain, Extensions $extension): void
+    /** Point the forwards at the agent; returns whether there is one. */
+    private function applyAgentFailover(Domain $domain, Extensions $extension): bool
     {
         $failover = app(AgentFailoverService::class);
         $agent = $failover->enabledAgent($domain);
         if ($agent) {
             $failover->applyTo($extension, $agent);
-        } else {
-            $failover->clearOn($extension); // voicemail box catches it
+
+            return true;
         }
+        $failover->clearOn($extension); // voicemail box catches it
+
+        return false;
     }
 
     /** First free number in the 200–299 block for the domain. */
@@ -254,7 +266,7 @@ class ProvisionCompleteService
         ));
     }
 
-    private function upsertVoicemailBox(Domain $domain, string $extension): Voicemails
+    private function upsertVoicemailBox(Domain $domain, string $extension, bool $enabled): Voicemails
     {
         $voicemail = Voicemails::where('domain_uuid', $domain->domain_uuid)
             ->where('voicemail_id', $extension)
@@ -272,7 +284,7 @@ class ProvisionCompleteService
             ]);
         }
 
-        $voicemail->voicemail_enabled = 'true';
+        $voicemail->voicemail_enabled = $enabled ? 'true' : 'false';
         $voicemail->voicemail_transcription_enabled = 'true';
         $voicemail->save();
 
