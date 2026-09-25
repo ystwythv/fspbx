@@ -173,12 +173,16 @@ return [
         // Call-audio retention (voxragtm#83, `voxra:purge-media`): Voxra tenant
         // domains (voxra-tenant:*) are always in scope; these add Voxra's own
         // lines — the platform demo line's PBX domain and Telnyx assistant.
+        // Audio (PBX recordings, voicemail audio, Telnyx AI recordings) and
+        // Telnyx's conversation copies go after recording_retention_days (10,
+        // per the privacy policy — confirmed 2026-09-25). Voxra's own
+        // transcripts/summaries live in voxraweb and follow its account rule.
         'retention_extra_domains' => env('VOXRA_RETENTION_EXTRA_DOMAINS', 'lon1.voxra.uk'),
         'retention_extra_assistants' => env(
             'VOXRA_RETENTION_EXTRA_ASSISTANTS',
             'assistant-1cce66d5-5e04-421c-8103-ca008fa4ad0f'
         ),
-        'retention_days' => (int) env('VOXRA_RETENTION_DAYS', 90),
+        'recording_retention_days' => (int) env('VOXRA_RECORDING_RETENTION_DAYS', 10),
     ],
 
     'keygen' => [

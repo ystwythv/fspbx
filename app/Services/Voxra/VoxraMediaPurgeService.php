@@ -11,7 +11,8 @@ use Throwable;
 
 /**
  * Deletes Voxra call audio (voxragtm#83). The privacy policy keeps call audio
- * for 90 days; this service owns every store that holds it:
+ * for 10 days (services.voxra.recording_retention_days); this service owns
+ * every store that holds it:
  *
  *  - PBX call recordings: v_xml_cdr.record_path/record_name + the file under
  *    /var/lib/freeswitch/recordings/<domain>/… (the CDR row itself is a
@@ -20,8 +21,10 @@ use Throwable;
  *    /var/lib/freeswitch/storage/voicemail/default/<domain>/<box>/ (the row
  *    also holds the transcription and any base64 audio);
  *  - Telnyx: AI call recordings and the AI conversation copies (transcripts)
- *    for the tenant's reception assistant. voxraweb keeps its own transcript,
- *    so the Telnyx copy goes with the audio.
+ *    for the tenant's reception assistant. voxraweb copies the transcript into
+ *    its own store within hours of the call (transcripts backfill cron) and
+ *    keeps it under the account-lifetime rule, so the Telnyx copy (held in
+ *    the US, voxragtm#131) goes with the audio at the same 10 days.
  *
  * Scope is Voxra tenants only (domain_description "voxra-tenant:<id>", plus
  * services.voxra.retention_extra_domains / _assistants for Voxra's own lines)
@@ -85,7 +88,7 @@ class VoxraMediaPurgeService
         $scope = $opts['scope'] ?? 'age';
         $dry = (bool) ($opts['dry_run'] ?? false);
         $limit = max(1, (int) ($opts['limit'] ?? 500));
-        $cutoff = $scope === 'age' ? Carbon::now()->subDays(max(1, (int) ($opts['days'] ?? 90))) : null;
+        $cutoff = $scope === 'age' ? Carbon::now()->subDays(max(1, (int) ($opts['days'] ?? config('services.voxra.recording_retention_days', 10)))) : null;
         $numbers = $scope === 'caller' ? self::numberVariants((array) ($opts['caller_numbers'] ?? [])) : [];
         if ($scope === 'caller' && $numbers === []) {
             return ['counts' => [], 'log' => ['caller scope with no caller numbers — nothing to do']];
