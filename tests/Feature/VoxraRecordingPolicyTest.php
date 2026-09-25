@@ -180,6 +180,8 @@ class VoxraRecordingPolicyTest extends TestCase
         // Privacy policy: call audio kept 10 days (confirmed 2026-09-25).
         $this->assertSame(10, (int) config('services.voxra.recording_retention_days'));
 
+        // The Kernel reads scheduled_jobs settings from the DB via this cache key.
+        \Illuminate\Support\Facades\Cache::put('scheduled_jobs_settings', [], 120);
         $events = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
             ->filter(fn ($e) => str_contains((string) $e->command, 'voxra:purge-media'));
         $this->assertCount(1, $events);

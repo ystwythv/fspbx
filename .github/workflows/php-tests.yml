@@ -65,6 +65,9 @@ jobs:
       - name: CDR route protection tests (no DB)
         run: vendor/bin/phpunit tests/Feature/Api/V1/Cdr/CdrRouteProtectionTest.php
 
+      - name: Voxra recording policy + retention tests (no DB)
+        run: vendor/bin/phpunit tests/Feature/VoxraRecordingPolicyTest.php
+
       - name: CDR integration tests (Postgres fixtures)
         env:
           CDR_TEST_DB: 'true'
