@@ -202,9 +202,10 @@ class ProvisionTenantCompleteModeTest extends TestCase
         $this->assertSame('true', $ext->forward_user_not_registered_enabled);
         $this->assertSame('9250', $ext->forward_user_not_registered_destination);
 
+        // the AI takes every missed call — the extension's own box is off
         $vm = Voicemails::where('domain_uuid', 'dom-uuid-1')->where('voicemail_id', '200')->first();
         $this->assertNotNull($vm);
-        $this->assertSame('true', $vm->voicemail_enabled);
+        $this->assertSame('false', $vm->voicemail_enabled);
         $this->assertSame('true', $vm->voicemail_transcription_enabled);
     }
 
@@ -279,6 +280,8 @@ class ProvisionTenantCompleteModeTest extends TestCase
         $this->assertSame('false', $ext->forward_no_answer_enabled);
         $this->assertSame('false', $ext->forward_busy_enabled);
         $this->assertSame('false', $ext->forward_user_not_registered_enabled);
+        // no agent → voicemail is the safety net
+        $this->assertSame('true', Voicemails::where('voicemail_id', '200')->first()->voicemail_enabled);
     }
 
     public function test_failover_follows_agent_enable_toggle_on_reprovision(): void
@@ -287,10 +290,13 @@ class ProvisionTenantCompleteModeTest extends TestCase
         $svc->ensureMobileExtension($this->domain(), 'Acme');
         $this->assertSame('false', $this->mobile()->forward_no_answer_enabled);
 
+        $this->assertSame('true', Voicemails::where('voicemail_id', '200')->first()->voicemail_enabled);
+
         $this->seedAgent();
         $svc->ensureMobileExtension($this->domain(), 'Acme');
         $this->assertSame('true', $this->mobile()->forward_no_answer_enabled);
         $this->assertSame('9250', $this->mobile()->forward_no_answer_destination);
+        $this->assertSame('false', Voicemails::where('voicemail_id', '200')->first()->voicemail_enabled);
     }
 
     // ---- did → caller-ID --------------------------------------------------

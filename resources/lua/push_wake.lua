@@ -370,11 +370,20 @@ end
 -- ring_target=both → ring every registered contact (app + fmc + other) in
 --                    parallel; first to answer wins.
 -- ring_target=fmc  → ring ONLY the FMC reg-bot's contact (the SIM leg).
---                    No app/webrtc legs — on no answer, voicemail.
--- ring_target=app  → ring ONLY device=app webrtc contact(s). No SIM leg —
---                    on no answer, voicemail.
+--                    No app/webrtc legs.
+-- ring_target=app  → ring ONLY device=app webrtc contact(s). No SIM leg.
 -- The bridge string is comma-separated = parallel hunt; continue_on_fail
--- lets the script run the voicemail handler below when the bridge fails.
+-- lets the script run the failover handler below when the bridge fails.
+--
+-- When nothing answers (no matching contact, or the bridge fails for ANY
+-- reason) the extension's own call-forward settings decide where the caller
+-- goes — forward_user_not_registered / forward_busy / forward_no_answer —
+-- exactly as the stock local_extension + call-forward-not-registered path does
+-- for ring_target=both. Only an extension with no matching forward falls to
+-- its voicemail box. Voxra Complete mobile extensions (voxragtm#45) forward
+-- all three to the tenant's AI reception agent, so an unregistered eSIM, a
+-- switched-off / out-of-signal phone, a rejected call or a ring timeout all
+-- land on the AI — never on "extension two zero zero is not available".
 
 -- Drop the caller into the user's voicemail box. We do this directly rather
 -- than letting push_wake_hook's `continue="true"` fall through to
@@ -406,6 +415,57 @@ local function goto_voicemail(reason)
     end
 end
 
+-- Which of the extension's call-forward settings covers a failed ring.
+-- Pure (unit-tested by tests/lua/push_wake_failover_test.lua).
+local function forward_kind_for_cause(cause)
+    cause = tostring(cause or ""):upper()
+    if cause == "USER_BUSY" or cause == "CALL_REJECTED" then
+        return "busy"
+    end
+    if cause == "USER_NOT_REGISTERED" or cause == "SUBSCRIBER_ABSENT"
+        or cause == "NO_ROUTE_DESTINATION" or cause == "UNALLOCATED_NUMBER"
+        or cause == "DESTINATION_OUT_OF_ORDER" then
+        return "user_not_registered"
+    end
+    -- NO_ANSWER, NO_USER_RESPONSE, ALLOTTED_TIMEOUT,
+    -- RECOVERY_ON_TIMER_EXPIRE, NORMAL_TEMPORARY_FAILURE, … — the phone was
+    -- (or should have been) reachable but nobody picked up.
+    return "no_answer"
+end
+
+-- The forward destination for a failed ring, or nil. Reads the channel
+-- variables the stock user_exists dialplan copies from the directory
+-- (forward_*_enabled / forward_*_destination), falling back to user_data.
+local function forward_destination(kind)
+    local function var(name)
+        local v = session:getVariable(name)
+        if v == nil or v == "" or v == "_undef_" then
+            v = api_value("user_data " .. aor .. " var " .. name)
+        end
+        return v or ""
+    end
+    if var("forward_" .. kind .. "_enabled") ~= "true" then return nil end
+    local dest = var("forward_" .. kind .. "_destination")
+    if dest == "" or dest == destination_number then return nil end
+    return dest
+end
+
+-- Nobody answered: honour the extension's call-forward for this cause, else
+-- voicemail. Never re-rings this extension (dest == destination_number is
+-- ignored above) so a forward can't loop.
+local function failover(cause, reason)
+    if not session:ready() then return end
+    local kind = forward_kind_for_cause(cause)
+    local dest = forward_destination(kind)
+    if dest then
+        log("INFO", string.format("%s (cause=%s) for %s — forward_%s → %s",
+            reason, tostring(cause), aor, kind, dest))
+        session:execute("transfer", dest .. " XML " .. domain_name)
+        return
+    end
+    goto_voicemail(string.format("%s (cause=%s, no forward_%s)", reason, tostring(cause), kind))
+end
+
 local contacts = get_contacts()
 local matched = {}
 for _, c in ipairs(contacts) do
@@ -414,8 +474,10 @@ for _, c in ipairs(contacts) do
     end
 end
 
+-- Nothing registered for this ring target: don't ring at all, fail over now
+-- (an unregistered Voxra eSIM goes straight to the AI agent).
 if #matched == 0 then
-    goto_voicemail(string.format("ring_target=%s with no matching contacts", ring_target))
+    failover("USER_NOT_REGISTERED", string.format("ring_target=%s with no matching contacts", ring_target))
     return
 end
 
@@ -424,7 +486,10 @@ local bridge_str = table.concat(matched, ",")
 log("INFO", string.format("ring_target=%s contacts=%d bridge=%s",
     ring_target, #matched, bridge_str))
 
-session:execute("set", "continue_on_fail=USER_BUSY,NO_ANSWER,USER_NOT_REGISTERED,NO_ROUTE_DESTINATION,UNALLOCATED_NUMBER,RECOVERY_ON_TIMER_EXPIRE,CALL_REJECTED")
+-- Any failure keeps the caller: a phone that's off / out of signal comes
+-- back from the FMC leg as 480/503/408 (NO_USER_RESPONSE,
+-- NORMAL_TEMPORARY_FAILURE, …), not just the classic busy/no-answer set.
+session:execute("set", "continue_on_fail=true")
 session:execute("set", "hangup_after_bridge=true")
 -- Carry the tenant domain on the outbound INVITE. The extension dial-string
 -- normally does this ({sip_invite_domain=${domain_name}}...), but we bridge
@@ -436,9 +501,13 @@ local bridge_vars = string.format("{sip_invite_domain=%s}", domain_name)
 session:execute("bridge", bridge_vars .. bridge_str)
 
 -- After bridge: if a leg answered the bridge succeeds and the channel is
--- gone (session no longer ready). If the bridge failed for any of the
--- continue_on_fail reasons (no answer / busy / not registered / etc.) the
--- channel is still alive — drop the caller into voicemail.
+-- gone (session no longer ready). If the bridge failed (no answer / busy /
+-- not registered / rejected / timeout / …) the channel is still alive —
+-- fail over via the extension's call-forward settings.
 if session:ready() then
-    goto_voicemail("bridge failed")
+    local cause = session:getVariable("originate_disposition")
+    if cause == nil or cause == "" or cause == "SUCCESS" then
+        cause = session:getVariable("last_bridge_hangup_cause")
+    end
+    failover(cause, "bridge failed")
 end

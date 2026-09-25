@@ -68,6 +68,14 @@ jobs:
       - name: Voxra recording policy + retention tests (no DB)
         run: vendor/bin/phpunit tests/Feature/VoxraRecordingPolicyTest.php
 
+      - name: Voxra Complete provisioning tests (in-memory sqlite)
+        run: vendor/bin/phpunit tests/Feature/ProvisionTenantCompleteModeTest.php
+
+      - name: push_wake.lua failover tests (stubbed FreeSWITCH)
+        run: |
+          sudo apt-get install -y -qq lua5.3 >/dev/null
+          lua5.3 tests/lua/push_wake_failover_test.lua
+
       - name: CDR integration tests (Postgres fixtures)
         env:
           CDR_TEST_DB: 'true'
