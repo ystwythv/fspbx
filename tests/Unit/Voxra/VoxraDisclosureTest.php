@@ -13,7 +13,7 @@ class VoxraDisclosureTest extends TestCase
     {
         $g = VoxraDisclosure::defaultGreeting('Nutty Squirrel', true);
 
-        $this->assertSame("Hi, thanks for calling Nutty Squirrel. Just so you know, I'm an AI assistant and calls may be recorded. How can I help?", $g);
+        $this->assertSame("Hi, thanks for calling Nutty Squirrel. Just so you know, I'm an AI assistant and this call is being recorded. How can I help?", $g);
     }
 
     public function test_recording_off_mentions_ai_only(): void
@@ -28,7 +28,7 @@ class VoxraDisclosureTest extends TestCase
     {
         $g = VoxraDisclosure::ensure('Good morning, Bloom Hair. What can I do for you?', 'Bloom', true);
 
-        $this->assertSame("Good morning, Bloom Hair. Just so you know, I'm an AI assistant and calls may be recorded. What can I do for you?", $g);
+        $this->assertSame("Good morning, Bloom Hair. Just so you know, I'm an AI assistant and this call is being recorded. What can I do for you?", $g);
     }
 
     public function test_greeting_that_already_discloses_is_kept(): void
@@ -50,7 +50,7 @@ class VoxraDisclosureTest extends TestCase
         $g = VoxraDisclosure::ensure(str_repeat('Hello ', 200), 'Bloom', true);
 
         $this->assertLessThanOrEqual(VoxraDisclosure::MAX_GREETING, mb_strlen($g));
-        $this->assertStringEndsWith("I'm an AI assistant and calls may be recorded.", $g);
+        $this->assertStringEndsWith("I'm an AI assistant and this call is being recorded.", $g);
     }
 
     public function test_ordinary_words_are_not_mistaken_for_ai(): void

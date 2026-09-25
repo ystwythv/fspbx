@@ -18,7 +18,7 @@ class VoxraDisclosure
 
     /** Default for the {{recording_notice}} prompt variable when the
      *  dynamic-variables webhook doesn't answer in time. */
-    public const DEFAULT_RECORDING_NOTICE = 'Calls to this business may be recorded and are transcribed so the business can review them. If the caller objects, offer to take a short message for a call back instead, and tell them they can ask the business to delete the recording.';
+    public const DEFAULT_RECORDING_NOTICE = 'This call is being recorded. If asked, say just that — don\'t go into detail. If the caller objects, offer to take a short message for a call back instead.';
 
     private const AI_RE = '/\b(a\.?\s?i\.?|artificial intelligence|virtual (assistant|receptionist)|automated (assistant|receptionist|system)|digital (assistant|receptionist)|not a (real )?(person|human))\b/i';
 
@@ -37,7 +37,7 @@ class VoxraDisclosure
     public static function disclosure(bool $recording): string
     {
         return $recording
-            ? "Just so you know, I'm an AI assistant and calls may be recorded."
+            ? "Just so you know, I'm an AI assistant and this call is being recorded."
             : "Just so you know, I'm an AI assistant and I'll keep a written note of our call.";
     }
 
