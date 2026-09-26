@@ -13,6 +13,12 @@ use Tests\TestCase;
  * 183 ringback for 39 s → ORIGINATOR_CANCEL on 2 of 4 calls), so the answer
  * before the bridge is load-bearing. Latency is handled elsewhere (short
  * greetings, fast dynamic variables).
+ *
+ * Later analysis (voxragtm#153): those no-answers were Telnyx's AI platform
+ * stalling session starts (06:53-07:20 UTC, also hitting the QA caller's
+ * own outbound dials), not the ring_ready change. So each Telnyx attempt is
+ * bounded, retried once, and a caller Telnyx never answers is ended as
+ * NO_ANSWER (a missed call) instead of ringing until they give up.
  */
 class ReceptionInboundDialplanTemplateTest extends TestCase
 {
@@ -44,5 +50,29 @@ class ReceptionInboundDialplanTemplateTest extends TestCase
         $this->assertLessThan($bridge, $answer);
         $this->assertStringContainsString('sofia/external/sip:agent@assistant-test.sip.telnyx.com', $xml);
         $this->assertNotFalse(simplexml_load_string($xml));
+    }
+
+    public function test_bounds_each_telnyx_attempt_retries_once_then_ends_as_no_answer(): void
+    {
+        $xml = $this->render();
+        $doc = simplexml_load_string($xml);
+        $actions = [];
+        foreach ($doc->condition->action as $a) {
+            $actions[] = [(string) $a['application'], (string) $a['data']];
+        }
+
+        $telnyx = array_keys(array_filter($actions, fn ($a) => $a[0] === 'bridge'
+            && str_contains($a[1], 'sip:agent@assistant-test.sip.telnyx.com')));
+        $this->assertCount(2, $telnyx, 'one retry after a Telnyx no-answer');
+        foreach ($telnyx as $i) {
+            $this->assertStringContainsString('[leg_timeout=10]sofia/external/', $actions[$i][1]);
+            $this->assertStringContainsString('sip_h_X-Voxra-Conversation-Id=${uuid}', $actions[$i][1]);
+        }
+
+        $this->assertContains(['set', 'continue_on_fail=true'], $actions);
+        $this->assertContains(['set', 'hangup_after_bridge=true'], $actions);
+        $last = end($actions);
+        $this->assertSame(['hangup', 'NO_ANSWER'], $last);
+        $this->assertGreaterThan(max($telnyx), array_key_last($actions));
     }
 }
