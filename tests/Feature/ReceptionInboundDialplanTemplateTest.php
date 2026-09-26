@@ -6,19 +6,13 @@ use App\Models\AiAgent;
 use Tests\TestCase;
 
 /**
- * The Voxra inbound reception dialplan (ext 9250) answers the caller before
- * bridging to the Telnyx assistant. #123 tried leaving the caller unanswered
- * (ring_ready only) until Telnyx answered, to cut first-word latency — but in
- * production Telnyx then often never answered the SIP leg (QA 26 Sep 06:59:
- * 183 ringback for 39 s → ORIGINATOR_CANCEL on 2 of 4 calls), so the answer
- * before the bridge is load-bearing. Latency is handled elsewhere (short
- * greetings, fast dynamic variables).
- *
- * Later analysis (voxragtm#153): those no-answers were Telnyx's AI platform
- * stalling session starts (06:53-07:20 UTC, also hitting the QA caller's
- * own outbound dials), not the ring_ready change. So each Telnyx attempt is
- * bounded, retried once, and a caller Telnyx never answers is ended as
- * NO_ANSWER (a missed call) instead of ringing until they give up.
+ * The Voxra inbound reception dialplan (ext 9250) does not answer the caller
+ * before the Telnyx assistant answers: the caller hears ringing (ring_ready)
+ * until the assistant picks up, not dead air. #123 first shipped this; it was
+ * rolled back (#126) when Telnyx stopped answering on 26 Sep, but that turned
+ * out to be a Telnyx AI-platform stall (voxragtm#153), not this change. Each
+ * Telnyx attempt is bounded and retried once (#127), and a caller Telnyx never
+ * answers is ended as NO_ANSWER — still ringing, never silence.
  */
 class ReceptionInboundDialplanTemplateTest extends TestCase
 {
@@ -39,16 +33,13 @@ class ReceptionInboundDialplanTemplateTest extends TestCase
         ])->render();
     }
 
-    public function test_answers_the_caller_before_bridging_to_telnyx(): void
+    public function test_rings_until_telnyx_answers_no_answer_or_sleep_first(): void
     {
         $xml = $this->render();
 
-        $answer = strpos($xml, 'application="answer"');
-        $bridge = strpos($xml, 'application="bridge"');
-        $this->assertNotFalse($answer);
-        $this->assertNotFalse($bridge);
-        $this->assertLessThan($bridge, $answer);
-        $this->assertStringContainsString('sofia/external/sip:agent@assistant-test.sip.telnyx.com', $xml);
+        $this->assertStringNotContainsString('application="answer"', $xml);
+        $this->assertStringNotContainsString('application="sleep"', $xml);
+        $this->assertStringContainsString('application="ring_ready"', $xml);
         $this->assertNotFalse(simplexml_load_string($xml));
     }
 
