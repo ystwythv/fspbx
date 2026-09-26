@@ -28,6 +28,19 @@
              Falls through to the public assistant subdomain if unregistered. --}}
         <action application="bridge" data="{{ $voxraHeaders }}user/{{ $agent->telnyx_attach_extension . '@' . $attach_domain }}" />
 @endif
-        <action application="bridge" data="{{ $voxraHeaders }}sofia/external/sip:{{ 'agent@' . $agent->telnyx_assistant_id }}.sip.telnyx.com" />
+        {{-- Telnyx normally answers the assistant leg in ~2 s. On 26 Sep
+             06:53-07:20 UTC Telnyx's AI platform stalled session starts for
+             16-40 s (or for good): 180 Ringing, then nothing, and callers sat
+             in ringback until they gave up (voxragtm#153). Bound each attempt;
+             a fresh INVITE starts a fresh Telnyx session, so retry once. --}}
+        <action application="bridge" data="{{ $voxraHeaders }}[leg_timeout={{ $telnyx_leg_timeout ?? 10 }}]sofia/external/sip:{{ 'agent@' . $agent->telnyx_assistant_id }}.sip.telnyx.com" />
+        <action application="log" data="WARNING Voxra: Telnyx assistant {{ $agent->telnyx_assistant_id }} did not answer (${originate_disposition}); retrying once" />
+        <action application="bridge" data="{{ $voxraHeaders }}[leg_timeout={{ $telnyx_leg_timeout ?? 10 }}]sofia/external/sip:{{ 'agent@' . $agent->telnyx_assistant_id }}.sip.telnyx.com" />
+        {{-- Still no AI: end the call as NO_ANSWER rather than leave the caller
+             ringing. The CDR resolves to no_answer, which Voxra treats as a
+             missed call (missed-call text-back, no AI minutes). --}}
+        <action application="log" data="ERR Voxra: Telnyx assistant {{ $agent->telnyx_assistant_id }} did not answer twice (${originate_disposition}); ending as missed" />
+        <action application="set" data="voxra_ai_unavailable=true" />
+        <action application="hangup" data="NO_ANSWER" />
     </condition>
 </extension>
