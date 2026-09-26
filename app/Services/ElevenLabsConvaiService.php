@@ -327,7 +327,7 @@ class ElevenLabsConvaiService
         }
         $url = $base . '/webhooks/voxra/reception-agent/tool';
 
-        $tools = $this->buildReceptionAgentToolDefinitions($url, (array) ($agent->tools_enabled ?? []));
+        $tools = $this->buildReceptionAgentToolDefinitions($url, \App\Services\ReceptionAgent\ReceptionAgentToolDefinitions::forAgent($agent));
 
         $body = [
             'conversation_config' => [
@@ -352,7 +352,7 @@ class ElevenLabsConvaiService
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function buildReceptionAgentToolDefinitions(string $webhookUrl, array $enabled): array
+    private function buildReceptionAgentToolDefinitions(string $webhookUrl, array $toolDefs): array
     {
         $defs = [];
         $headers = [
@@ -380,7 +380,7 @@ class ElevenLabsConvaiService
             ];
         };
 
-        foreach (\App\Services\ReceptionAgent\ReceptionAgentToolDefinitions::list($enabled) as $t) {
+        foreach ($toolDefs as $t) {
             // alert_owner gates the Telnyx-native owner transfer via dynamic
             // variables (voxragtm#122); ElevenLabs agents have neither.
             if ($t['name'] === 'alert_owner') {

@@ -16,7 +16,9 @@ use Illuminate\Console\Command;
  * or greeting changes), and rebuild each inbound (9250) dialplan from the
  * current template. Run after a deploy that changes
  * ProvisionTenantController::RECEPTION_SYSTEM_PROMPT or the reception tools
- * (e.g. voxragtm#122 alert_owner gating the owner transfer).
+ * (e.g. voxragtm#122 alert_owner gating the owner transfer, voxragtm#140
+ * the reception tool allowlist — the full tools list is replaced, so
+ * summon-only tools are removed from existing assistants).
  *
  *   php artisan voxra:resync-reception-agents --dry-run
  *   php artisan voxra:resync-reception-agents
