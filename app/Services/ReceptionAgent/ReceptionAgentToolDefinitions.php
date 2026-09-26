@@ -159,7 +159,7 @@ class ReceptionAgentToolDefinitions
                 // owner follow-ups), keeps any genuine request as a message and
                 // has the PBX hang up a few seconds later.
                 'name' => 'report_abuse',
-                'description' => 'The caller has insulted, sworn at or threatened YOU (not just frustration about their problem). First call: returns a calm warning to say, then keep helping. Call it again if it continues: that logs the call as abuse and ends it — say its goodbye line and use the hangup tool. Pass genuine_need if they have a real request, so the owner can call them back.',
+                'description' => 'Call this FIRST, before replying, every time the caller insults, swears at or threatens YOU (not frustration about their own problem). Then say exactly the `say` text it returns, word for word — never warn the caller in your own words. If it returns action end_call: say that goodbye and call the hangup tool immediately; the phone system disconnects the call a few seconds later regardless. Pass genuine_need if they have a real request, so the owner can call them back.',
                 'properties' => [
                     'genuine_need' => ['type' => 'string', 'description' => 'Their real request in a few words, if they have one (e.g. "refund for yesterday\'s cut"); omit if none'],
                 ],
