@@ -1,0 +1,91 @@
+name: Frontend assets
+
+# Builds the Vite bundle in CI so the PBX servers never run node (voxragtm#148:
+# an on-server `npm run build` starved FreeSWITCH on lon1 and dropped calls).
+#
+# Output: one workflow artifact per built commit, named
+#   fspbx-assets-<40-char commit sha>
+# containing a single fspbx-assets-<sha>.tar.gz whose root is the contents of
+# storage/app/public/vite (manifest.json, assets/, .fspbx-sha).
+#
+# The iqm-ansible fspbx deploy (tasks/voxra/fspbx-assets-fetch.yml) looks the
+# artifact up by that exact name via the GitHub API for the commit it is about
+# to deploy, and refuses to deploy until it exists.
+#
+# pull_request runs build the PR merge commit (never deployed) and keep the
+# artifact for 7 days, so a broken frontend build fails the PR. Pushes to main
+# keep theirs for 90 days (the public-repo maximum). To deploy/roll back to a
+# main commit older than that, run this workflow by hand with `ref` set to the
+# commit sha; the artifact name follows the built commit.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit sha (or branch) to build
+        required: false
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: assets-${{ github.event_name }}-${{ github.event.pull_request.number || inputs.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Vite build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || '' }}
+
+      # Same major as the PBX servers used for on-server builds (v20.20.x).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build
+        run: npm run build
+
+      - name: Package bundle
+        id: pkg
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-parse HEAD)"
+          OUT=storage/app/public/vite
+          test -s "$OUT/manifest.json" || { echo "::error::no $OUT/manifest.json after build"; exit 1; }
+          test -d "$OUT/assets"        || { echo "::error::no $OUT/assets after build"; exit 1; }
+          echo "$SHA" > "$OUT/.fspbx-sha"
+          TAR="$RUNNER_TEMP/fspbx-assets-$SHA.tar.gz"
+          tar -C "$OUT" --owner=0 --group=0 -czf "$TAR" .
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "tar=$TAR" >> "$GITHUB_OUTPUT"
+          {
+            echo "### fspbx-assets-$SHA"
+            echo ""
+            echo "- files: $(find "$OUT" -type f | wc -l)"
+            echo "- bundle: $(du -h "$TAR" | cut -f1)"
+            echo "- sha256: \`$(sha256sum "$TAR" | cut -d' ' -f1)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: fspbx-assets-${{ steps.pkg.outputs.sha }}
+          path: ${{ steps.pkg.outputs.tar }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: ${{ github.event_name == 'pull_request' && 7 || 90 }}
