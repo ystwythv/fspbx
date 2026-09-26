@@ -24,6 +24,24 @@ class TelnyxConvaiService
      */
     public const DEFAULT_VOICE = 'Telnyx.Ultra.c8f7835e-28a3-4f0c-80d7-c1302ac62aae';
 
+    /**
+     * Seconds of caller silence before the assistant checks in ("Sorry, I
+     * didn't catch that — how can I help?"). Telnyx's default is 10 s; QA
+     * (nutty.price, 26 Sep) lost a caller whose question overlapped the tail
+     * of the un-interruptible greeting: Telnyx dropped the speech and sat
+     * silent until the caller hung up. A prompt re-ask after a short silence
+     * recovers that caller (and anyone else who's gone quiet).
+     */
+    public const USER_IDLE_REPLY_SECS = 4;
+
+    /**
+     * Backstop on a dead line (caller put the phone down without hanging up):
+     * the assistant is stopped after this much caller silence. The prompt
+     * closes politely after two unanswered check-ins long before this, so it
+     * is generous enough never to cut a long answer or a transfer attempt.
+     */
+    public const USER_IDLE_TIMEOUT_SECS = 60;
+
     /** Mirrors voxraweb's default for tenants that haven't set one. */
     public const DEFAULT_URGENT_DEFINITION = "anything that can't wait for a normal call-back: a risk to someone's health or safety, damage happening now, or a problem caused by work the business has just done";
 
@@ -242,7 +260,7 @@ class TelnyxConvaiService
             $tools[] = [
                 'type' => 'hangup',
                 'hangup' => [
-                    'description' => 'End the call. Use after saying goodbye, and always after recording a spam or abuse outcome.',
+                    'description' => 'End the call. Say your goodbye first, then call this without saying anything more — never announce that the call is ending or has ended. Always use it after recording a spam or abuse outcome, and after two check-ins the caller did not answer.',
                 ],
             ];
         }
@@ -408,6 +426,10 @@ class TelnyxConvaiService
      *    $recording is not null — per tenant, from voxraweb settings;
      *  - the greeting can't be talked over, so callers always hear the
      *    AI/recording disclosure in full;
+     *  - a quick check-in when the caller goes quiet (USER_IDLE_REPLY_SECS)
+     *    and a dead-line backstop (USER_IDLE_TIMEOUT_SECS): speech that
+     *    overlaps the greeting's tail is dropped by Telnyx, so the caller is
+     *    asked again rather than left in silence;
      *  - a default for the {{recording_notice}} prompt variable, used when the
      *    dynamic-variables webhook doesn't answer in time.
      * Nested settings objects are replaced wholesale by the API, so each is
@@ -426,6 +448,9 @@ class TelnyxConvaiService
             $rec += ['channels' => 'dual', 'format' => 'mp3'];
             $telephony['recording_settings'] = $rec;
         }
+
+        $telephony['user_idle_reply_secs'] = self::USER_IDLE_REPLY_SECS;
+        $telephony['user_idle_timeout_secs'] = self::USER_IDLE_TIMEOUT_SECS;
 
         $interruption = (array) ($current['interruption_settings'] ?? []);
         $interruption['disable_greeting_interruption'] = true;
@@ -447,10 +472,8 @@ class TelnyxConvaiService
         $body = [
             'interruption_settings' => $interruption,
             'dynamic_variables' => $vars,
+            'telephony_settings' => $telephony,
         ];
-        if ($telephony !== []) {
-            $body['telephony_settings'] = $telephony;
-        }
 
         $response = $this->http()->post("v2/ai/assistants/{$assistantId}", $body);
         if (!$response->successful()) {
