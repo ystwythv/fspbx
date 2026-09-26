@@ -68,6 +68,11 @@ jobs:
       - name: Voxra recording policy + retention tests (no DB)
         run: vendor/bin/phpunit tests/Feature/VoxraRecordingPolicyTest.php
 
+      - name: Voxra reception prompt + tool tests (no DB)
+        run: |
+          vendor/bin/phpunit tests/Feature/VoxraReceptionConversationTest.php
+          vendor/bin/phpunit tests/Feature/VoxraAlertOwnerTest.php
+
       - name: Voxra Complete provisioning tests (in-memory sqlite)
         run: vendor/bin/phpunit tests/Feature/ProvisionTenantCompleteModeTest.php
 
