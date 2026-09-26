@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Http\Controllers\Internal\ProvisionTenantController;
+use App\Http\Controllers\ReceptionAgentController;
 use App\Models\AiAgent;
 use App\Models\Domain;
 use App\Services\Convai\ConvaiProviderRegistry;
@@ -12,7 +13,8 @@ use Illuminate\Console\Command;
 /**
  * Push the current Voxra receptionist prompt + tool surface to every Voxra
  * tenant's Telnyx assistant, without a full re-provision (no routing, number
- * or greeting changes). Run after a deploy that changes
+ * or greeting changes), and rebuild each inbound (9250) dialplan from the
+ * current template. Run after a deploy that changes
  * ProvisionTenantController::RECEPTION_SYSTEM_PROMPT or the reception tools
  * (e.g. voxragtm#122 alert_owner gating the owner transfer).
  *
@@ -64,6 +66,9 @@ class VoxraResyncReceptionAgents extends Command
                 // Prompt-variable defaults (e.g. urgent_definition) for a slow
                 // dynamic-variables webhook; recording setting left as is.
                 app(TelnyxConvaiService::class)->applyVoxraCallPolicy($agent->telnyx_assistant_id, null);
+                // Inbound dialplan from the current template (e.g. answer on
+                // the assistant's answer, not before the bridge).
+                app(ReceptionAgentController::class)->regenerateInboundReceptionDialPlan($agent);
                 $ok++;
             } catch (\Throwable $e) {
                 $failed++;
