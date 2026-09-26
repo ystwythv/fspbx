@@ -165,7 +165,8 @@ class TelnyxConvaiService
         $defs = \App\Services\ReceptionAgent\ReceptionAgentToolDefinitions::class;
 
         $tools = [];
-        foreach ($defs::list((array) ($agent->tools_enabled ?? [])) as $t) {
+        // Voxra tenants get the reception allowlist only (voxragtm#140).
+        foreach ($defs::forAgent($agent) as $t) {
             if ($defs::isDataTool($t['name'])) {
                 if ($dataToolUrl === '') {
                     throw new RuntimeException('VOXRA_APP_URL must be set for reception data tools');

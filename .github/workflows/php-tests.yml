@@ -73,6 +73,9 @@ jobs:
           vendor/bin/phpunit tests/Feature/VoxraReceptionConversationTest.php
           vendor/bin/phpunit tests/Feature/VoxraAlertOwnerTest.php
 
+      - name: Voxra reception tool allowlist tests (in-memory sqlite)
+        run: vendor/bin/phpunit tests/Feature/VoxraReceptionToolAllowlistTest.php
+
       - name: Voxra Complete provisioning tests (in-memory sqlite)
         run: vendor/bin/phpunit tests/Feature/ProvisionTenantCompleteModeTest.php
 

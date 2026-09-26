@@ -2,6 +2,9 @@
 
 namespace App\Services\ReceptionAgent;
 
+use App\Models\AiAgent;
+use App\Services\DialplanBuilderService;
+
 /**
  * Provider-neutral definitions of the reception-agent tools.
  *
@@ -19,9 +22,12 @@ class ReceptionAgentToolDefinitions
      * Optional keys (Telnyx only): store_as_variables (dynamic variable =>
      * response path), filler (spoken if the webhook is slow), timeout_ms.
      *
+     * @param array<int,string>|null $allow only these tool names (null = all);
+     *   see forAgent() / VOXRA_RECEPTION_TOOLS
+     *
      * @return array<int, array{name:string, description:string, properties:array<string,mixed>, required:array<int,string>, store_as_variables?:array<string,string>, filler?:string, timeout_ms?:int}>
      */
-    public static function list(array $enabled): array
+    public static function list(array $enabled, ?array $allow = null): array
     {
         $all = [
             [
@@ -238,7 +244,54 @@ class ReceptionAgentToolDefinitions
             ],
         ];
 
-        return array_values(array_filter($all, fn ($t) => $enabled[$t['name']] ?? true));
+        return array_values(array_filter(
+            $all,
+            fn ($t) => ($enabled[$t['name']] ?? true) && ($allow === null || in_array($t['name'], $allow, true))
+        ));
+    }
+
+    /**
+     * Webhook tools a Voxra tenant's inbound receptionist gets (voxragtm#140).
+     * An explicit allowlist, so a tool added to list() for the *9 in-call
+     * summon never reaches a small-business receptionist by default.
+     *
+     * Everything here is a voxraweb data tool. The PBX-side tools are left
+     * out: they need the Redis session that only a *9 summon creates (Voxra
+     * inbound calls get their dynamic variables from voxraweb, so the PBX
+     * never bootstraps one), so on a reception call they 404 "session not
+     * found" — complete_and_exit, take_notes (the note is silently lost),
+     * email_reminder, transfer_call and the extension/park tools — and
+     * get_weather / get_time_in_city are summon party tricks. The owner
+     * transfer and ending the call use Telnyx's native `transfer` (dials
+     * {{owner_transfer_to}} after alert_owner, voxragtm#122) and `hangup`
+     * tools, which TelnyxConvaiService adds outside this list.
+     */
+    public const VOXRA_RECEPTION_TOOLS = [
+        'alert_owner', 'capture_lead', 'check_availability', 'book_appointment',
+        'recall_caller', 'remember_about_caller', 'remember', 'recall_business',
+        'report_abuse', 'record_summary', 'lookup_business_info', 'search_memory',
+        'send_payment_link',
+    ];
+
+    /**
+     * The allowlist for an agent: VOXRA_RECEPTION_TOOLS for a Voxra tenant's
+     * reception agent (domain tagged "voxra-tenant:<id>"), null (no
+     * restriction) for any other agent — e.g. a PBX customer's *9 in-call
+     * summon assistant, which keeps its full set.
+     *
+     * @return array<int,string>|null
+     */
+    public static function allowlistFor(AiAgent $agent): ?array
+    {
+        return DialplanBuilderService::isVoxraTenantDomain($agent->domain_uuid)
+            ? self::VOXRA_RECEPTION_TOOLS
+            : null;
+    }
+
+    /** list() for this agent: its tools_enabled toggles + allowlistFor(). */
+    public static function forAgent(AiAgent $agent): array
+    {
+        return self::list((array) ($agent->tools_enabled ?? []), self::allowlistFor($agent));
     }
 
     /**
