@@ -1,8 +1,11 @@
 <extension name="{{ $agent->agent_name }} inbound reception" continue="{{ $dialplan_continue ?? 'false' }}" uuid="{{ $dialplan_uuid }}">
     <condition field="destination_number" expression="^{{ $agent->agent_extension }}$">
+        {{-- No answer/sleep before the bridge: the caller keeps hearing ringing
+             until the Telnyx assistant answers (~1.5 s before its greeting),
+             instead of a second of dead air plus Telnyx's setup time. If
+             Telnyx stalls, the bounded attempts below end the call unanswered
+             (NO_ANSWER) — the caller heard ringing, never silence. --}}
         <action application="ring_ready" data="" />
-        <action application="answer" data="" />
-        <action application="sleep" data="1000" />
         <action application="set" data="hangup_after_bridge=true" />
         {{-- a failed SIP-attach bridge must fall through to the subdomain bridge --}}
         <action application="set" data="continue_on_fail=true" />
