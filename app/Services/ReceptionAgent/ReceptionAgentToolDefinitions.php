@@ -177,7 +177,7 @@ class ReceptionAgentToolDefinitions
             ],
             [
                 'name' => 'lookup_business_info',
-                'description' => 'Check the business\'s own information BEFORE stating any price, coverage area, opening hours or policy. Returns the facts to answer from, or grounded=false with a fixed script: then do NOT answer from general knowledge — say the `say` line, offer the transfer if offer_transfer is true, otherwise take a message.',
+                'description' => 'Check the business\'s own information BEFORE stating any price, coverage area, opening hours or policy. Returns the facts to answer from — state them exactly and add nothing they don\'t say (no implied charges or standard rules) — or grounded=false with a fixed script: then do NOT answer from general knowledge — say the `say` line, offer the transfer if offer_transfer is true, otherwise take a message.',
                 'properties' => [
                     'question' => ['type' => 'string', 'description' => 'What the caller asked, in their words'],
                     'topic' => ['type' => 'string', 'enum' => ['price', 'coverage', 'hours', 'policy', 'general'], 'description' => 'What kind of fact is needed'],
