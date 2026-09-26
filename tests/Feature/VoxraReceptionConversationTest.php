@@ -137,6 +137,14 @@ class VoxraReceptionConversationTest extends TestCase
         $this->assertTrue(ReceptionAgentToolDefinitions::isDataTool('recall_caller'));
     }
 
+    public function test_grounding_forbids_filling_gaps_and_offers_to_check(): void
+    {
+        $p = ProvisionTenantController::RECEPTION_SYSTEM_PROMPT;
+
+        $this->assertStringContainsString('never fill a gap', $p);
+        $this->assertStringContainsString("I'll check that with the team and let you know", $p);
+    }
+
     public function test_existing_prompt_sections_are_kept_in_order(): void
     {
         $p = ProvisionTenantController::RECEPTION_SYSTEM_PROMPT;
