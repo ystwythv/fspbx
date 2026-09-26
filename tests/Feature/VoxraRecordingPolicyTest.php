@@ -38,7 +38,7 @@ class VoxraRecordingPolicyTest extends TestCase
     {
         $g = ProvisionTenantController::resolveGreeting(null, 'Hi, how can I help with this call?', 'Acme', null);
 
-        $this->assertSame("Hi, thanks for calling Acme. Just so you know, I'm an AI assistant and calls may be recorded. How can I help?", $g);
+        $this->assertSame("Hi, thanks for calling Acme. Just so you know, I'm an AI assistant and this call is being recorded. How can I help?", $g);
     }
 
     public function test_disclosing_greeting_is_kept_when_none_supplied(): void
