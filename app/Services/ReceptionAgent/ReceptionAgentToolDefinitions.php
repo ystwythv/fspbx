@@ -87,7 +87,7 @@ class ReceptionAgentToolDefinitions
             ],
             [
                 'name' => 'capture_lead',
-                'description' => 'Record who is calling and what they need — use this as you qualify a new caller. Capture their name, the job/enquiry, their postcode and how urgent it is. Safe to call more than once as you learn more; it updates the same lead. If the caller has rung before, the result tells you (returning_caller) and what they last wanted, so you can greet them accordingly.',
+                'description' => 'Record who is calling and what they need — use this as you qualify a new caller. Capture their name, the job/enquiry, their postcode and how urgent it is. Safe to call more than once as you learn more; it updates the same lead. If the number has rung before, the result says so (returning_caller); what they last wanted is only included once the name the caller gave matches the name on file — the number may be a shared phone.',
                 'properties' => [
                     'name' => ['type' => 'string', 'description' => "Caller's name"],
                     'caller_number' => ['type' => 'string', 'description' => "Caller's phone number (ask if not already known)"],
@@ -120,9 +120,10 @@ class ReceptionAgentToolDefinitions
             ],
             [
                 'name' => 'recall_caller',
-                'description' => 'Look up what we already know about the current caller (or a given number) — their name, how many times they have called or booked, and any notes on file — so you can greet returning customers by context. Call this early for a caller you may have dealt with before.',
+                'description' => 'Look up what we know about the caller\'s number. The number may be a shared phone, so without confirmed_name this only returns the name on file (to ask "Am I speaking with <name>?") — never use that name or mention earlier calls until the caller confirms. Once they confirm, call again with confirmed_name to get their history (how many times they called or booked, notes, recent calls).',
                 'properties' => [
                     'number' => ['type' => 'string', 'description' => "The caller's number (optional; defaults to this caller)"],
+                    'confirmed_name' => ['type' => 'string', 'description' => 'The name the caller has confirmed or told you is theirs. Leave out until they have.'],
                 ],
                 'required' => [],
             ],
