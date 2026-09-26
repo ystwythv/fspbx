@@ -6,10 +6,13 @@ use App\Models\AiAgent;
 use Tests\TestCase;
 
 /**
- * The Voxra inbound reception dialplan (ext 9250) must not answer the caller
- * before the Telnyx assistant answers: answering first (plus a 1 s sleep) put
- * a second of dead air and the whole Telnyx setup time between "call
- * answered" and the receptionist's first word. (first-word latency)
+ * The Voxra inbound reception dialplan (ext 9250) answers the caller before
+ * bridging to the Telnyx assistant. #123 tried leaving the caller unanswered
+ * (ring_ready only) until Telnyx answered, to cut first-word latency — but in
+ * production Telnyx then often never answered the SIP leg (QA 26 Sep 06:59:
+ * 183 ringback for 39 s → ORIGINATOR_CANCEL on 2 of 4 calls), so the answer
+ * before the bridge is load-bearing. Latency is handled elsewhere (short
+ * greetings, fast dynamic variables).
  */
 class ReceptionInboundDialplanTemplateTest extends TestCase
 {
@@ -30,13 +33,15 @@ class ReceptionInboundDialplanTemplateTest extends TestCase
         ])->render();
     }
 
-    public function test_does_not_answer_or_sleep_before_the_bridge(): void
+    public function test_answers_the_caller_before_bridging_to_telnyx(): void
     {
         $xml = $this->render();
 
-        $this->assertStringNotContainsString('application="answer"', $xml);
-        $this->assertStringNotContainsString('application="sleep"', $xml);
-        $this->assertStringContainsString('application="ring_ready"', $xml);
+        $answer = strpos($xml, 'application="answer"');
+        $bridge = strpos($xml, 'application="bridge"');
+        $this->assertNotFalse($answer);
+        $this->assertNotFalse($bridge);
+        $this->assertLessThan($bridge, $answer);
         $this->assertStringContainsString('sofia/external/sip:agent@assistant-test.sip.telnyx.com', $xml);
         $this->assertNotFalse(simplexml_load_string($xml));
     }
