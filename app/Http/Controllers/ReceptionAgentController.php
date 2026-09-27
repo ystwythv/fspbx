@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\AiAgent;
 use App\Models\Dialplans;
+use App\Models\Extensions;
 use App\Models\FusionCache;
+use App\Models\Voicemails;
 use App\Services\Convai\ConvaiProviderRegistry;
 use App\Services\ElevenLabsConvaiService;
 use App\Services\Tts\ElevenLabsTtsService;
@@ -230,17 +232,19 @@ PROMPT;
 
     private function allocateAgentExtension(string $domainUuid): string
     {
-        // Scan for an unused 925x extension within the existing AI-agent range.
-        $existing = AiAgent::where('domain_uuid', $domainUuid)
-            ->pluck('agent_extension')
-            ->map(fn($v) => (string) $v)
-            ->all();
-        for ($n = 9250; $n <= 9299; $n++) {
-            if (!in_array((string) $n, $existing, true)) {
-                return (string) $n;
-            }
+        // First unused number in the AI-agent range, skipping other agents,
+        // any extension/voicemail box already on the domain, and the reserved
+        // Voxra Line extension 9260 (voxragtm#110).
+        $used = AiAgent::where('domain_uuid', $domainUuid)->pluck('agent_extension')
+            ->merge(Extensions::where('domain_uuid', $domainUuid)->pluck('extension'))
+            ->merge(Voicemails::where('domain_uuid', $domainUuid)->pluck('voicemail_id'));
+
+        $ext = AiAgent::firstFreeAgentExtension($used);
+        if ($ext === null) {
+            throw new \RuntimeException('No agent extensions available in 9250-9299');
         }
-        throw new \RuntimeException('No agent extensions available in 9250-9299');
+
+        return $ext;
     }
 
     private function generateFeatureCodeDialPlan(AiAgent $agent): void
