@@ -211,6 +211,58 @@ class ProvisionLineServiceTest extends TestCase
         $this->assertSame('true', $vm->voicemail_transcription_enabled);
     }
 
+    public function test_line_ai_passes_its_ring_timeout_to_the_follow_me(): void
+    {
+        app(ProvisionLineService::class)->ensureLineExtension($this->domain(), '07700 900123', null, 30);
+
+        $ext = Extensions::where('extension', '9260')->first();
+        $this->assertSame('30', (string) $ext->call_timeout);
+        $this->assertSame('30', (string) FollowMeDestinations::first()->follow_me_timeout);
+
+        // Line v1 default stays 25
+        app(ProvisionLineService::class)->ensureLineExtension($this->domain(), '07700 900123');
+        $this->assertSame('25', (string) FollowMeDestinations::first()->follow_me_timeout);
+    }
+
+    public function test_voicemail_box_alone_for_non_line_tenants(): void
+    {
+        // voxragtm#164: Pro/Complete get the 9260 box (the AI-off target) but
+        // no line extension, follow-me or fallback dialplan
+        $vm = app(ProvisionLineService::class)->ensureVoicemailBox($this->domain());
+
+        $this->assertSame('9260', $vm->voicemail_id);
+        $this->assertSame('true', $vm->voicemail_enabled);
+        $this->assertSame('true', $vm->voicemail_transcription_enabled);
+        $this->assertSame(0, Extensions::count());
+        $this->assertSame(0, FollowMe::count());
+        $this->assertSame(0, \App\Models\Dialplans::count());
+
+        app(ProvisionLineService::class)->ensureVoicemailBox($this->domain());
+        $this->assertSame(1, Voicemails::where('voicemail_id', '9260')->count());
+    }
+
+    public function test_voicemail_box_gets_the_branded_greeting(): void
+    {
+        $this->fakeTts();
+        app(ProvisionLineService::class)->ensureVoicemailBox($this->domain(), 'Acme Plumbing');
+
+        $greeting = VoicemailGreetings::where('voicemail_id', '9260')->first();
+        $this->assertStringContainsString("You've reached Acme Plumbing. Please leave your name, number and what you need", $greeting->greeting_description);
+        Storage::disk('voicemail')->assertExists('acme.voxra.uk/9260/greeting_1.wav');
+    }
+
+    public function test_current_follow_me_mobile(): void
+    {
+        $svc = app(ProvisionLineService::class);
+        $this->assertNull($svc->currentFollowMeMobile($this->domain()));
+
+        $svc->ensureLineExtension($this->domain(), '07700 900123');
+        $this->assertSame('+447700900123', $svc->currentFollowMeMobile($this->domain()));
+
+        $svc->ensureLineExtension($this->domain(), null); // straight to voicemail
+        $this->assertNull($svc->currentFollowMeMobile($this->domain()));
+    }
+
     public function test_reprovision_is_idempotent(): void
     {
         $svc = app(ProvisionLineService::class);
@@ -316,7 +368,7 @@ class ProvisionLineServiceTest extends TestCase
         $this->assertSame(ProvisionLineService::GREETING_NAME, $greeting->greeting_name);
         $this->assertSame('greeting_1.wav', $greeting->greeting_filename);
         $this->assertStringStartsWith(ProvisionLineService::GREETING_HASH_PREFIX, $greeting->greeting_description);
-        $this->assertStringContainsString('Thanks for calling Acme Plumbing.', $greeting->greeting_description);
+        $this->assertStringContainsString("You've reached Acme Plumbing.", $greeting->greeting_description);
 
         $vm = Voicemails::where('voicemail_id', '9260')->first();
         $this->assertSame(1, (int) $vm->greeting_id);
@@ -336,7 +388,7 @@ class ProvisionLineServiceTest extends TestCase
         Http::assertSent(function ($request) {
             return str_contains($request->url(), '/v1/text-to-speech/Xb7hH8MSUJpSbSDYk0k2')
                 && str_contains($request->url(), 'output_format=pcm_16000')
-                && str_contains($request->body(), 'Thanks for calling Acme Plumbing.');
+                && str_contains($request->body(), "You've reached Acme Plumbing.");
         });
     }
 

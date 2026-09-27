@@ -239,8 +239,12 @@ class TelnyxConvaiService
         // early it has nothing to dial and the agent is told to alert first.
         // Without alert_owner enabled, fall back to {{owner_mobile}} (set by
         // the dynamic-variables webhook) rather than lose transfers.
+        // Not on Line+AI (voxragtm#163): the AI only answers after the
+        // owner's mobile rang out, so a transfer would re-ring the phone
+        // that just didn't answer.
         $enabled = (array) ($agent->tools_enabled ?? []);
-        if (($enabled['transfer_to_owner'] ?? true) === true) {
+        if (($enabled['transfer_to_owner'] ?? true) === true
+            && ! \App\Services\Voxra\VoxraRoutingState::isLineAi($agent->domain_uuid)) {
             $gated = ($enabled['alert_owner'] ?? true) === true;
             $tools[] = [
                 'type' => 'transfer',

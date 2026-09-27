@@ -14,7 +14,8 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
- * Voxra Line (voxragtm#25): the £5 no-AI plan. The tenant's DID transfers to
+ * Voxra Line (voxragtm#25): the Line plan's no-AI path — all of Line v1, and
+ * Line+AI's fallback when the AI is off (voxragtm#163). The tenant's DID transfers to
  * a stock FusionPBX extension whose follow-me rings the owner's mobile with
  * press-1 answer confirmation, falling back to the extension's voicemail box
  * (transcription enabled). The stock local_extension / follow_me / voicemail
@@ -56,11 +57,14 @@ class ProvisionLineService
      *
      * @return array{extension: string, straight_to_voicemail: bool}
      */
-    public function ensureLineExtension(Domain $domain, ?string $ownerMobile, ?string $businessName = null): array
+    public function ensureLineExtension(Domain $domain, ?string $ownerMobile, ?string $businessName = null, ?int $timeout = null): array
     {
         // Same normalisation + hosted-DID loop guard as ring-mobile-first.
         $mobile = app(ProvisionNumberService::class)
             ->resolveRingFirstMobile($domain, true, $ownerMobile);
+        // Line+AI passes its ring-first timeout so the AI-off fallback rings
+        // the mobile exactly as long as the AI-on path does (voxragtm#163).
+        $timeout = $timeout ?? self::FOLLOW_ME_TIMEOUT;
 
         $extension = $this->findLineExtension($domain);
         if (! $extension) {
@@ -74,7 +78,6 @@ class ProvisionLineService
                 'user_context'               => $domain->domain_name,
                 'effective_caller_id_name'   => 'Voxra Line',
                 'effective_caller_id_number' => self::LINE_EXTENSION,
-                'call_timeout'               => self::FOLLOW_ME_TIMEOUT,
                 'directory_visible'          => 'false',
                 'directory_exten_visible'    => 'false',
                 'enabled'                    => 'true',
@@ -83,13 +86,13 @@ class ProvisionLineService
             ]);
         }
 
-        $this->upsertFollowMe($domain, $extension, $mobile);
+        $extension->call_timeout = $timeout;
+        $this->upsertFollowMe($domain, $extension, $mobile, $timeout);
         // Calls the owner answers on their mobile are never recorded
         // (voxragtm#83) — only the voicemail they leave is.
         $extension->user_record = null;
         $extension->save();
-        $voicemail = $this->upsertVoicemailBox($domain);
-        $this->ensureVoicemailGreeting($domain, $voicemail, $businessName);
+        $this->ensureVoicemailBox($domain, $businessName);
         $this->ensureVoicemailFallbackDialplan($domain);
 
         FusionCache::clear('directory:' . self::LINE_EXTENSION . '@' . $domain->domain_name);
@@ -98,6 +101,39 @@ class ProvisionLineService
             'extension'             => self::LINE_EXTENSION,
             'straight_to_voicemail' => $mobile === null,
         ];
+    }
+
+    /**
+     * The tenant's Voxra voicemail box (9260): transcribed, with the branded
+     * TTS greeting. Every non-Complete tenant gets one since voxragtm#164 —
+     * it is where calls go when the AI is off (minutes used up, unpaid) —
+     * and Complete gets it as the AI-off target for its eSIM extension. The
+     * box needs no extension: the DID reaches it via the stock *99<box>
+     * send-to-voicemail dialplan. Idempotent.
+     */
+    public function ensureVoicemailBox(Domain $domain, ?string $businessName = null): Voicemails
+    {
+        $voicemail = $this->upsertVoicemailBox($domain);
+        $this->ensureVoicemailGreeting($domain, $voicemail, $businessName);
+
+        return $voicemail;
+    }
+
+    /** The mobile the line extension's follow-me rings today, or null. Lets
+     *  a re-provision that leaves owner_mobile out keep ringing it. */
+    public function currentFollowMeMobile(Domain $domain): ?string
+    {
+        $extension = $this->findLineExtension($domain);
+        if (! $extension || ! $extension->follow_me_uuid) {
+            return null;
+        }
+        $followMe = FollowMe::find($extension->follow_me_uuid);
+        if (! $followMe || $followMe->follow_me_enabled !== 'true') {
+            return null;
+        }
+        $destination = $followMe->followMeDestinations()->orderBy('follow_me_order')->value('follow_me_destination');
+
+        return $destination ? (string) $destination : null;
     }
 
     /** The tenant's line extension row, if provisioned. */
@@ -116,19 +152,19 @@ class ProvisionLineService
      *  dials, and the per-domain "Voxra Outbound" route
      *  (ProvisionOutboundRouteService) explicitly matches E.164 alongside UK
      *  national. One format end to end; the route accepts both. */
-    public static function followMeDestinationAttributes(string $mobile): array
+    public static function followMeDestinationAttributes(string $mobile, ?int $timeout = null): array
     {
         return [
             'follow_me_destination' => $mobile,
             'follow_me_delay'       => 0,
-            'follow_me_timeout'     => self::FOLLOW_ME_TIMEOUT,
+            'follow_me_timeout'     => $timeout ?? self::FOLLOW_ME_TIMEOUT,
             // '1' = stock follow-me answer confirmation (confirm.lua press-1)
             'follow_me_prompt'      => '1',
             'follow_me_order'       => 1,
         ];
     }
 
-    private function upsertFollowMe(Domain $domain, Extensions $extension, ?string $mobile): void
+    private function upsertFollowMe(Domain $domain, Extensions $extension, ?string $mobile, int $timeout): void
     {
         $followMe = $extension->follow_me_uuid ? FollowMe::find($extension->follow_me_uuid) : null;
         if (! $followMe) {
@@ -149,7 +185,7 @@ class ProvisionLineService
         if ($mobile !== null) {
             $followMe->followMeDestinations()->create(array_merge(
                 ['domain_uuid' => $domain->domain_uuid],
-                self::followMeDestinationAttributes($mobile),
+                self::followMeDestinationAttributes($mobile, $timeout),
             ));
         }
 

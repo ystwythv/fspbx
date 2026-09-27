@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\AiAgent;
 use App\Models\Destinations;
 use App\Models\Domain;
+use App\Services\Voxra\VoxraRoutingState;
+use App\Services\Voxra\VoxraSuspendedAnnouncement;
 use Illuminate\Support\Str;
 
 /**
@@ -20,6 +22,14 @@ use Illuminate\Support\Str;
  */
 class ProvisionNumberService
 {
+    /** Pro's ring-first default (voxragtm#23); Line+AI uses 25 s. */
+    public const DEFAULT_RING_FIRST_TIMEOUT = 20;
+    public const MIN_RING_FIRST_TIMEOUT = 10;
+    public const MAX_RING_FIRST_TIMEOUT = 60;
+
+    /** First action of a suspended DID's routing (voxragtm#173). */
+    public const SUSPENDED_MARKER = 'voxra_service_suspended=true';
+
     /** Order a UK number within the cap and route it to the agent. Returns the
      *  E.164 number, or null when disabled / nothing suitable. */
     public function orderAndRoute(Domain $domain, AiAgent $agent, ?string $requirementGroupId = null): ?string
@@ -113,7 +123,7 @@ class ProvisionNumberService
         dispatch(new \App\Jobs\BuildDialplanForPhoneNumber($dest->destination_uuid, $domain->domain_name));
     }
 
-    private function agentOnlyActions(Domain $domain, AiAgent $agent): array
+    public function agentOnlyActions(Domain $domain, AiAgent $agent): array
     {
         return [buildDestinationAction(
             ['type' => 'ai_agents', 'extension' => $agent->agent_extension],
@@ -122,30 +132,86 @@ class ProvisionNumberService
     }
 
     /**
-     * Ring-mobile-first (voxragtm#23): re-point the tenant's Voxra DID so the
-     * owner's mobile rings for ~20s first, then the reception agent answers.
-     * Uses sequential destination actions (the phone-number dialplan template
-     * emits them verbatim): bridge via loopback into the domain's outbound
-     * routing with a timeout + continue_on_fail, falling through to the agent
-     * transfer. Passing ringFirst=false (or no mobile) restores DID → agent.
-     * Idempotent: updates the existing Voxra destination row when present.
+     * The DID's routing for a non-Complete Voxra tenant (voxragtm#162) —
+     * one decision table for every mode, so Line ↔ Line+AI ↔ Pro switches,
+     * the AI kill-switch and suspension each rewrite the destination from
+     * scratch instead of patching whatever an earlier call left behind.
+     * Pure: no DB, no dialplan rebuild.
+     *
+     *   suspended                  → announcement, hang up (voxragtm#173)
+     *   line (v1)                  → 9260 follow-me, then voicemail
+     *   line_ai, AI on, mobile     → ring mobile ($timeout s), then the AI
+     *   line_ai, AI on, no mobile  → the AI
+     *   line_ai, AI off            → 9260 follow-me, then voicemail
+     *   pro, AI on, ring-first     → ring mobile ($timeout s), then the AI
+     *   pro, AI on                 → the AI
+     *   pro, AI off, ring-first    → ring mobile ($timeout s), then voicemail
+     *   pro, AI off                → voicemail  (voxragtm#164: never 9250,
+     *                                whose dialplan is disabled → dead air)
+     *
+     * $mobile is the validated E.164 to ring first (null = don't): for
+     * line_ai the owner's mobile, for pro only when ring-first is on.
+     *
+     * @return array{kind: string, actions: array<int, array{destination_app: string, destination_data: string}>}
      */
-    public function applyRingFirst(Domain $domain, AiAgent $agent, bool $ringFirst, ?string $ownerMobile): void
+    public function resolveDidRouting(
+        Domain $domain,
+        AiAgent $agent,
+        string $mode,
+        bool $agentEnabled,
+        ?string $mobile,
+        int $timeout,
+        bool $suspended,
+        ?string $announcement = null,
+    ): array {
+        if ($suspended) {
+            return ['kind' => 'suspended', 'actions' => $this->suspendedActions($announcement)];
+        }
+
+        if ($mode === VoxraRoutingState::MODE_LINE
+            || ($mode === VoxraRoutingState::MODE_LINE_AI && ! $agentEnabled)) {
+            return ['kind' => 'line_voicemail', 'actions' => $this->lineActions($domain)];
+        }
+
+        if ($agentEnabled) {
+            return $mobile !== null
+                ? ['kind' => 'ring_first_ai', 'actions' => $this->ringFirstActions($domain, $agent, $mobile, $timeout)]
+                : ['kind' => 'ai', 'actions' => $this->agentOnlyActions($domain, $agent)];
+        }
+
+        // Pro with the AI off (minutes used up / trial unpaid).
+        return $mobile !== null
+            ? ['kind' => 'ring_first_voicemail', 'actions' => array_merge(
+                $this->ringFirstBridgeActions($domain, $mobile, $timeout),
+                $this->voicemailActions($domain),
+            )]
+            : ['kind' => 'voicemail', 'actions' => $this->voicemailActions($domain)];
+    }
+
+    /**
+     * Point the tenant's Voxra DID at the given actions and rebuild its
+     * dialplan. No-op without a routed DID (activation/number order handles
+     * it later) or when the actions are unchanged (no needless rebuild).
+     * Returns whether the DID was rewritten.
+     */
+    public function applyDidActions(Domain $domain, array $actions): bool
     {
         $dest = $this->findReceptionDestination($domain);
         if (! $dest) {
-            return; // no DID routed yet — activation/number order handles it later
+            return false;
         }
 
-        $mobile = $this->resolveRingFirstMobile($domain, $ringFirst, $ownerMobile);
-        $actions = $mobile !== null
-            ? $this->ringFirstActions($domain, $agent, $mobile)
-            : $this->agentOnlyActions($domain, $agent);
+        $json = json_encode($actions);
+        if ($dest->destination_actions === $json) {
+            return false;
+        }
 
-        $dest->destination_actions = json_encode($actions);
+        $dest->destination_actions = $json;
         $dest->save();
 
         dispatch(new \App\Jobs\BuildDialplanForPhoneNumber($dest->destination_uuid, $domain->domain_name));
+
+        return true;
     }
 
     /** The tenant's Voxra reception destination. Deterministic (oldest row
@@ -189,13 +255,28 @@ class ProvisionNumberService
     }
 
     /**
-     * Sequential actions: bridge the owner's mobile for 20s with
-     * press-1-to-accept (group_confirm, as FusionPBX follow-me does) so a
-     * carrier voicemail answering the leg cancels it instead of swallowing
-     * the call, then fall through to the agent. The confirm variables ride
-     * the dial string so they scope to this bridge only, not the agent leg.
+     * Ring-mobile-first (voxragtm#23): ring the owner's mobile for $timeout
+     * seconds, then fall through to the agent. Pro defaults to 20 s; Line+AI
+     * uses 25 s (voxragtm#163).
      */
-    public function ringFirstActions(Domain $domain, AiAgent $agent, string $mobile): array
+    public function ringFirstActions(Domain $domain, AiAgent $agent, string $mobile, int $timeout = self::DEFAULT_RING_FIRST_TIMEOUT): array
+    {
+        return array_merge(
+            $this->ringFirstBridgeActions($domain, $mobile, $timeout),
+            $this->agentOnlyActions($domain, $agent),
+        );
+    }
+
+    /**
+     * The mobile leg on its own: bridge via loopback into the domain's
+     * outbound routing with press-1-to-accept (group_confirm, as FusionPBX
+     * follow-me does) so a carrier voicemail answering the leg cancels it
+     * instead of swallowing the call, and continue_on_fail so whatever
+     * follows (the agent, or voicemail when the AI is off) runs when the
+     * owner doesn't take it. The confirm variables ride the dial string so
+     * they scope to this bridge only, not the next leg.
+     */
+    public function ringFirstBridgeActions(Domain $domain, string $mobile, int $timeout): array
     {
         $confirm = 'group_confirm_key=1'
             . ',group_confirm_file=ivr/ivr-accept_reject_voicemail.wav'
@@ -203,56 +284,38 @@ class ProvisionNumberService
 
         return [
             ['destination_app' => 'set', 'destination_data' => 'hangup_after_bridge=true'],
-            ['destination_app' => 'set', 'destination_data' => 'call_timeout=20'],
+            ['destination_app' => 'set', 'destination_data' => 'call_timeout=' . self::clampRingFirstTimeout($timeout)],
             ['destination_app' => 'set', 'destination_data' => 'continue_on_fail=true'],
             ['destination_app' => 'bridge', 'destination_data' => '{' . $confirm . '}loopback/' . $mobile . '/' . $domain->domain_name],
-            buildDestinationAction(
-                ['type' => 'ai_agents', 'extension' => $agent->agent_extension],
-                $domain->domain_name,
-            ),
         ];
     }
 
-    /**
-     * Voxra Line routing (voxragtm#25): point the tenant's DID at the stock
-     * line extension (follow-me + voicemail) instead of the agent, and back.
-     * Disabling only rewrites when the DID is currently line-routed, so it
-     * never clobbers ring-first routing applied earlier in the same provision
-     * call. Idempotent: updates the existing Voxra destination row.
-     */
-    public function applyLineMode(Domain $domain, AiAgent $agent, bool $lineMode): void
+    /** DID → the tenant's Voxra voicemail box via the stock *99<box>
+     *  send-to-voicemail dialplan (FusionPBX voicemail lua: branded greeting,
+     *  transcription, voicemail.finalized webhook). */
+    public function voicemailActions(Domain $domain): array
     {
-        $dest = $this->findReceptionDestination($domain);
-        if (! $dest) {
-            return; // no DID routed yet — activation/number order handles it later
-        }
-
-        $actions = $this->resolveLineModeActions($domain, $agent, $lineMode, $dest->destination_actions);
-        if ($actions === null) {
-            return;
-        }
-
-        $dest->destination_actions = json_encode($actions);
-        $dest->save();
-
-        dispatch(new \App\Jobs\BuildDialplanForPhoneNumber($dest->destination_uuid, $domain->domain_name));
+        return [buildDestinationAction(
+            ['type' => 'voicemails', 'extension' => ProvisionLineService::LINE_EXTENSION],
+            $domain->domain_name,
+        )];
     }
 
-    /** The destination actions the DID should carry, or null to leave routing
-     *  untouched (line mode off and not currently line-routed). */
-    public function resolveLineModeActions(Domain $domain, AiAgent $agent, bool $lineMode, ?string $currentActionsJson): ?array
+    /**
+     * A suspended number (voxragtm#173): answer, play the announcement (an
+     * absolute WAV path or a tone_stream), hang up. No mobile leg, no AI, no
+     * voicemail. The first action marks the routing so a later re-provision
+     * can tell the DID is suspended.
+     */
+    public function suspendedActions(?string $announcement): array
     {
-        if ($lineMode) {
-            return $this->lineActions($domain);
-        }
-
-        if (self::isLineRouted($currentActionsJson, $domain->domain_name)) {
-            // Line → Start upgrade: restore DID → agent (ring-first, when also
-            // requested, was applied by applyRingFirst just before this runs).
-            return $this->agentOnlyActions($domain, $agent);
-        }
-
-        return null;
+        return [
+            ['destination_app' => 'set', 'destination_data' => self::SUSPENDED_MARKER],
+            ['destination_app' => 'answer', 'destination_data' => ''],
+            ['destination_app' => 'sleep', 'destination_data' => '500'],
+            ['destination_app' => 'playback', 'destination_data' => $announcement ?: VoxraSuspendedAnnouncement::FALLBACK_TONE],
+            ['destination_app' => 'hangup', 'destination_data' => 'NORMAL_CLEARING'],
+        ];
     }
 
     /** DID → line extension; the stock local_extension dialplan then runs
@@ -265,10 +328,32 @@ class ProvisionNumberService
         )];
     }
 
-    /** True when the destination actions transfer to the line extension. */
-    public static function isLineRouted(?string $actionsJson, string $domainName): bool
+    /** Ring-first timeout clamped to the accepted 10–60 s. */
+    public static function clampRingFirstTimeout(int $timeout): int
     {
-        return str_contains((string) $actionsJson, ProvisionLineService::LINE_EXTENSION . ' XML ' . $domainName);
+        return max(self::MIN_RING_FIRST_TIMEOUT, min(self::MAX_RING_FIRST_TIMEOUT, $timeout));
+    }
+
+    /** The mode's ring-first timeout when neither the request nor the
+     *  stored state sets one: 25 s for Line (both kinds), 20 s for Pro. */
+    public static function defaultRingFirstTimeout(string $mode): int
+    {
+        return in_array($mode, [VoxraRoutingState::MODE_LINE, VoxraRoutingState::MODE_LINE_AI], true)
+            ? ProvisionLineService::FOLLOW_ME_TIMEOUT
+            : self::DEFAULT_RING_FIRST_TIMEOUT;
+    }
+
+    /** The mobile a ring-first DID currently bridges, or null. Lets DIDs
+     *  routed before the routing state was stored keep ringing it. */
+    public static function ringFirstMobileIn(?string $actionsJson): ?string
+    {
+        return preg_match('#loopback\\\\?/(\+\d{8,15})\\\\?/#', (string) $actionsJson, $m) ? $m[1] : null;
+    }
+
+    /** True when the DID currently plays the suspended announcement. */
+    public static function isSuspendedRouting(?string $actionsJson): bool
+    {
+        return str_contains((string) $actionsJson, self::SUSPENDED_MARKER);
     }
 
     /**

@@ -341,11 +341,18 @@ PROMPT;
 
         $dialplanUuid = $existing?->dialplan_uuid ?? (string) Str::uuid();
 
+        // Line+AI (voxragtm#163): when Telnyx never answers, the caller goes
+        // to the tenant's voicemail box instead of being hung up on — the AI
+        // is only Line's fallback, and Line has always ended in voicemail.
+        $lineAi = \App\Services\Voxra\VoxraRoutingState::isLineAi($agent->domain_uuid);
+
         $xml = trim(view('layouts.xml.telnyx-ai-agent-inbound-reception-template', [
-            'agent'             => $agent,
-            'dialplan_uuid'     => $dialplanUuid,
-            'attach_domain'     => config('services.telnyx.attach_domain'),
-            'dialplan_continue' => 'false',
+            'agent'              => $agent,
+            'dialplan_uuid'      => $dialplanUuid,
+            'attach_domain'      => config('services.telnyx.attach_domain'),
+            'dialplan_continue'  => 'false',
+            'voicemail_fallback' => $lineAi ? \App\Services\ProvisionLineService::LINE_EXTENSION : null,
+            'domain_name'        => $domainName,
         ])->render());
 
         $dom = new \DOMDocument();
@@ -388,6 +395,13 @@ PROMPT;
      */
     private function generateBindMetaAppDialPlan(AiAgent $agent): void
     {
+        // Line+AI (voxragtm#163): the AI is only the fallback for calls the
+        // owner misses, so don't arm *9 on the calls they answer.
+        $enabled = self::bindEnabled(
+            $agent->agent_enabled,
+            \App\Services\Voxra\VoxraRoutingState::isLineAi($agent->domain_uuid)
+        );
+
         if (!$agent->bind_dialplan_uuid) {
             $agent->bind_dialplan_uuid = (string) Str::uuid();
             $agent->save();
@@ -420,7 +434,7 @@ PROMPT;
             // Order 5 — runs before local_extension (order 100 in fspbx) so the
             // bind is armed before any bridge happens.
             $dialPlan->dialplan_order    = 5;
-            $dialPlan->dialplan_enabled  = $agent->agent_enabled;
+            $dialPlan->dialplan_enabled  = $enabled;
             $dialPlan->dialplan_description = 'Reception Agent: arm *9 mid-call binding';
             $dialPlan->insert_date       = date('Y-m-d H:i:s');
             $dialPlan->insert_user       = session('user_uuid');
@@ -428,7 +442,7 @@ PROMPT;
             $dialPlan->dialplan_context  = $domainName;
             $dialPlan->dialplan_xml      = $xml;
             $dialPlan->dialplan_name     = $agent->agent_name . ' bind_meta_app';
-            $dialPlan->dialplan_enabled  = $agent->agent_enabled;
+            $dialPlan->dialplan_enabled  = $enabled;
             $dialPlan->update_date       = date('Y-m-d H:i:s');
             $dialPlan->update_user       = session('user_uuid');
         }
@@ -436,6 +450,13 @@ PROMPT;
         $dialPlan->save();
 
         FusionCache::clear('dialplan.' . $domainName);
+    }
+
+    /** The *9 bind dialplan's enabled flag ('true'/'false'): on with the
+     *  agent, except on Line+AI. */
+    public static function bindEnabled(?string $agentEnabled, bool $lineAi): string
+    {
+        return ($agentEnabled === 'true' && ! $lineAi) ? 'true' : 'false';
     }
 
     /**

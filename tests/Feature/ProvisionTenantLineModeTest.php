@@ -8,6 +8,7 @@ use App\Models\Destinations;
 use App\Models\Domain;
 use App\Services\ProvisionLineService;
 use App\Services\ProvisionNumberService;
+use App\Services\Voxra\VoxraRoutingState;
 use Tests\TestCase;
 
 /**
@@ -67,38 +68,44 @@ class ProvisionTenantLineModeTest extends TestCase
         ]], $actions);
     }
 
-    public function test_enabling_line_mode_routes_to_line_extension(): void
+    private function route(string $mode, bool $agentEnabled = true, ?string $mobile = null): array
     {
-        $svc = new ProvisionNumberService();
-        $current = json_encode($svc->ringFirstActions($this->domain(), $this->agent(), '+447700900123'));
-
-        $actions = $svc->resolveLineModeActions($this->domain(), $this->agent(), true, $current);
-
-        $this->assertSame('9260 XML acme.voxra.uk', $actions[0]['destination_data']);
+        return (new ProvisionNumberService())->resolveDidRouting(
+            $this->domain(), $this->agent(), $mode, $agentEnabled, $mobile, 25, false,
+        );
     }
 
-    public function test_disabling_line_mode_restores_agent_routing(): void
+    public function test_line_mode_routes_to_line_extension_whatever_came_before(): void
     {
-        $svc = new ProvisionNumberService();
-        $current = json_encode($svc->lineActions($this->domain()));
+        // The decision table never looks at the current routing: Line
+        // always rewrites to 9260 (the old resolveLineModeActions patching
+        // is gone, voxragtm#162).
+        $routing = $this->route(VoxraRoutingState::MODE_LINE, false, '+447700900123');
 
-        $actions = $svc->resolveLineModeActions($this->domain(), $this->agent(), false, $current);
+        $this->assertSame('line_voicemail', $routing['kind']);
+        $this->assertSame([[
+            'destination_app'  => 'transfer',
+            'destination_data' => '9260 XML acme.voxra.uk',
+        ]], $routing['actions']);
+    }
+
+    public function test_leaving_line_mode_restores_agent_routing(): void
+    {
+        // Line → Start/Pro without ring-first
+        $routing = $this->route(VoxraRoutingState::MODE_PRO);
 
         $this->assertSame([[
             'destination_app'  => 'transfer',
             'destination_data' => '9250 XML acme.voxra.uk',
-        ]], $actions);
+        ]], $routing['actions']);
     }
 
-    public function test_disabling_line_mode_leaves_non_line_routing_alone(): void
+    public function test_leaving_line_mode_with_ring_first_keeps_the_mobile_first(): void
     {
-        $svc = new ProvisionNumberService();
-        $agentOnly = json_encode([['destination_app' => 'transfer', 'destination_data' => '9250 XML acme.voxra.uk']]);
-        $ringFirst = json_encode($svc->ringFirstActions($this->domain(), $this->agent(), '+447700900123'));
+        $routing = $this->route(VoxraRoutingState::MODE_PRO, true, '+447700900123');
 
-        $this->assertNull($svc->resolveLineModeActions($this->domain(), $this->agent(), false, $agentOnly));
-        $this->assertNull($svc->resolveLineModeActions($this->domain(), $this->agent(), false, $ringFirst));
-        $this->assertNull($svc->resolveLineModeActions($this->domain(), $this->agent(), false, null));
+        $this->assertSame('ring_first_ai', $routing['kind']);
+        $this->assertSame('9250 XML acme.voxra.uk', end($routing['actions'])['destination_data']);
     }
 
     public function test_follow_me_destination_uses_press_one_confirmation(): void
@@ -114,26 +121,24 @@ class ProvisionTenantLineModeTest extends TestCase
         $this->assertSame(1, $attrs['follow_me_order']);
     }
 
-    public function test_apply_line_mode_is_a_noop_without_a_routed_did(): void
+    public function test_apply_did_actions_is_a_noop_without_a_routed_did(): void
     {
         $svc = \Mockery::mock(ProvisionNumberService::class)->makePartial();
         $svc->shouldReceive('findReceptionDestination')->once()->andReturn(null);
 
         // must not touch routing or dispatch a dialplan rebuild
-        $svc->applyLineMode($this->domain(), $this->agent(), true);
-        $this->addToAssertionCount(1);
+        $this->assertFalse($svc->applyDidActions($this->domain(), (new ProvisionNumberService())->lineActions($this->domain())));
     }
 
-    public function test_is_line_routed_detection(): void
+    public function test_apply_did_actions_skips_unchanged_routing(): void
     {
-        $svc = new ProvisionNumberService();
-        $line = json_encode($svc->lineActions($this->domain()));
+        $actions = (new ProvisionNumberService())->lineActions($this->domain());
+        $dest = new Destinations();
+        $dest->setRawAttributes(['destination_actions' => json_encode($actions)]);
 
-        $this->assertTrue(ProvisionNumberService::isLineRouted($line, 'acme.voxra.uk'));
-        $this->assertFalse(ProvisionNumberService::isLineRouted($line, 'other.voxra.uk'));
-        $this->assertFalse(ProvisionNumberService::isLineRouted(
-            json_encode($svc->ringFirstActions($this->domain(), $this->agent(), '+447700900123')),
-            'acme.voxra.uk'
-        ));
+        $svc = \Mockery::mock(ProvisionNumberService::class)->makePartial();
+        $svc->shouldReceive('findReceptionDestination')->once()->andReturn($dest);
+
+        $this->assertFalse($svc->applyDidActions($this->domain(), $actions));
     }
 }

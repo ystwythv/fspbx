@@ -299,6 +299,41 @@ class ProvisionTenantCompleteModeTest extends TestCase
         $this->assertSame('false', Voicemails::where('voicemail_id', '200')->first()->voicemail_enabled);
     }
 
+    public function test_ai_off_forwards_the_esim_to_the_voxra_voicemail_box(): void
+    {
+        // voxragtm#164: AI off (minutes / unpaid) → the branded, transcribed
+        // 9260 box via *99, not push_wake's mod_voicemail fallback
+        $this->seedAgent('false');
+        Voicemails::query()->insert([
+            'voicemail_uuid' => 'vm-9260', 'domain_uuid' => 'dom-uuid-1',
+            'voicemail_id' => '9260', 'voicemail_enabled' => 'true',
+        ]);
+
+        app(ProvisionCompleteService::class)->ensureMobileExtension($this->domain(), 'Acme');
+
+        $ext = $this->mobile();
+        foreach (['no_answer', 'busy', 'user_not_registered'] as $kind) {
+            $this->assertSame('true', $ext->{"forward_{$kind}_enabled"});
+            $this->assertSame('*999260', $ext->{"forward_{$kind}_destination"});
+        }
+
+        // AI back on → the agent again
+        AiAgent::where('ai_agent_uuid', 'agent-uuid-1')->update(['agent_enabled' => 'true']);
+        app(ProvisionCompleteService::class)->ensureMobileExtension($this->domain(), 'Acme');
+        $this->assertSame('9250', $this->mobile()->forward_no_answer_destination);
+    }
+
+    public function test_failover_service_apply_voicemail(): void
+    {
+        $ext = new Extensions();
+        (new AgentFailoverService())->applyVoicemail($ext, '9260');
+
+        $this->assertSame('*999260', $ext->forward_no_answer_destination);
+        $this->assertSame('*999260', $ext->forward_busy_destination);
+        $this->assertSame('*999260', $ext->forward_user_not_registered_destination);
+        $this->assertSame('true', $ext->forward_user_not_registered_enabled);
+    }
+
     // ---- did → caller-ID --------------------------------------------------
 
     public function test_did_sets_caller_id_digits_without_plus(): void
