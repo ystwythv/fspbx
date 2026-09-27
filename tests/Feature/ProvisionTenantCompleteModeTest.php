@@ -408,7 +408,7 @@ class ProvisionTenantCompleteModeTest extends TestCase
         $svc->ensureMobileExtension($this->domain(), 'Acme');
         $svc->ensureMsisdnDestination($this->domain(), '+447434181294');
 
-        // ring-first / line-mode look for 'Voxra reception%' rows only
+        // the SIM's MSISDN row belongs to iqportal/the eSIM, never Voxra DID routing
         $this->assertNull((new \App\Services\ProvisionNumberService())->findReceptionDestination($this->domain()));
     }
 

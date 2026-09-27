@@ -124,10 +124,10 @@ class ProvisionTenantLineModeTest extends TestCase
     public function test_apply_did_actions_is_a_noop_without_a_routed_did(): void
     {
         $svc = \Mockery::mock(ProvisionNumberService::class)->makePartial();
-        $svc->shouldReceive('findReceptionDestination')->once()->andReturn(null);
+        $svc->shouldReceive('findVoxraDestinations')->once()->andReturn(collect());
 
         // must not touch routing or dispatch a dialplan rebuild
-        $this->assertFalse($svc->applyDidActions($this->domain(), (new ProvisionNumberService())->lineActions($this->domain())));
+        $this->assertSame(0, $svc->applyDidActions($this->domain(), (new ProvisionNumberService())->lineActions($this->domain())));
     }
 
     public function test_apply_did_actions_skips_unchanged_routing(): void
@@ -137,8 +137,8 @@ class ProvisionTenantLineModeTest extends TestCase
         $dest->setRawAttributes(['destination_actions' => json_encode($actions)]);
 
         $svc = \Mockery::mock(ProvisionNumberService::class)->makePartial();
-        $svc->shouldReceive('findReceptionDestination')->once()->andReturn($dest);
+        $svc->shouldReceive('findVoxraDestinations')->once()->andReturn(collect([$dest]));
 
-        $this->assertFalse($svc->applyDidActions($this->domain(), $actions));
+        $this->assertSame(0, $svc->applyDidActions($this->domain(), $actions));
     }
 }

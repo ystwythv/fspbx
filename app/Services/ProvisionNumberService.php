@@ -35,11 +35,11 @@ class ProvisionNumberService
     public function orderAndRoute(Domain $domain, AiAgent $agent, ?string $requirementGroupId = null): ?string
     {
         // Idempotency: provision() is re-run as a settings sync, so a domain
-        // that already has its Voxra DID routed must never order another
-        // (paid) number — return the existing one.
+        // that already has a Voxra DID (ours, or iqportal's Magrathea DDI)
+        // must never order another (paid) number — return the existing one.
         $existing = $this->findReceptionDestination($domain);
         if ($existing) {
-            return $existing->destination_number;
+            return $existing->destination_number_e164 ?: $existing->destination_number;
         }
 
         if (! config('services.voxra.provision_order_number')) {
@@ -189,41 +189,119 @@ class ProvisionNumberService
     }
 
     /**
-     * Point the tenant's Voxra DID at the given actions and rebuild its
-     * dialplan. No-op without a routed DID (activation/number order handles
-     * it later) or when the actions are unchanged (no needless rebuild).
-     * Returns whether the DID was rewritten.
+     * Point every Voxra DID of the tenant at the given actions and rebuild
+     * their dialplans. Only destination_actions changes: number, prefix,
+     * regex, caller-ID prefix, recording flags etc. that iqportal set stay
+     * as they are, and the phone-number dialplan template still runs the
+     * spam screen before these actions. The actions fully replace whatever
+     * iqportal's PATCH /api/voxra/phone-numbers wrote — voxraweb
+     * re-provisions after every allocate/re-route, so this is the last
+     * writer (the dialplan job reads the row when it runs, so the last row
+     * write is what FreeSWITCH gets). Rows already carrying these actions
+     * are skipped (no needless rebuild). Returns how many were rewritten.
      */
-    public function applyDidActions(Domain $domain, array $actions): bool
+    public function applyDidActions(Domain $domain, array $actions): int
     {
-        $dest = $this->findReceptionDestination($domain);
-        if (! $dest) {
-            return false;
-        }
-
         $json = json_encode($actions);
-        if ($dest->destination_actions === $json) {
-            return false;
+        $rewritten = 0;
+
+        foreach ($this->findVoxraDestinations($domain) as $dest) {
+            if ($dest->destination_actions === $json) {
+                continue;
+            }
+
+            $dest->destination_actions = $json;
+            $dest->save();
+
+            dispatch(new \App\Jobs\BuildDialplanForPhoneNumber($dest->destination_uuid, $domain->domain_name));
+            $rewritten++;
         }
 
-        $dest->destination_actions = $json;
-        $dest->save();
-
-        dispatch(new \App\Jobs\BuildDialplanForPhoneNumber($dest->destination_uuid, $domain->domain_name));
-
-        return true;
+        return $rewritten;
     }
 
-    /** The tenant's Voxra reception destination. Deterministic (oldest row
-     *  first) so re-provisions always update the same row. */
+    /** The tenant's first Voxra DID (oldest first), or null. */
     public function findReceptionDestination(Domain $domain): ?Destinations
+    {
+        return $this->findVoxraDestinations($domain)->first();
+    }
+
+    /**
+     * Every enabled inbound number of the tenant that Voxra routes, oldest
+     * first (a tenant can have more than one). See isVoxraDid for the rules.
+     *
+     * @return \Illuminate\Support\Collection<int, Destinations>
+     */
+    public function findVoxraDestinations(Domain $domain): \Illuminate\Support\Collection
     {
         return Destinations::where('domain_uuid', $domain->domain_uuid)
             ->where('destination_type', 'inbound')
-            ->where('destination_description', 'like', 'Voxra reception%')
             ->orderBy('insert_date')
             ->orderBy('destination_uuid')
-            ->first();
+            ->get()
+            ->filter(fn (Destinations $d) => self::isEnabled($d->destination_enabled)
+                && self::isVoxraDid($d->destination_description, $d->destination_actions, $domain->domain_name))
+            ->values();
+    }
+
+    /**
+     * Is this inbound destination a Voxra number whose routing provisioning
+     * owns? (fspbx#132 review: live numbers are iqportal Magrathea DDIs,
+     * "Inbound +44…", never the "Voxra reception…" rows of the Telnyx
+     * auto-order path.)
+     *
+     *  - never a Voxra Complete number: the SIM's own MSISDN row, or any
+     *    number transferring to a mobile extension (200–299) — iqportal
+     *    routes those to the eSIM (mode:extension);
+     *  - otherwise yes when the description is "Voxra reception…" (Telnyx
+     *    auto-order) or "Inbound +…" (iqportal V1 API), or when the actions
+     *    are ones Voxra writes: a transfer to the agent range 9250–9299
+     *    (incl. the 9260 line extension) or its voicemail (*99925x–*99929x),
+     *    the ring-first mobile bridge, or the suspended announcement.
+     */
+    public static function isVoxraDid(?string $description, $actions, string $domainName): bool
+    {
+        $description = (string) $description;
+        if ($description === ProvisionCompleteService::MSISDN_DESTINATION_DESCRIPTION) {
+            return false;
+        }
+
+        $decoded = is_array($actions) ? $actions : json_decode((string) $actions, true);
+        $decoded = is_array($decoded) ? $decoded : [];
+
+        $voxraActions = false;
+        foreach ($decoded as $action) {
+            $app = (string) ($action['destination_app'] ?? '');
+            $data = trim((string) ($action['destination_data'] ?? ''));
+
+            if ($app === 'transfer' && preg_match('/^(\S+) XML (\S+)$/', $data, $m)) {
+                if ($m[2] !== $domainName) {
+                    continue;
+                }
+                if (preg_match('/^2\d\d$/', $m[1])) {
+                    return false; // Complete: the eSIM's mobile extension
+                }
+                if (preg_match('/^(\*99)?92[5-9]\d$/', $m[1])) {
+                    $voxraActions = true;
+                }
+            } elseif ($app === 'set' && $data === self::SUSPENDED_MARKER) {
+                $voxraActions = true;
+            } elseif ($app === 'bridge' && str_contains($data, '}loopback/') && str_ends_with($data, '/' . $domainName)) {
+                $voxraActions = true;
+            }
+        }
+
+        return $voxraActions
+            || str_starts_with($description, 'Voxra reception')
+            || str_starts_with($description, 'Inbound +');
+    }
+
+    /** destination_enabled as stored ('true' by the UI / V1 API, '1' when a
+     *  bool was saved into the text column). */
+    public static function isEnabled($value): bool
+    {
+        return in_array(strtolower(trim((string) $value)), ['true', '1', 't', 'yes', 'on'], true)
+            || $value === true;
     }
 
     /** The validated E.164 mobile to ring first, or null for agent-only routing. */
@@ -384,6 +462,8 @@ class ProvisionNumberService
         $candidates = [$e164, $digits];
         if (str_starts_with($digits, '44')) {
             $candidates[] = '0' . substr($digits, 2); // GB national form
+            // iqportal's V1 rows: prefix 44 + national number without the 0
+            $candidates[] = substr($digits, 2);
         }
 
         return Destinations::where('destination_type', 'inbound')
