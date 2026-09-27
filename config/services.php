@@ -170,14 +170,22 @@ return [
                 . "Messages are recorded and transcribed."
         ),
 
-        // Call-audio retention (voxragtm#83, `voxra:purge-media`): Voxra tenant
-        // domains (voxra-tenant:*) are always in scope; these add Voxra's own
-        // lines — the platform demo line's PBX domain and Telnyx assistant.
+        // Call-audio retention (voxragtm#83, `voxra:purge-media`): applies to
+        // Voxra customers only. Voxra tenant domains (domain_description
+        // voxra-tenant:<id>) are always in scope; retention_extra_domains adds
+        // any other Voxra-owned PBX domain (none today) and
+        // retention_extra_assistants adds Voxra's own Telnyx assistant (the
+        // "Voxra Platform Line", Voxra's own main line).
+        // NOT lon1.voxra.uk / eu1.voxra.uk: those are the per-node WhatsApp
+        // Business Calling digest realms (iqm-ansible whatsapp-sip.yml) for
+        // IQ Mobile's and Aerix's WhatsApp numbers; their calls are IQ Mobile
+        // customers' and are recorded under recordings/iqmobile.uk/. The
+        // service refuses those domains even if listed here.
         // Audio (PBX recordings, voicemail audio, Telnyx AI recordings) and
         // Telnyx's conversation copies go after recording_retention_days (10,
         // per the privacy policy — confirmed 2026-09-25). Voxra's own
         // transcripts/summaries live in voxraweb and follow its account rule.
-        'retention_extra_domains' => env('VOXRA_RETENTION_EXTRA_DOMAINS', 'lon1.voxra.uk'),
+        'retention_extra_domains' => env('VOXRA_RETENTION_EXTRA_DOMAINS', ''),
         'retention_extra_assistants' => env(
             'VOXRA_RETENTION_EXTRA_ASSISTANTS',
             'assistant-1cce66d5-5e04-421c-8103-ca008fa4ad0f'
