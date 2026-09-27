@@ -157,7 +157,8 @@ return [
         // SRV → lon1/eu1 :5060 (internal profile, 407-challenged).
         'fmc_registrar' => env('VOXRA_FMC_REGISTRAR', 'reg.voxra.uk'),
 
-        // Per-tenant TTS voicemail greeting for Voxra Line (voxragtm#110):
+        // Per-tenant TTS voicemail greeting (voxragtm#110; every non-Complete
+        // tenant since voxragtm#164 — it is also the AI-off fallback):
         // generated at provision time via ElevenLabs. The voice is an
         // ElevenLabs voice id — default "Alice", a stock clear UK-English
         // voice. The text template's {business} placeholder is replaced with
@@ -165,9 +166,16 @@ return [
         'vm_greeting_voice' => env('VOXRA_VM_GREETING_VOICE', 'Xb7hH8MSUJpSbSDYk0k2'),
         'vm_greeting_text' => env(
             'VOXRA_VM_GREETING_TEXT',
-            "Thanks for calling {business}. We can't get to the phone right now — "
-                . "please leave a message after the tone and we'll get back to you. "
+            "You've reached {business}. Please leave your name, number and what you need "
+                . "after the tone, and we'll call you back. "
                 . "Messages are recorded and transcribed."
+        ),
+
+        // Played (then hang up) by a suspended number (voxragtm#173) — one
+        // shared TTS file in the vm_greeting_voice; SIT tones if TTS fails.
+        'suspended_announcement_text' => env(
+            'VOXRA_SUSPENDED_ANNOUNCEMENT_TEXT',
+            'This number is temporarily unavailable. Please try again later.'
         ),
 
         // Call-audio retention (voxragtm#83, `voxra:purge-media`): applies to

@@ -6,7 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\ReceptionAgentController;
 use App\Models\AiAgent;
 use App\Models\Domain;
+use App\Services\ProvisionLineService;
+use App\Services\ProvisionNumberService;
 use App\Services\Voxra\VoxraDisclosure;
+use App\Services\Voxra\VoxraRoutingState;
+use App\Services\Voxra\VoxraSuspendedAnnouncement;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -19,10 +23,23 @@ use Illuminate\Support\Str;
  * Called by voxraweb, authed by VerifyVoxraInternalSignature (HMAC over the raw
  * body). Idempotent per tenant (keyed on domain_description = "voxra-tenant:<id>").
  *
- * line_mode (voxragtm#25) provisions the Voxra Line plan: agent disabled, DID
+ * line_mode (voxragtm#25) provisions Voxra Line v1: agent disabled, DID
  * routed to a stock follow-me extension (ProvisionLineService) that rings the
  * owner's mobile then falls to transcribed PBX voicemail. Re-provisioning with
  * line_mode:false + agent_enabled:true is the Line → Start upgrade.
+ *
+ * line_ai (voxragtm#163) is the £10 Line: the owner's mobile rings for
+ * ring_first_timeout seconds, then the AI answers; with the AI off it falls
+ * back to the Line v1 path. It wins over line_mode and ring_mobile_first.
+ *
+ * Every non-Complete tenant gets the 9260 voicemail box (voxragtm#164): with
+ * the AI off the DID goes (ring-first, then) to voicemail, never to the
+ * disabled 9250. service_suspended (voxragtm#173) replaces all routing with
+ * an announcement + hang-up until it is sent false again.
+ *
+ * Routing fields left out of a request keep their last value (stored per
+ * domain in VoxraRoutingState), so a bare re-provision never drops
+ * ring-first or un-suspends a number.
  *
  * complete_mode (voxragtm#45) provisions Voxra Complete: agent on, plus a
  * registerable "mobile extension" (200–299, ProvisionCompleteService) whose
@@ -176,13 +193,26 @@ PROMPT;
             // Kill-switch (voxragtm#81): voxraweb re-provisions with false when
             // a tenant toggles Voxra off or hits their minute cap.
             'agent_enabled'        => 'nullable|boolean',
-            // Voxra Line (voxragtm#25): £5 no-AI plan — DID rings the owner's
+            // Voxra Line v1 (voxragtm#25): no-AI plan — DID rings the owner's
             // mobile via a stock follow-me extension, then PBX voicemail with
-            // transcription. The agent exists but stays disabled.
+            // transcription. The agent exists but stays disabled. Superseded
+            // by line_ai (voxragtm#162), which wins when both are sent.
             'line_mode'            => 'nullable|boolean',
             // Voxra Complete (voxragtm#45): eSIM registered via FMC as a real
             // extension. Mutually exclusive with line_mode (complete wins).
             'complete_mode'        => 'nullable|boolean',
+            // Voxra Line + AI (voxragtm#163): owner's mobile first, then the
+            // AI. Wins over line_mode / ring_mobile_first (voxraweb also sends
+            // those so an older PBX still rings the mobile first).
+            'line_ai'              => 'nullable|boolean',
+            // Seconds the owner's mobile rings before the AI (or voicemail
+            // when the AI is off). Omitted → last value, else 25 for Line /
+            // Line+AI and 20 for Pro.
+            'ring_first_timeout'   => 'nullable|integer|min:' . ProvisionNumberService::MIN_RING_FIRST_TIMEOUT
+                . '|max:' . ProvisionNumberService::MAX_RING_FIRST_TIMEOUT,
+            // Unpaid → dunning suspended the number (voxragtm#173): the DID
+            // plays "temporarily unavailable" and hangs up. Omitted → keep.
+            'service_suspended'    => 'nullable|boolean',
             'rotate_sip_password'  => 'nullable|boolean',
             'did'                  => ['nullable', 'string', 'max:20', 'regex:/^\+\d{10,15}$/'],
             'sim_msisdn'           => ['nullable', 'string', 'max:20', 'regex:/^\+\d{10,15}$/'],
@@ -195,7 +225,9 @@ PROMPT;
 
         $tenantId = $data['tenant_id'];
         $completeMode = $request->boolean('complete_mode', false);
-        $lineMode = self::resolveLineMode($request->boolean('line_mode', false), $completeMode);
+        $lineAi = self::resolveLineAi($request->boolean('line_ai', false), $completeMode);
+        $lineMode = self::resolveLineMode($request->boolean('line_mode', false), $completeMode, $lineAi);
+        $mode = VoxraRoutingState::modeFor($lineMode, $lineAi, $completeMode);
         $businessName = trim($data['business_name']) ?: 'Voxra';
         $tag = 'voxra-tenant:' . $tenantId;
 
@@ -210,15 +242,57 @@ PROMPT;
             $domain->save(); // DomainObserver bootstraps stock dialplans + FS dirs
         }
 
+        // Routing inputs (voxragtm#162): explicit request values, else the
+        // stored state, else what the DID does today (tenants provisioned
+        // before the state existed). Stored before the agent upsert — the
+        // 9250 dialplan, *9 bind and Telnyx tool sync read the mode.
+        $numberSvc = app(ProvisionNumberService::class);
+        $lineSvc = app(ProvisionLineService::class);
+        $previous = VoxraRoutingState::load($domain->domain_uuid);
+        $currentActions = null;
+        $followMeMobile = null;
+        if (! $completeMode) {
+            try {
+                $currentActions = $numberSvc->findReceptionDestination($domain)?->destination_actions;
+                if ($lineMode || $lineAi) {
+                    $followMeMobile = $lineSvc->currentFollowMeMobile($domain);
+                }
+            } catch (\Throwable $e) {
+                logger('Voxra current routing lookup failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+            }
+        }
+        $routing = self::resolveRoutingInputs(
+            self::routingInput($request),
+            $mode,
+            $previous,
+            $currentActions,
+            $followMeMobile,
+        );
+        $suspended = $routing['suspended'];
+        $timeout = $routing['timeout'];
+        // Validated (+E.164, not a DID on this PBX) — null when unusable.
+        $ownerMobile = $completeMode ? null
+            : $numberSvc->resolveRingFirstMobile($domain, true, $routing['owner_mobile']);
+        $agentEnabled = self::resolveAgentEnabled($request->boolean('agent_enabled', true), $lineMode, $suspended);
+
+        try {
+            VoxraRoutingState::save($domain->domain_uuid, [
+                'mode'               => $mode,
+                'ring_first'         => $routing['ring_first'],
+                'owner_mobile'       => $completeMode ? ($previous['owner_mobile'] ?? null) : $ownerMobile,
+                'ring_first_timeout' => $timeout,
+                'service_suspended'  => $suspended,
+            ]);
+        } catch (\Throwable $e) {
+            logger()->error('Voxra routing state save failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+        }
+
         // Idempotent upsert of the reception agent on the domain. A disabled
         // agent disables its dialplans, so inbound calls to the DID stop
         // reaching the assistant.
         $recording = $request->has('recording_enabled') ? $request->boolean('recording_enabled') : null;
         $existing = AiAgent::reception()->forDomain($domain->domain_uuid)->first();
-        $inputs = $this->receptionAgentInputs(
-            $businessName,
-            self::resolveAgentEnabled($request->boolean('agent_enabled', true), $lineMode)
-        );
+        $inputs = $this->receptionAgentInputs($businessName, $agentEnabled);
         $inputs['first_message'] = self::resolveGreeting(
             $data['greeting'] ?? null,
             $existing?->first_message,
@@ -251,14 +325,22 @@ PROMPT;
             logger()->error('Voxra outbound route provisioning failed for ' . $domain->domain_name . ': ' . $e->getMessage());
         }
 
-        // Voxra Line (voxragtm#25): idempotently provision the follow-me line
-        // extension + voicemail box (branded TTS greeting, voxragtm#110).
-        // Missing/unusable owner_mobile still gets the extension — it becomes
-        // a straight-to-voicemail line.
+        // Voxra Line (voxragtm#25) and Line+AI's AI-off fallback
+        // (voxragtm#163): idempotently provision the follow-me line extension
+        // + voicemail box (branded TTS greeting, voxragtm#110). Missing/
+        // unusable owner_mobile still gets the extension — it becomes a
+        // straight-to-voicemail line. Every other tenant gets just the
+        // voicemail box — where the DID goes when the AI is off
+        // (voxragtm#164), and Complete's eSIM failover target then.
         $line = null;
-        if ($lineMode) {
-            $line = app(\App\Services\ProvisionLineService::class)
-                ->ensureLineExtension($domain, $data['owner_mobile'] ?? null, $businessName);
+        if ($lineMode || $lineAi) {
+            $line = $lineSvc->ensureLineExtension($domain, $ownerMobile, $businessName, $timeout);
+        } else {
+            try {
+                $lineSvc->ensureVoicemailBox($domain, $businessName);
+            } catch (\Throwable $e) {
+                logger()->error('Voxra voicemail box provisioning failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+            }
         }
 
         // Voxra Complete (voxragtm#45): the mobile extension is the whole
@@ -346,32 +428,22 @@ PROMPT;
             logger('Voxra auto-number failed for ' . $domain->domain_name . ': ' . $e->getMessage());
         }
 
-        // Ring-mobile-first routing (voxragtm#23) — applies/reverts on every
-        // provision call so a settings toggle in voxraweb just re-provisions.
-        // No-op in complete mode: the handset already rings first, natively,
-        // as the FMC-registered extension.
-        try {
-            if ($request->has('ring_mobile_first') && ! $completeMode) {
-                app(\App\Services\ProvisionNumberService::class)->applyRingFirst(
-                    $domain,
-                    $agent,
-                    (bool) ($data['ring_mobile_first'] ?? false),
-                    $data['owner_mobile'] ?? null,
-                );
+        // DID routing (voxragtm#23/#25/#162/#164/#173) — one decision table
+        // for every mode, rewritten on every provision call so a settings
+        // toggle, plan change, AI pause or suspension in voxraweb just
+        // re-provisions. Complete: the DID is iqportal's (routed to the eSIM
+        // extension), never touched here.
+        $routingKind = null;
+        if (! $completeMode) {
+            try {
+                $announcement = $suspended ? app(VoxraSuspendedAnnouncement::class)->playbackTarget() : null;
+                $ringMobile = self::ringFirstMobileFor($mode, $routing['ring_first'], $ownerMobile);
+                $did = $numberSvc->resolveDidRouting($domain, $agent, $mode, $agentEnabled, $ringMobile, $timeout, $suspended, $announcement);
+                $routingKind = $did['kind'];
+                $numberSvc->applyDidActions($domain, $did['actions']);
+            } catch (\Throwable $e) {
+                logger()->error('Voxra DID routing failed for ' . $domain->domain_name . ': ' . $e->getMessage());
             }
-        } catch (\Throwable $e) {
-            logger('Voxra ring-first routing failed for ' . $domain->domain_name . ': ' . $e->getMessage());
-        }
-
-        // Voxra Line routing (voxragtm#25) — after ring-first so enabling line
-        // mode wins, and disabling it restores agent routing only when the DID
-        // is still line-routed (a fresh ring-first rewrite is left alone).
-        try {
-            if (! $completeMode) {
-                app(\App\Services\ProvisionNumberService::class)->applyLineMode($domain, $agent, $lineMode);
-            }
-        } catch (\Throwable $e) {
-            logger('Voxra line routing failed for ' . $domain->domain_name . ': ' . $e->getMessage());
         }
 
         return response()->json([
@@ -382,6 +454,18 @@ PROMPT;
             'feature_code'        => $agent->feature_code,
             'telnyx_assistant_id' => $agent->telnyx_assistant_id,
             'number'              => $number,
+            // Plan mode + routing actually applied (voxragtm#162):
+            // line | line_ai | pro | complete.
+            'mode'                => $mode,
+            'agent_enabled'       => $agentEnabled,
+            'service_suspended'   => $suspended,
+            // Seconds the owner's mobile rings first (null for Complete).
+            'ring_first_timeout'  => $completeMode ? null : $timeout,
+            // What the Voxra DID does: ring_first_ai | ai | line_voicemail |
+            // ring_first_voicemail | voicemail | suspended (null: Complete
+            // or routing failed).
+            'routing'             => $routingKind,
+            'voicemail_box'       => ProvisionLineService::LINE_EXTENSION,
             'line_extension'      => $line['extension'] ?? null,
             // true when owner_mobile was missing/unusable: the line answers
             // straight to voicemail until a valid mobile is re-provisioned
@@ -419,17 +503,119 @@ PROMPT;
     }
 
     /** Complete mode wins over line mode: a Complete tenant's handset IS the
-     *  extension, so the Line follow-me/loopback machinery must stay off. */
-    public static function resolveLineMode(bool $lineMode, bool $completeMode): bool
+     *  extension, so the Line follow-me/loopback machinery must stay off.
+     *  Line+AI wins over Line v1 (voxraweb sends both to stay compatible
+     *  with an older PBX). */
+    public static function resolveLineMode(bool $lineMode, bool $completeMode, bool $lineAi = false): bool
     {
-        return $lineMode && ! $completeMode;
+        return $lineMode && ! $completeMode && ! $lineAi;
     }
 
-    /** Line mode forces the agent off: it exists for the Line → Start upgrade
-     *  but must not answer (voxragtm#25). */
-    public static function resolveAgentEnabled(bool $agentEnabled, bool $lineMode): bool
+    /** Line+AI (voxragtm#163) — never with Complete. */
+    public static function resolveLineAi(bool $lineAi, bool $completeMode): bool
     {
-        return $agentEnabled && ! $lineMode;
+        return $lineAi && ! $completeMode;
+    }
+
+    /** Line v1 forces the agent off: it exists for the Line → Start upgrade
+     *  but must not answer (voxragtm#25). Line+AI keeps it (pass its
+     *  lineMode as false). A suspended number never reaches the AI. */
+    public static function resolveAgentEnabled(bool $agentEnabled, bool $lineMode, bool $suspended = false): bool
+    {
+        return $agentEnabled && ! $lineMode && ! $suspended;
+    }
+
+    /** The mobile the DID rings first, or null. Line+AI always rings the
+     *  owner's mobile first (ring_mobile_first is ignored — voxraweb sends it
+     *  only for older PBXs); Pro only with ring-first on; Line v1 never
+     *  (its follow-me rings the mobile). */
+    public static function ringFirstMobileFor(string $mode, bool $ringFirst, ?string $ownerMobile): ?string
+    {
+        return match ($mode) {
+            VoxraRoutingState::MODE_LINE_AI => $ownerMobile,
+            VoxraRoutingState::MODE_PRO     => $ringFirst ? $ownerMobile : null,
+            default                         => null,
+        };
+    }
+
+    /** The routing fields present in the request (absent keys are left out
+     *  so resolveRoutingInputs can keep their stored values). */
+    private static function routingInput(Request $request): array
+    {
+        $in = [];
+        if ($request->has('owner_mobile')) {
+            $in['owner_mobile'] = $request->input('owner_mobile');
+        }
+        foreach (['ring_mobile_first', 'service_suspended'] as $key) {
+            if ($request->input($key) !== null) {
+                $in[$key] = $request->boolean($key);
+            }
+        }
+        if ($request->input('ring_first_timeout') !== null) {
+            $in['ring_first_timeout'] = (int) $request->input('ring_first_timeout');
+        }
+
+        return $in;
+    }
+
+    /**
+     * Resolve the routing inputs (voxragtm#162). Each field: the request's
+     * value when sent, else the stored state, else what the DID does today
+     * (tenants routed before the state was stored). Pure.
+     *
+     *  - owner_mobile (raw; validated by the caller): Line modes also fall
+     *    back to the 9260 follow-me destination.
+     *  - ring_first: the Pro ring-first preference (ring_mobile_first on a
+     *    Pro call). Line calls leave it as stored — Line+AI always rings the
+     *    mobile first and Line v1 rings it through follow-me.
+     *  - timeout: the stored value only while the mode is unchanged (a plan
+     *    switch takes the new mode's default: 25 s Line, 20 s Pro).
+     *  - suspended: kept until sent false.
+     *
+     * @return array{owner_mobile: ?string, ring_first: bool, timeout: int, suspended: bool}
+     */
+    public static function resolveRoutingInputs(array $input, string $mode, array $previous, ?string $currentActions, ?string $followMeMobile): array
+    {
+        $didMobile = ProvisionNumberService::ringFirstMobileIn($currentActions);
+        $lineModes = [VoxraRoutingState::MODE_LINE, VoxraRoutingState::MODE_LINE_AI];
+
+        if (array_key_exists('owner_mobile', $input)) {
+            $ownerMobile = $input['owner_mobile'];
+        } else {
+            $ownerMobile = $previous['owner_mobile']
+                ?? $didMobile
+                ?? (in_array($mode, $lineModes, true) ? $followMeMobile : null);
+        }
+
+        if (in_array($mode, $lineModes, true)) {
+            // Line always rings the mobile; ring_mobile_first on a Line call
+            // is only there for older PBXs and must not become the Pro
+            // preference a later upgrade inherits.
+            $ringFirst = (bool) ($previous['ring_first'] ?? false);
+        } elseif (array_key_exists('ring_mobile_first', $input)) {
+            $ringFirst = (bool) $input['ring_mobile_first'];
+        } else {
+            $ringFirst = (bool) ($previous['ring_first'] ?? ($didMobile !== null));
+        }
+
+        if (isset($input['ring_first_timeout'])) {
+            $timeout = (int) $input['ring_first_timeout'];
+        } elseif (($previous['mode'] ?? null) === $mode && isset($previous['ring_first_timeout'])) {
+            $timeout = (int) $previous['ring_first_timeout'];
+        } else {
+            $timeout = ProvisionNumberService::defaultRingFirstTimeout($mode);
+        }
+
+        $suspended = array_key_exists('service_suspended', $input)
+            ? (bool) $input['service_suspended']
+            : (bool) ($previous['service_suspended'] ?? ProvisionNumberService::isSuspendedRouting($currentActions));
+
+        return [
+            'owner_mobile' => $ownerMobile !== null && $ownerMobile !== '' ? (string) $ownerMobile : null,
+            'ring_first'   => $ringFirst,
+            'timeout'      => ProvisionNumberService::clampRingFirstTimeout($timeout),
+            'suspended'    => $suspended,
+        ];
     }
 
     /** Upsert inputs for the reception agent (agent_enabled is stored as the

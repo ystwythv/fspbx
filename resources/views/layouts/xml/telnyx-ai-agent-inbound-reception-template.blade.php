@@ -39,11 +39,20 @@
         <action application="bridge" data="{{ $voxraHeaders }}[leg_timeout={{ $telnyx_leg_timeout ?? 10 }}]sofia/external/sip:{{ 'agent@' . $agent->telnyx_assistant_id }}.sip.telnyx.com" />
         <action application="log" data="WARNING Voxra: Telnyx assistant {{ $agent->telnyx_assistant_id }} did not answer (${originate_disposition}); retrying once" />
         <action application="bridge" data="{{ $voxraHeaders }}[leg_timeout={{ $telnyx_leg_timeout ?? 10 }}]sofia/external/sip:{{ 'agent@' . $agent->telnyx_assistant_id }}.sip.telnyx.com" />
+@if (!empty($voicemail_fallback) && !empty($domain_name))
+        {{-- Line+AI (voxragtm#163): still no AI — the caller leaves a message
+             in the tenant's voicemail box (branded greeting, transcribed,
+             voicemail.finalized to voxraweb) instead of being hung up on. --}}
+        <action application="log" data="ERR Voxra: Telnyx assistant {{ $agent->telnyx_assistant_id }} did not answer twice (${originate_disposition}); sending caller to voicemail" />
+        <action application="set" data="voxra_ai_unavailable=true" />
+        <action application="transfer" data="*99{{ $voicemail_fallback }} XML {{ $domain_name }}" />
+@else
         {{-- Still no AI: end the call as NO_ANSWER rather than leave the caller
              ringing. The CDR resolves to no_answer, which Voxra treats as a
              missed call (missed-call text-back, no AI minutes). --}}
         <action application="log" data="ERR Voxra: Telnyx assistant {{ $agent->telnyx_assistant_id }} did not answer twice (${originate_disposition}); ending as missed" />
         <action application="set" data="voxra_ai_unavailable=true" />
         <action application="hangup" data="NO_ANSWER" />
+@endif
     </condition>
 </extension>

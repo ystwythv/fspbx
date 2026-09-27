@@ -18,7 +18,8 @@ use Illuminate\Support\Str;
  * with ring_target=fmc, the DDI as outbound caller-ID, and no-answer /
  * busy / unregistered failover to the reception agent (push_wake.lua honours
  * those forwards for ring_target=fmc; the box's voicemail is off while an
- * agent exists). Unlike the Voxra
+ * agent exists). With the AI off the same forwards point at the tenant's
+ * Voxra voicemail box 9260 instead (voxragtm#164). Unlike the Voxra
  * Line extension (9260, never registers) the password here IS the SIM's
  * registration secret, so it is preserved across re-provisions.
  */
@@ -229,7 +230,16 @@ class ProvisionCompleteService
         return Str::random(24);
     }
 
-    /** Point the forwards at the agent; returns whether there is one. */
+    /**
+     * Point the forwards at the agent; returns whether there is one.
+     *
+     * AI off (minutes used up / unpaid, voxragtm#164): the forwards go to the
+     * tenant's Voxra voicemail box (*99 9260 — branded greeting, transcribed,
+     * voicemail.finalized to voxraweb) when it exists. Clearing them instead
+     * would leave push_wake.lua's own fallback, which hands the caller to
+     * mod_voicemail's box for the extension: stock greeting, and none of the
+     * FusionPBX voicemail lua's message rows, so voxraweb never hears of it.
+     */
     private function applyAgentFailover(Domain $domain, Extensions $extension): bool
     {
         $failover = app(AgentFailoverService::class);
@@ -239,9 +249,22 @@ class ProvisionCompleteService
 
             return true;
         }
-        $failover->clearOn($extension); // voicemail box catches it
+
+        if ($this->hasVoxraVoicemailBox($domain)) {
+            $failover->applyVoicemail($extension, ProvisionLineService::LINE_EXTENSION);
+        } else {
+            $failover->clearOn($extension); // the extension's own box catches it
+        }
 
         return false;
+    }
+
+    private function hasVoxraVoicemailBox(Domain $domain): bool
+    {
+        return Voicemails::where('domain_uuid', $domain->domain_uuid)
+            ->where('voicemail_id', ProvisionLineService::LINE_EXTENSION)
+            ->where('voicemail_enabled', 'true')
+            ->exists();
     }
 
     /** First free number in the 200–299 block for the domain. */

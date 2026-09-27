@@ -40,6 +40,20 @@ class AgentFailoverService
         $extension->forward_user_not_registered_destination = $target;
     }
 
+    /** Set the three forwards to a voicemail box via the stock *99<box>
+     *  send-to-voicemail dialplan (not saved) — the AI-off target. */
+    public function applyVoicemail(Extensions $extension, string $voicemailId): void
+    {
+        $target = '*99' . $voicemailId;
+
+        $extension->forward_no_answer_enabled = 'true';
+        $extension->forward_no_answer_destination = $target;
+        $extension->forward_busy_enabled = 'true';
+        $extension->forward_busy_destination = $target;
+        $extension->forward_user_not_registered_enabled = 'true';
+        $extension->forward_user_not_registered_destination = $target;
+    }
+
     /** Clear the three forwards on the extension (not saved). */
     public function clearOn(Extensions $extension): void
     {
