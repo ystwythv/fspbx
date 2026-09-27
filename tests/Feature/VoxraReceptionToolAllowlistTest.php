@@ -25,6 +25,7 @@ class VoxraReceptionToolAllowlistTest extends TestCase
 
     private const RECEPTION_WEBHOOK_TOOLS = [
         'alert_owner', 'capture_lead', 'check_availability', 'book_appointment',
+        'cancel_appointment', 'reschedule_appointment',
         'recall_caller', 'remember_about_caller', 'remember', 'recall_business',
         'report_abuse', 'record_summary', 'lookup_business_info', 'search_memory',
         'send_payment_link',
@@ -138,6 +139,79 @@ class VoxraReceptionToolAllowlistTest extends TestCase
         // Every allowlisted name is a real tool definition.
         $defined = array_column(ReceptionAgentToolDefinitions::list([]), 'name');
         $this->assertEmpty(array_diff(ReceptionAgentToolDefinitions::VOXRA_RECEPTION_TOOLS, $defined));
+    }
+
+    /**
+     * voxragtm#175: the booking tools speak a filler line and get 8s instead
+     * of Telnyx's ~5s default (a slow calendar was timing out silently), and
+     * cancel/reschedule are voxraweb data tools with the agreed contract.
+     */
+    public function test_booking_tools_have_a_filler_line_and_an_8s_timeout(): void
+    {
+        $tools = collect($this->syncedTools($this->agent(self::VOXRA_DOMAIN)))
+            ->filter(fn ($t) => $t['type'] === 'webhook')
+            ->keyBy(fn ($t) => $t['webhook']['name']);
+
+        foreach (['check_availability', 'book_appointment', 'cancel_appointment', 'reschedule_appointment'] as $name) {
+            $this->assertTrue($tools->has($name), $name);
+            $t = $tools[$name];
+            $this->assertSame(8000, $t['timeout_ms'], $name);
+            $this->assertArrayNotHasKey('timeout_ms', $t['webhook'], $name);
+            $this->assertCount(1, $t['webhook']['messages'], $name);
+            $this->assertSame('request_response_delayed', $t['webhook']['messages'][0]['type'], $name);
+            $this->assertNotSame('', trim($t['webhook']['messages'][0]['content']), $name);
+            // Served by voxraweb with the tenant/caller context headers.
+            $this->assertSame('https://voxra.test/api/agent/tool', $t['webhook']['url'], $name);
+            $headers = array_column($t['webhook']['headers'], 'value', 'name');
+            $this->assertSame('Bearer tool-secret', $headers['Authorization'], $name);
+            $this->assertSame('{{domain_uuid}}', $headers['X-Voxra-Domain-Uuid'], $name);
+            $this->assertSame('{{conversation_id}}', $headers['X-Voxra-Conversation-Id'], $name);
+            $this->assertSame('{{caller_number}}', $headers['X-Voxra-Caller-Number'], $name);
+            $this->assertTrue(ReceptionAgentToolDefinitions::isDataTool($name), $name);
+        }
+
+        // alert_owner keeps its own 10s.
+        $this->assertSame(10000, $tools['alert_owner']['timeout_ms']);
+        // Tools without a filler get no messages / timeout.
+        $this->assertArrayNotHasKey('messages', $tools['capture_lead']['webhook']);
+        $this->assertArrayNotHasKey('timeout_ms', $tools['capture_lead']);
+    }
+
+    public function test_cancel_and_reschedule_match_the_voxraweb_contract(): void
+    {
+        $defs = collect(ReceptionAgentToolDefinitions::list([]))->keyBy('name');
+
+        $cancel = $defs['cancel_appointment'];
+        $this->assertSame(['appointment_ref', 'starts_at', 'reason'], array_keys($cancel['properties']));
+        $this->assertSame([], $cancel['required']);
+        $this->assertStringContainsString('Confirm which appointment', $cancel['description']);
+
+        $move = $defs['reschedule_appointment'];
+        $this->assertSame(['appointment_ref', 'starts_at', 'new_starts_at'], array_keys($move['properties']));
+        $this->assertSame(['new_starts_at'], $move['required']);
+        $this->assertStringContainsString('check_availability', $move['description']);
+        foreach (array_merge($cancel['properties'], $move['properties']) as $prop) {
+            $this->assertSame('string', $prop['type']);
+        }
+
+        // Rendered for Telnyx: tool_name enum + the required new time.
+        $tools = collect($this->syncedTools($this->agent(self::VOXRA_DOMAIN)))
+            ->filter(fn ($t) => $t['type'] === 'webhook')
+            ->keyBy(fn ($t) => $t['webhook']['name']);
+        $body = $tools['reschedule_appointment']['webhook']['body_parameters'];
+        $this->assertSame(['reschedule_appointment'], $body['properties']['tool_name']['enum']);
+        $this->assertSame(['tool_name', 'new_starts_at'], $body['required']);
+        $this->assertSame(['tool_name'], $tools['cancel_appointment']['webhook']['body_parameters']['required']);
+    }
+
+    public function test_check_availability_only_promises_date_phrasing_voxraweb_parses(): void
+    {
+        $def = collect(ReceptionAgentToolDefinitions::list([]))->firstWhere('name', 'check_availability');
+        $desc = $def['properties']['date']['description'];
+
+        foreach (['today', 'tomorrow', 'next Tuesday', 'this Tuesday', 'YYYY-MM-DD'] as $phrase) {
+            $this->assertStringContainsString($phrase, $desc);
+        }
     }
 
     public function test_reception_prompt_and_tool_descriptions_never_mention_a_removed_tool(): void

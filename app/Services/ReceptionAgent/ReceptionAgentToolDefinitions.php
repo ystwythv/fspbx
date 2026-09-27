@@ -107,9 +107,14 @@ class ReceptionAgentToolDefinitions
                 'name' => 'check_availability',
                 'description' => 'Check which appointment slots are free on a given day before offering times to the caller. Returns available slots within business hours.',
                 'properties' => [
-                    'date' => ['type' => 'string', 'description' => 'The day to check, e.g. "2026-07-03", "tomorrow", or "next Tuesday"'],
+                    // Only phrasings voxraweb's date parser handles (voxragtm#175).
+                    'date' => ['type' => 'string', 'description' => 'The day to check: "today", "tomorrow", a weekday ("Tuesday", "this Tuesday", "next Tuesday") or a date as YYYY-MM-DD ("2026-07-03")'],
                 ],
                 'required' => ['date'],
+                // voxragtm#175: the calendar lookup can pass Telnyx's ~5s
+                // default — say something and allow longer.
+                'filler' => 'Let me just check the diary.',
+                'timeout_ms' => 8000,
             ],
             [
                 'name' => 'book_appointment',
@@ -123,6 +128,35 @@ class ReceptionAgentToolDefinitions
                     'deposit_amount' => ['type' => 'number', 'description' => 'Holding deposit taken, if any'],
                 ],
                 'required' => ['starts_at', 'service'],
+                // Several sequential writes (booking, calendar, reminders).
+                'filler' => 'Let me book that in for you.',
+                'timeout_ms' => 8000,
+            ],
+            [
+                // voxragtm#175: voxraweb cancels the booking (and its provider
+                // event) and its queued reminder messages.
+                'name' => 'cancel_appointment',
+                'description' => "Cancel the caller's upcoming appointment. Use when the caller asks to cancel. Confirm which appointment first if they have more than one.",
+                'properties' => [
+                    'appointment_ref' => ['type' => 'string', 'description' => 'The booking reference, if the caller has it'],
+                    'starts_at' => ['type' => 'string', 'description' => "When the appointment is, to pick the right one — ISO 8601 or natural like 'Tuesday 2pm'"],
+                    'reason' => ['type' => 'string', 'description' => 'Why they are cancelling, if they say'],
+                ],
+                'required' => [],
+                'filler' => 'Let me find that booking for you.',
+                'timeout_ms' => 8000,
+            ],
+            [
+                'name' => 'reschedule_appointment',
+                'description' => "Move the caller's upcoming appointment to a new time. Check availability first (check_availability) and confirm the new time with the caller before calling.",
+                'properties' => [
+                    'appointment_ref' => ['type' => 'string', 'description' => 'The booking reference, if the caller has it'],
+                    'starts_at' => ['type' => 'string', 'description' => "When the existing appointment is, to pick the right one — ISO 8601 or natural like 'Tuesday 2pm'"],
+                    'new_starts_at' => ['type' => 'string', 'description' => "The new start date & time the caller agreed — ISO 8601 or natural like 'Tuesday 2pm'"],
+                ],
+                'required' => ['new_starts_at'],
+                'filler' => 'Let me move that for you.',
+                'timeout_ms' => 8000,
             ],
             [
                 'name' => 'recall_caller',
@@ -268,6 +302,7 @@ class ReceptionAgentToolDefinitions
      */
     public const VOXRA_RECEPTION_TOOLS = [
         'alert_owner', 'capture_lead', 'check_availability', 'book_appointment',
+        'cancel_appointment', 'reschedule_appointment',
         'recall_caller', 'remember_about_caller', 'remember', 'recall_business',
         'report_abuse', 'record_summary', 'lookup_business_info', 'search_memory',
         'send_payment_link',
@@ -301,6 +336,7 @@ class ReceptionAgentToolDefinitions
      */
     public const DATA_TOOLS = [
         'alert_owner', 'capture_lead', 'check_availability', 'book_appointment',
+        'cancel_appointment', 'reschedule_appointment',
         'recall_caller', 'remember_about_caller', 'remember', 'recall_business', 'record_summary', 'search_memory',
         'send_payment_link', 'lookup_business_info', 'report_abuse',
     ];
