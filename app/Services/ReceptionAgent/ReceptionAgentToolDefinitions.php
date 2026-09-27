@@ -109,6 +109,9 @@ class ReceptionAgentToolDefinitions
                 'properties' => [
                     // Only phrasings voxraweb's date parser handles (voxragtm#175).
                     'date' => ['type' => 'string', 'description' => 'The day to check: "today", "tomorrow", a weekday ("Tuesday", "this Tuesday", "next Tuesday") or a date as YYYY-MM-DD ("2026-07-03")'],
+                    // voxragtm#176/#71: a booking system (Wix Bookings, Cliniko)
+                    // has different free times per service/appointment type.
+                    'service' => ['type' => 'string', 'description' => 'What the caller wants booked, when known (e.g. "haircut", "follow-up"). Booking systems have different free times per service — pass the same service to book_appointment.'],
                 ],
                 'required' => ['date'],
                 // voxragtm#175: the calendar lookup can pass Telnyx's ~5s

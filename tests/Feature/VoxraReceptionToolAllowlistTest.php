@@ -214,6 +214,14 @@ class VoxraReceptionToolAllowlistTest extends TestCase
         }
     }
 
+    public function test_check_availability_takes_an_optional_service_for_booking_systems(): void
+    {
+        $def = collect(ReceptionAgentToolDefinitions::list([]))->firstWhere('name', 'check_availability');
+        $this->assertArrayHasKey('service', $def['properties']);
+        $this->assertSame('string', $def['properties']['service']['type']);
+        $this->assertSame(['date'], $def['required']);
+    }
+
     public function test_reception_prompt_and_tool_descriptions_never_mention_a_removed_tool(): void
     {
         $texts = [ProvisionTenantController::RECEPTION_SYSTEM_PROMPT];
