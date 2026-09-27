@@ -40,11 +40,13 @@ class ProvisionCompleteService
 
     /**
      * Idempotently create/update the mobile extension + its voicemail box and
-     * agent failover.
+     * agent failover. $recordOwnerCalls (voxragtm#157) records the inbound
+     * calls the owner answers on the eSIM — only pass true once the
+     * announcement dialplan is in place (VoxraOwnerCallRecording).
      *
      * @return array{extension: string, password: string, sip_host: string, sip_proxy: string, created: bool}
      */
-    public function ensureMobileExtension(Domain $domain, string $businessName, bool $rotatePassword = false): array
+    public function ensureMobileExtension(Domain $domain, string $businessName, bool $rotatePassword = false, bool $recordOwnerCalls = false): array
     {
         $businessName = trim($businessName) ?: 'Voxra';
         $extension = $this->findMobileExtension($domain);
@@ -78,11 +80,11 @@ class ProvisionCompleteService
         $extension->ring_target              = 'fmc';
         $extension->call_timeout             = self::CALL_TIMEOUT;
         $extension->enabled                  = 'true';
-        // Owner-answered calls are never recorded (voxragtm#83): the privacy
-        // policy covers AI-answered call recordings only, and recording here
-        // would need its own caller announcement. Re-asserted so a portal
+        // Owner-answered calls are recorded only when the tenant opted in
+        // (voxragtm#157; inbound only, after the caller announcement);
+        // otherwise never (voxragtm#83). Re-asserted either way so a portal
         // toggle can't quietly start recording the owner's calls.
-        $extension->user_record              = null;
+        $extension->user_record              = \App\Services\Voxra\VoxraOwnerCallRecording::userRecordFor($recordOwnerCalls);
 
         $hasAgent = $this->applyAgentFailover($domain, $extension);
         $extension->save();

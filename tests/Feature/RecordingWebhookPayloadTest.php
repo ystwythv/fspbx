@@ -85,6 +85,38 @@ class RecordingWebhookPayloadTest extends TestCase
         $this->assertSame($urls['audio_url'], $payload['recording']['url']);
     }
 
+    public function test_payload_carries_the_flat_voxra_owner_recording_keys(): void
+    {
+        $urls = [
+            'audio_url' => 'https://pbx.example/cdrs/cdr-uuid-1/stream?signature=abc',
+            'download_url' => 'https://pbx.example/cdrs/cdr-uuid-1/download?signature=abc',
+            'filename' => 'cdr-uuid-1.wav',
+            'storage' => ['type' => 'local'],
+        ];
+
+        $payload = (new SendRecordingWebhook('del-uuid-1'))->buildPayload(
+            RecordingWebhookConfigService::EVENT_AVAILABLE,
+            $this->delivery('recording.available'),
+            $this->cdr('/var/lib/freeswitch/recordings/acme.example/archive/2026/Sep/04', 'cdr-uuid-1.wav'),
+            $urls,
+            3600
+        );
+
+        $this->assertSame('dom-uuid-1', $payload['domain_uuid']);
+        $this->assertSame('cdr-uuid-1', $payload['call_uuid']);
+        $this->assertSame('inbound', $payload['direction']);
+        $this->assertSame('+447911123456', $payload['caller_number']);
+        $this->assertSame('01234567890', $payload['callee']);
+        $this->assertSame($payload['start'], $payload['started_at']);
+        $this->assertStringStartsWith('2026-09-04T09:00:12', $payload['started_at']);
+        $this->assertSame(168, $payload['duration']);
+        $this->assertSame($urls['download_url'], $payload['recording_url']);
+        // the original contract is unchanged for existing receivers (iqcrm)
+        foreach (['event', 'delivery_uuid', 'cdr_uuid', 'domain', 'caller_id_number', 'destination_number', 'start', 'end', 'billsec', 'recording'] as $key) {
+            $this->assertArrayHasKey($key, $payload);
+        }
+    }
+
     public function test_archived_payload_carries_s3_storage_block_without_credentials(): void
     {
         $settings = [

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AiAgent;
 use App\Models\Destinations;
 use App\Models\Domain;
+use App\Services\Voxra\VoxraOwnerCallRecording;
 use App\Services\Voxra\VoxraRoutingState;
 use App\Services\Voxra\VoxraSuspendedAnnouncement;
 use Illuminate\Support\Str;
@@ -152,6 +153,10 @@ class ProvisionNumberService
      * $mobile is the validated E.164 to ring first (null = don't): for
      * line_ai the owner's mobile, for pro only when ring-first is on.
      *
+     * $recordPrompt (voxragtm#157, owner-call recording opted in): what to
+     * play before the mobile rings; the owner-answered leg is then recorded.
+     * Null = today's routing, no announcement, nothing recorded.
+     *
      * @return array{kind: string, actions: array<int, array{destination_app: string, destination_data: string}>}
      */
     public function resolveDidRouting(
@@ -163,6 +168,7 @@ class ProvisionNumberService
         int $timeout,
         bool $suspended,
         ?string $announcement = null,
+        ?string $recordPrompt = null,
     ): array {
         if ($suspended) {
             return ['kind' => 'suspended', 'actions' => $this->suspendedActions($announcement)];
@@ -175,14 +181,14 @@ class ProvisionNumberService
 
         if ($agentEnabled) {
             return $mobile !== null
-                ? ['kind' => 'ring_first_ai', 'actions' => $this->ringFirstActions($domain, $agent, $mobile, $timeout)]
+                ? ['kind' => 'ring_first_ai', 'actions' => $this->ringFirstActions($domain, $agent, $mobile, $timeout, $recordPrompt)]
                 : ['kind' => 'ai', 'actions' => $this->agentOnlyActions($domain, $agent)];
         }
 
         // Pro with the AI off (minutes used up / trial unpaid).
         return $mobile !== null
             ? ['kind' => 'ring_first_voicemail', 'actions' => array_merge(
-                $this->ringFirstBridgeActions($domain, $mobile, $timeout),
+                $this->ringFirstBridgeActions($domain, $mobile, $timeout, $recordPrompt),
                 $this->voicemailActions($domain),
             )]
             : ['kind' => 'voicemail', 'actions' => $this->voicemailActions($domain)];
@@ -337,10 +343,10 @@ class ProvisionNumberService
      * seconds, then fall through to the agent. Pro defaults to 20 s; Line+AI
      * uses 25 s (voxragtm#163).
      */
-    public function ringFirstActions(Domain $domain, AiAgent $agent, string $mobile, int $timeout = self::DEFAULT_RING_FIRST_TIMEOUT): array
+    public function ringFirstActions(Domain $domain, AiAgent $agent, string $mobile, int $timeout = self::DEFAULT_RING_FIRST_TIMEOUT, ?string $recordPrompt = null): array
     {
         return array_merge(
-            $this->ringFirstBridgeActions($domain, $mobile, $timeout),
+            $this->ringFirstBridgeActions($domain, $mobile, $timeout, $recordPrompt),
             $this->agentOnlyActions($domain, $agent),
         );
     }
@@ -353,19 +359,33 @@ class ProvisionNumberService
      * follows (the agent, or voicemail when the AI is off) runs when the
      * owner doesn't take it. The confirm variables ride the dial string so
      * they scope to this bridge only, not the next leg.
+     *
+     * With $recordPrompt (owner-call recording, voxragtm#157) the caller
+     * first hears it as early media, the leg the owner answers is recorded,
+     * and a failed bridge disarms the recorder before the AI / voicemail.
      */
-    public function ringFirstBridgeActions(Domain $domain, string $mobile, int $timeout): array
+    public function ringFirstBridgeActions(Domain $domain, string $mobile, int $timeout, ?string $recordPrompt = null): array
     {
         $confirm = 'group_confirm_key=1'
             . ',group_confirm_file=ivr/ivr-accept_reject_voicemail.wav'
             . ',group_confirm_cancel_timeout=1';
 
-        return [
+        $bridge = [
             ['destination_app' => 'set', 'destination_data' => 'hangup_after_bridge=true'],
             ['destination_app' => 'set', 'destination_data' => 'call_timeout=' . self::clampRingFirstTimeout($timeout)],
             ['destination_app' => 'set', 'destination_data' => 'continue_on_fail=true'],
             ['destination_app' => 'bridge', 'destination_data' => '{' . $confirm . '}loopback/' . $mobile . '/' . $domain->domain_name],
         ];
+
+        if ($recordPrompt === null || $recordPrompt === '') {
+            return $bridge;
+        }
+
+        return array_merge(
+            VoxraOwnerCallRecording::beforeBridgeActions($recordPrompt),
+            $bridge,
+            VoxraOwnerCallRecording::afterBridgeActions(),
+        );
     }
 
     /** DID → the tenant's Voxra voicemail box via the stock *99<box>
