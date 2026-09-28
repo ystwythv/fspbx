@@ -82,6 +82,9 @@ jobs:
       - name: Line provisioning + greeting TTS fallback tests (in-memory sqlite)
         run: vendor/bin/phpunit tests/Feature/ProvisionLineServiceTest.php
 
+      - name: Line voicemail greeting on every node tests (in-memory sqlite)
+        run: vendor/bin/phpunit tests/Feature/VoxraLineGreetingSyncTest.php
+
       - name: push_wake.lua failover tests (stubbed FreeSWITCH)
         run: |
           sudo apt-get install -y -qq lua5.3 >/dev/null

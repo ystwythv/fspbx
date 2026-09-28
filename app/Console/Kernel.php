@@ -129,6 +129,8 @@ class Kernel extends ConsoleKernel
         // Shared Voxra TTS prompts (voxragtm#157/#173) on every node: the
         // owner-call recording announcement and the suspended-number message
         // are generated where the provision call ran; this fills in the rest.
+        // Also restores each Voxra Line voicemail greeting WAV (voxragtm#162):
+        // voicemail storage is node-local too.
         $schedule->command('voxra:ensure-prompts')
             ->hourly()
             ->withoutOverlapping();
