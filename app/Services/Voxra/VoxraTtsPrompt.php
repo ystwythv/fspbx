@@ -63,9 +63,15 @@ final class VoxraTtsPrompt
 
             ['pcm' => $pcm, 'provider' => $provider] = app(PromptTts::class)->pcm16k($text, $voice, $label);
 
+            $newDir = ! $disk->exists(self::DIR);
             $disk->put($relative, ProvisionLineService::pcmToWav($pcm, 16000));
-            // match the perms FreeSWITCH writes its own files with
+            // match the perms FreeSWITCH writes its own files with; the hourly
+            // run is root's cron, so hand the file (and a new folder) to www-data
             @chmod($disk->path($relative), 0660);
+            VoxraLineGreetingSync::giveToFreeswitch($disk->path($relative));
+            if ($newDir) {
+                VoxraLineGreetingSync::giveToFreeswitch($disk->path(self::DIR));
+            }
             logger('Voxra ' . $label . ' generated (' . $relative . ') via ' . $provider);
 
             return $disk->path($relative);
