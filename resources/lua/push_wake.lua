@@ -385,6 +385,25 @@ end
 -- switched-off / out-of-signal phone, a rejected call or a ring timeout all
 -- land on the AI — never on "extension two zero zero is not available".
 
+-- Owner-call recording (voxragtm#157): an opted-in mobile extension has
+-- user_record=inbound, so the stock user_record dialplan armed
+-- `execute_on_answer=record_session …` for when the OWNER answers. When
+-- nobody answers and the call fails over, disarm it before the AI or
+-- voicemail answers — those aren't owner calls and must not be recorded here
+-- (the AI records on Telnyx under its own disclosure). Also drop
+-- record_path/record_name so the CDR doesn't point at a file never written.
+-- Only before answer: an already-answered call's recording is left alone.
+local function disarm_owner_recording()
+    if session:getVariable("call_answered") == "true" then return end
+    local armed = session:getVariable("execute_on_answer")
+    if armed == nil or not tostring(armed):match("^record_session") then return end
+    for _, name in ipairs({ "execute_on_answer", "RECORD_ANSWER_REQ", "record_path",
+        "record_name", "record_session", "voxra_owner_recording" }) do
+        session:execute("unset", name)
+    end
+    log("INFO", "owner-call recording disarmed before failover for " .. aor)
+end
+
 -- Drop the caller into the user's voicemail box. We do this directly rather
 -- than letting push_wake_hook's `continue="true"` fall through to
 -- local_extension (which would re-bridge the same contacts).
@@ -405,6 +424,7 @@ local function goto_voicemail(reason)
 
     log("INFO", string.format("%s for %s — going to voicemail", reason, aor))
     if not session:ready() then return end
+    disarm_owner_recording()
     if session:getVariable("call_answered") ~= "true" then
         session:answer()
     end
@@ -455,6 +475,7 @@ end
 -- ignored above) so a forward can't loop.
 local function failover(cause, reason)
     if not session:ready() then return end
+    disarm_owner_recording()
     local kind = forward_kind_for_cause(cause)
     local dest = forward_destination(kind)
     if dest then

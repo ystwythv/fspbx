@@ -53,7 +53,9 @@ local function run(opts)
         hangup = function(_, cause) hungup = cause or "NORMAL_CLEARING"; ready = false end,
         execute = function(_, app, data)
             table.insert(executed, { app = app, data = data })
-            if app == "bridge" then
+            if app == "unset" then
+                vars[data] = nil
+            elseif app == "bridge" then
                 if opts.bridge_answers then
                     ready = false
                 else
@@ -77,7 +79,7 @@ local function run(opts)
     }
 
     dofile(SCRIPT)
-    return { executed = executed, logs = logs, hungup = hungup }
+    return { executed = executed, logs = logs, hungup = hungup, vars = vars }
 end
 
 local function find(res, app)
@@ -171,6 +173,47 @@ check("forward to self is ignored (voicemail, no loop)", not find(r, "transfer")
 r = run({ ext = "9260", user_data = { ring_target = "both" } })
 check("Line / legacy ring_target=both without push token → untouched",
     #r.executed == 0 and r.hungup == nil, r)
+
+-- Owner-call recording (voxragtm#157): user_record=inbound armed the
+-- recorder for when the owner answers. A failover to the AI / voicemail must
+-- disarm it first; an answered call keeps it.
+local armed = {
+    execute_on_answer = "record_session /rec/acme.voxra.uk/archive/2026/Sep/27/call-uuid-1.wav",
+    RECORD_ANSWER_REQ = "true",
+    record_path = "/rec/acme.voxra.uk/archive/2026/Sep/27",
+    record_name = "call-uuid-1.wav",
+    record_session = "true",
+}
+local function index_of(res, app, data)
+    for i, e in ipairs(res.executed) do
+        if e.app == app and (data == nil or e.data == data) then return i end
+    end
+    return nil
+end
+
+r = run({ user_data = complete_fwd, contacts = fmc_contact, bridge_cause = "NO_ANSWER", vars = armed })
+check("owner recording: no answer → disarmed before the transfer to the AI",
+    r.vars.execute_on_answer == nil and r.vars.record_name == nil and r.vars.record_path == nil
+        and index_of(r, "unset", "execute_on_answer") and index_of(r, "transfer")
+        and index_of(r, "unset", "execute_on_answer") < index_of(r, "transfer"), r)
+
+r = run({ user_data = complete_fwd, vars = armed })
+check("owner recording: eSIM not registered → disarmed, straight to the AI",
+    r.vars.execute_on_answer == nil and find(r, "transfer") and not find(r, "bridge"), r)
+
+r = run({ user_data = { ring_target = "fmc" }, contacts = fmc_contact, vars = armed })
+check("owner recording: no forward → disarmed before voicemail answers",
+    r.vars.execute_on_answer == nil and find(r, "voicemail")
+        and index_of(r, "unset", "execute_on_answer") < index_of(r, "voicemail"), r)
+
+r = run({ user_data = complete_fwd, contacts = fmc_contact, bridge_answers = true, vars = armed })
+check("owner recording: owner answered → recorder left armed",
+    r.vars.execute_on_answer ~= nil and not find(r, "unset"), r)
+
+r = run({ user_data = complete_fwd, contacts = fmc_contact, bridge_cause = "NO_ANSWER",
+    vars = { execute_on_answer = "lua something_else.lua" } })
+check("owner recording: an unrelated execute_on_answer is left alone",
+    r.vars.execute_on_answer == "lua something_else.lua" and not find(r, "unset"), r)
 
 print(string.format("\n%d passed, %d failed", passed, failures))
 os.exit(failures == 0 and 0 or 1)

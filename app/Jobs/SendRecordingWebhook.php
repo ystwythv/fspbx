@@ -130,26 +130,39 @@ class SendRecordingWebhook implements ShouldQueue
      * says where the object lives ({type: local} or {type: s3, bucket, key,
      * endpoint, region}) so a receiver that owns the bucket can keep a durable
      * pointer rather than the time-limited URLs.
+     *
+     * The flat domain_uuid / call_uuid / caller_number / callee / started_at /
+     * recording_url keys (voxragtm#157, Voxra owner-call recordings) are
+     * additive aliases, so existing receivers (iqcrm) are unaffected.
      */
     public function buildPayload(string $event, RecordingWebhookDelivery $delivery, CDR $cdr, array $urls, int $urlTtl): array
     {
+        $start = $cdr->start_stamp ? Carbon::parse($cdr->start_stamp)->toIso8601String() : null;
+
         return [
             'event' => $event,
             'delivery_uuid' => $delivery->uuid,
             'cdr_uuid' => $cdr->xml_cdr_uuid,
+            'call_uuid' => $cdr->xml_cdr_uuid,
             'domain' => $cdr->domain->domain_name ?? null,
+            'domain_uuid' => $cdr->domain_uuid,
             'direction' => $cdr->direction,
             'extension' => $cdr->extension->extension ?? null,
             'extension_name' => $cdr->extension->effective_caller_id_name ?? null,
             'caller_id_name' => $cdr->caller_id_name,
             'caller_id_number' => $cdr->caller_id_number,
+            'caller_number' => $cdr->caller_id_number,
             'caller_destination' => $cdr->caller_destination,
             'destination_number' => $cdr->destination_number,
-            'start' => $cdr->start_stamp ? Carbon::parse($cdr->start_stamp)->toIso8601String() : null,
+            // the number the caller dialled (the business DID / eSIM MSISDN)
+            'callee' => $cdr->caller_destination ?: $cdr->destination_number,
+            'start' => $start,
+            'started_at' => $start,
             'end' => $cdr->end_stamp ? Carbon::parse($cdr->end_stamp)->toIso8601String() : null,
             'duration' => (int) $cdr->duration,
             'billsec' => (int) $cdr->billsec,
             'hangup_cause' => $cdr->hangup_cause,
+            'recording_url' => $urls['download_url'] ?? $urls['audio_url'],
             'recording' => [
                 'url' => $urls['audio_url'],
                 'download_url' => $urls['download_url'],

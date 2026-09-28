@@ -178,6 +178,14 @@ return [
             'This number is temporarily unavailable. Please try again later.'
         ),
 
+        // Played to the caller before an opted-in owner answers (owner-call
+        // recording, voxragtm#157) — one shared TTS file in the
+        // vm_greeting_voice; a stock prompt when the file is missing.
+        'owner_recording_announcement_text' => env(
+            'VOXRA_OWNER_RECORDING_ANNOUNCEMENT_TEXT',
+            'This call may be recorded.'
+        ),
+
         // Call-audio retention (voxragtm#83, `voxra:purge-media`): applies to
         // Voxra customers only. Voxra tenant domains (domain_description
         // voxra-tenant:<id>) are always in scope; retention_extra_domains adds

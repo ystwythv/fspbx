@@ -170,6 +170,24 @@ the storage block describes the object — never credentials:
   }
 ```
 
+Every payload also carries flat aliases (voxragtm#157), additive so existing
+receivers are unaffected: `domain_uuid`, `call_uuid` (= `cdr_uuid`),
+`caller_number` (= `caller_id_number`), `callee` (the number dialled:
+`caller_destination`, else `destination_number`), `started_at` (= `start`)
+and `recording_url` (= `recording.download_url`).
+
+### Voxra owner-call recordings (voxragtm#157)
+
+Voxra tenants that opt in to "Voxra listens to calls you answer" get this
+webhook configured by `provision-tenant` (`owner_call_recording: true`):
+per-domain `recording_webhook` settings pointing at voxraweb
+`<VOXRA_APP_URL>/api/pbx/owner-recording`, `directions=inbound`,
+`events=recording.available`, signed with `VOXRA_CDR_WEBHOOK_SECRET` (the
+same secret as `cdr.finalized`). Opting out sets `enabled=false`. The PBX
+only records the inbound legs the owner answers (ring-first bridges to their
+mobile and the Complete eSIM extension), after a "this call may be recorded"
+announcement — see `App\Services\Voxra\VoxraOwnerCallRecording`.
+
 Field notes:
 
 - **`cdr_uuid` is the idempotency key.** Retries resend the same payload

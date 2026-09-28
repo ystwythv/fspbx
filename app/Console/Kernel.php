@@ -126,6 +126,13 @@ class Kernel extends ConsoleKernel
             ->timezone('Europe/London')
             ->withoutOverlapping();
 
+        // Shared Voxra TTS prompts (voxragtm#157/#173) on every node: the
+        // owner-call recording announcement and the suspended-number message
+        // are generated where the provision call ran; this fills in the rest.
+        $schedule->command('voxra:ensure-prompts')
+            ->hourly()
+            ->withoutOverlapping();
+
         if (isset($jobSettings['delete_old_faxes']) && $jobSettings['delete_old_faxes'] === "true") {
             // Retrieve the days to keep faxes from settings or default to 90 days.
             $daysKeepFax = $jobSettings['days_keep_fax'] ?? 90;

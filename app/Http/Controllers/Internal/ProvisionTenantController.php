@@ -9,6 +9,7 @@ use App\Models\Domain;
 use App\Services\ProvisionLineService;
 use App\Services\ProvisionNumberService;
 use App\Services\Voxra\VoxraDisclosure;
+use App\Services\Voxra\VoxraOwnerCallRecording;
 use App\Services\Voxra\VoxraRoutingState;
 use App\Services\Voxra\VoxraSuspendedAnnouncement;
 use Illuminate\Http\JsonResponse;
@@ -40,6 +41,14 @@ use Illuminate\Support\Str;
  * Routing fields left out of a request keep their last value (stored per
  * domain in VoxraRoutingState), so a bare re-provision never drops
  * ring-first or un-suspends a number.
+ *
+ * owner_call_recording (voxragtm#157) records the inbound calls the OWNER
+ * answers — ring-first bridges to their mobile and the Complete eSIM
+ * extension — after a "this call may be recorded" announcement to the
+ * caller, and posts each recording to voxraweb (VoxraOwnerCallRecording).
+ * voxraweb decides who may have it (Pro/Complete opt-in) and always sends
+ * it; false re-asserts today's state (nothing recorded, no announcement).
+ * Line v1's follow-me can't be recorded, so it stays off there.
  *
  * complete_mode (voxragtm#45) provisions Voxra Complete: agent on, plus a
  * registerable "mobile extension" (200–299, ProvisionCompleteService) whose
@@ -221,6 +230,8 @@ PROMPT;
             // whether Telnyx records the call audio. Omitted → keep current.
             'greeting'             => 'nullable|string|max:500',
             'recording_enabled'    => 'nullable|boolean',
+            // Record owner-answered calls (voxragtm#157). Omitted → keep.
+            'owner_call_recording' => 'nullable|boolean',
         ]);
 
         $tenantId = $data['tenant_id'];
@@ -274,14 +285,20 @@ PROMPT;
         $ownerMobile = $completeMode ? null
             : $numberSvc->resolveRingFirstMobile($domain, true, $routing['owner_mobile']);
         $agentEnabled = self::resolveAgentEnabled($request->boolean('agent_enabled', true), $lineMode, $suspended);
+        $ownerRecording = self::resolveOwnerCallRecording(
+            $request->input('owner_call_recording') !== null ? $request->boolean('owner_call_recording') : null,
+            $previous,
+            $mode,
+        );
 
         try {
             VoxraRoutingState::save($domain->domain_uuid, [
-                'mode'               => $mode,
-                'ring_first'         => $routing['ring_first'],
-                'owner_mobile'       => $completeMode ? ($previous['owner_mobile'] ?? null) : $ownerMobile,
-                'ring_first_timeout' => $timeout,
-                'service_suspended'  => $suspended,
+                'mode'                 => $mode,
+                'ring_first'           => $routing['ring_first'],
+                'owner_mobile'         => $completeMode ? ($previous['owner_mobile'] ?? null) : $ownerMobile,
+                'ring_first_timeout'   => $timeout,
+                'service_suspended'    => $suspended,
+                'owner_call_recording' => $ownerRecording,
             ]);
         } catch (\Throwable $e) {
             logger()->error('Voxra routing state save failed for ' . $domain->domain_name . ': ' . $e->getMessage());
@@ -343,6 +360,20 @@ PROMPT;
             }
         }
 
+        // Owner-call recording (voxragtm#157): the announcement is what makes
+        // recording allowed, so it goes in first and a failure leaves
+        // recording off. The prompt expression plays the shared TTS file when
+        // this node has it, else a stock phrase.
+        $recorder = app(VoxraOwnerCallRecording::class);
+        $recordPrompt = null;
+        if ($ownerRecording) {
+            try {
+                $recordPrompt = $recorder->playbackExpression();
+            } catch (\Throwable $e) {
+                logger()->error('Voxra owner-call recording prompt failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+            }
+        }
+
         // Voxra Complete (voxragtm#45): the mobile extension is the whole
         // point of the plan — its failure fails the request (voxraweb
         // retries the idempotent call). Caller-ID + MSISDN routing are
@@ -350,11 +381,19 @@ PROMPT;
         $mobile = null;
         if ($completeMode) {
             $completeSvc = app(\App\Services\ProvisionCompleteService::class);
+            $recordMobile = false;
+            try {
+                $recorder->applyMobileAnnouncement($domain, $recordPrompt);
+                $recordMobile = $recordPrompt !== null;
+            } catch (\Throwable $e) {
+                logger()->error('Voxra owner-call announcement dialplan failed for ' . $domain->domain_name . ' (recording stays off): ' . $e->getMessage());
+            }
             try {
                 $mobile = $completeSvc->ensureMobileExtension(
                     $domain,
                     $businessName,
-                    $request->boolean('rotate_sip_password', false)
+                    $request->boolean('rotate_sip_password', false),
+                    $recordMobile,
                 );
             } catch (\Throwable $e) {
                 logger()->error('Voxra Complete mobile extension failed for ' . $domain->domain_name . ': ' . $e->getMessage());
@@ -413,6 +452,15 @@ PROMPT;
             logger('Voxra cdr webhook subscribe failed for ' . $domain->domain_name . ': ' . $e->getMessage());
         }
 
+        // Owner-call recordings → voxraweb /api/pbx/owner-recording (the
+        // stock recording.available webhook, per domain). Switched off, not
+        // deleted, when the tenant opts out. Best-effort.
+        try {
+            $recorder->applyWebhook($domain, $recordPrompt !== null);
+        } catch (\Throwable $e) {
+            logger()->error('Voxra owner-call recording webhook failed for ' . $domain->domain_name . ': ' . $e->getMessage());
+        }
+
         // Auto-order + route a DID (voxragtm#23) — gated + spend-capped; returns
         // null unless VOXRA_PROVISION_ORDER_NUMBER is enabled. Best-effort: a
         // number failure must not fail provisioning (domain + agent are done).
@@ -438,7 +486,7 @@ PROMPT;
             try {
                 $announcement = $suspended ? app(VoxraSuspendedAnnouncement::class)->playbackTarget() : null;
                 $ringMobile = self::ringFirstMobileFor($mode, $routing['ring_first'], $ownerMobile);
-                $did = $numberSvc->resolveDidRouting($domain, $agent, $mode, $agentEnabled, $ringMobile, $timeout, $suspended, $announcement);
+                $did = $numberSvc->resolveDidRouting($domain, $agent, $mode, $agentEnabled, $ringMobile, $timeout, $suspended, $announcement, $recordPrompt);
                 $routingKind = $did['kind'];
                 $numberSvc->applyDidActions($domain, $did['actions']);
             } catch (\Throwable $e) {
@@ -465,6 +513,9 @@ PROMPT;
             // ring_first_voicemail | voicemail | suspended (null: Complete
             // or routing failed).
             'routing'             => $routingKind,
+            // Owner-answered calls recorded (voxragtm#157): the stored
+            // opt-in, and whether the announcement is in place to allow it.
+            'owner_call_recording' => $ownerRecording && $recordPrompt !== null,
             'voicemail_box'       => ProvisionLineService::LINE_EXTENSION,
             'line_extension'      => $line['extension'] ?? null,
             // true when owner_mobile was missing/unusable: the line answers
@@ -500,6 +551,18 @@ PROMPT;
         }
 
         return VoxraDisclosure::defaultGreeting($businessName, $rec);
+    }
+
+    /** Owner-call recording (voxragtm#157): the request's value when sent,
+     *  else the stored one, else off. Never on Line v1 (its follow-me leg
+     *  isn't a bridge this PBX can announce/record). */
+    public static function resolveOwnerCallRecording(?bool $requested, array $previous, string $mode): bool
+    {
+        if ($mode === VoxraRoutingState::MODE_LINE) {
+            return false;
+        }
+
+        return $requested ?? (bool) ($previous['owner_call_recording'] ?? false);
     }
 
     /** Complete mode wins over line mode: a Complete tenant's handset IS the
