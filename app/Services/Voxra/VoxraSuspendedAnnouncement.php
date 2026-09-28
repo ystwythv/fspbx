@@ -6,11 +6,11 @@ namespace App\Services\Voxra;
  * The "this number is temporarily unavailable" announcement a suspended Voxra
  * number plays before hanging up (voxragtm#173). One shared, unbranded WAV
  * for every tenant, generated once via ElevenLabs (same voice as the
- * voicemail greetings) into the FreeSWITCH recordings dir and reused; the
+ * voicemail greetings; Telnyx TTS if ElevenLabs fails) into the FreeSWITCH recordings dir and reused; the
  * file name carries a text+voice hash, so changing either regenerates it
  * (VoxraTtsPrompt).
  *
- * Best-effort: without ELEVENLABS_API_KEY or on a TTS failure the suspended
+ * Best-effort: if every TTS provider fails the suspended
  * DID plays the standard special-information tones instead (the "number
  * unavailable" signal, no file needed). Suspension itself never fails.
  */

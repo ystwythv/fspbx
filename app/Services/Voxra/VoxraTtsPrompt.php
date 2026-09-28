@@ -3,12 +3,13 @@
 namespace App\Services\Voxra;
 
 use App\Services\ProvisionLineService;
-use App\Services\Tts\ElevenLabsTtsService;
+use App\Services\Tts\PromptTts;
 use Illuminate\Support\Facades\Storage;
 
 /**
  * A shared, unbranded Voxra TTS prompt (one WAV for every tenant), generated
- * once per node via ElevenLabs (the voicemail-greeting voice) into
+ * once per node via ElevenLabs (the voicemail-greeting voice; Telnyx TTS
+ * when ElevenLabs fails, see PromptTts) into
  * /var/lib/freeswitch/recordings/voxra/ and reused. The file name carries a
  * text+voice hash, so changing either regenerates it. Used by the
  * suspended-number announcement (voxragtm#173) and the owner-call recording
@@ -43,7 +44,7 @@ final class VoxraTtsPrompt
 
     /**
      * Absolute path of the prompt WAV, generating it if missing; null when it
-     * can't be produced (no text/voice, no ElevenLabs key, TTS failure).
+     * can't be produced (no text/voice, every TTS provider failing).
      * Never throws.
      */
     public static function ensure(string $prefix, string $text, string $voice, string $label): ?string
@@ -60,18 +61,12 @@ final class VoxraTtsPrompt
                 return $disk->path($relative);
             }
 
-            $pcm = (new ElevenLabsTtsService())->textToSpeech($text, [
-                'voice' => $voice,
-                'response_format' => 'pcm',
-            ]);
-            if (strlen($pcm) < 1000) {
-                throw new \RuntimeException('ElevenLabs returned implausibly short audio (' . strlen($pcm) . ' bytes)');
-            }
+            ['pcm' => $pcm, 'provider' => $provider] = app(PromptTts::class)->pcm16k($text, $voice, $label);
 
             $disk->put($relative, ProvisionLineService::pcmToWav($pcm, 16000));
             // match the perms FreeSWITCH writes its own files with
             @chmod($disk->path($relative), 0660);
-            logger('Voxra ' . $label . ' generated (' . $relative . ')');
+            logger('Voxra ' . $label . ' generated (' . $relative . ') via ' . $provider);
 
             return $disk->path($relative);
         } catch (\Throwable $e) {

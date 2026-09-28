@@ -105,6 +105,11 @@ return [
         'api_key'  => env('TELNYX_API_KEY', ''),
         'base_url' => env('TELNYX_BASE_URL', 'https://api.telnyx.com'),
         'timeout'  => (int) env('TELNYX_TIMEOUT', 60),
+        // Fallback TTS voice for the generated prompts (Line greeting, shared
+        // Voxra prompts) when ElevenLabs fails (App\Services\Tts\PromptTts).
+        // Must be an azure.* or aws.polly.* voice (the ones Telnyx returns as
+        // raw 16 kHz PCM). Default: Azure en-GB Sonia, British English.
+        'tts_voice' => env('TELNYX_TTS_VOICE', 'Azure.en-GB-SoniaNeural'),
         // SIP attach: Telnyx derives the registration AOR/realm from the proxy
         // host, so attach_domain must be a FusionPBX directory domain whose
         // name matches the proxy host below (it is auto-created on first use).
