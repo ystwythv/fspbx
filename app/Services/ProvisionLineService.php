@@ -9,7 +9,7 @@ use App\Models\FollowMe;
 use App\Models\FusionCache;
 use App\Models\VoicemailGreetings;
 use App\Models\Voicemails;
-use App\Services\Tts\ElevenLabsTtsService;
+use App\Services\Tts\PromptTts;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -221,7 +221,8 @@ class ProvisionLineService
 
     /**
      * Branded per-business TTS voicemail greeting (voxragtm#110). Generated
-     * once per text+voice combination via ElevenLabs at provision time
+     * once per text+voice combination via ElevenLabs (Telnyx TTS when
+     * ElevenLabs fails, see PromptTts) at provision time
      * (~2s measured — fine inside the provision request), then selected as
      * the box's active greeting so the FusionPBX voicemail lua plays it
      * instead of the stock "the person at extension 9260…" phrase.
@@ -232,8 +233,8 @@ class ProvisionLineService
      *    the owner selected their own greeting we never steal the selection;
      *  - idempotent via a text+voice hash carried in greeting_description —
      *    re-provisioning with unchanged text/voice makes no TTS call;
-     *  - best-effort: missing ELEVENLABS_API_KEY or a TTS failure logs a
-     *    warning and leaves the stock greeting — provisioning never fails.
+     *  - best-effort: if both TTS providers fail it logs a warning and
+     *    leaves the stock greeting — provisioning never fails.
      */
     private function ensureVoicemailGreeting(Domain $domain, Voicemails $voicemail, ?string $businessName): void
     {
@@ -275,16 +276,12 @@ class ProvisionLineService
                 return; // unchanged — no TTS call
             }
 
-            // ElevenLabsTtsService throws when ELEVENLABS_API_KEY is unset;
-            // raw 16-bit mono PCM at 16 kHz, wrapped in a WAV header below
-            // (same 16-bit mono PCM family as the UI's saved greetings).
-            $pcm = (new ElevenLabsTtsService())->textToSpeech($text, [
-                'voice' => $voice,
-                'response_format' => 'pcm',
-            ]);
-            if (strlen($pcm) < 1000) {
-                throw new \RuntimeException('ElevenLabs returned implausibly short audio (' . strlen($pcm) . ' bytes)');
-            }
+            // ElevenLabs, falling back to Telnyx TTS when it fails (quota,
+            // auth, 5xx, no key); throws only when both fail. Raw 16-bit mono
+            // PCM at 16 kHz, wrapped in a WAV header below (same 16-bit mono
+            // PCM family as the UI's saved greetings).
+            ['pcm' => $pcm, 'provider' => $provider] = app(PromptTts::class)
+                ->pcm16k($text, $voice, 'line greeting for ' . $domain->domain_name);
 
             $greetingId = (int) ($ours->greeting_id ?? $this->nextGreetingId($domain));
             $filename = 'greeting_' . $greetingId . '.wav';
@@ -311,7 +308,7 @@ class ProvisionLineService
             $voicemail->greeting_id = $greetingId;
             $voicemail->save();
 
-            logger('Voxra line greeting generated for ' . $domain->domain_name . ' (greeting_' . $greetingId . '.wav)');
+            logger('Voxra line greeting generated for ' . $domain->domain_name . ' (greeting_' . $greetingId . '.wav) via ' . $provider);
         } catch (\Throwable $e) {
             // stock greeting keeps playing; provisioning must not fail
             logger()->warning('Voxra line greeting TTS skipped for ' . $domain->domain_name . ': ' . $e->getMessage());

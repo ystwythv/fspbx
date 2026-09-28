@@ -26,7 +26,8 @@ use Tests\TestCase;
  * raw PCM; the service must write greeting_1.wav (valid RIFF/WAVE), create
  * the marked v_voicemail_greetings row, select it on the box, skip when the
  * text+voice hash is unchanged, never touch owner-recorded greetings, and
- * degrade gracefully when the key is missing or TTS fails.
+ * degrade gracefully when the key is missing or TTS fails. When ElevenLabs
+ * fails (quota exhausted), the greeting comes from the Telnyx TTS fallback.
  */
 class ProvisionLineServiceTest extends TestCase
 {
@@ -49,6 +50,8 @@ class ProvisionLineServiceTest extends TestCase
         // fakes the ElevenLabs endpoint itself; tests never hit the real API
         Storage::fake('voicemail');
         config()->set('services.elevenlabs.api_key', 'test-key');
+        // Telnyx fallback off unless a test turns it on (PromptTts)
+        config()->set('services.telnyx.api_key', '');
     }
 
     /** Fake the ElevenLabs TTS endpoint with a raw-PCM success response. */
@@ -471,6 +474,43 @@ class ProvisionLineServiceTest extends TestCase
         $this->assertSame(2, (int) Voicemails::where('voicemail_id', '9260')->value('greeting_id'));
     }
 
+    public function test_elevenlabs_quota_exhausted_falls_back_to_telnyx(): void
+    {
+        config()->set('services.telnyx.api_key', 'telnyx-test-key');
+        Http::fake([
+            // the live failure (28 Sept): capped iq-fmc key out of credits
+            'api.elevenlabs.io/*' => Http::response(['detail' => [
+                'status' => 'quota_exceeded',
+                'message' => 'This request exceeds your quota of 1000. You have 2 credits remaining.',
+            ]], 401),
+            'api.telnyx.com/*' => Http::response($this->fakePcm(), 200, ['Content-Type' => 'audio/pcm']),
+        ]);
+
+        app(ProvisionLineService::class)
+            ->ensureLineExtension($this->domain(), '07700 900123', 'Acme Plumbing');
+
+        // same greeting row, file, format and hash as an ElevenLabs greeting
+        $greeting = VoicemailGreetings::where('voicemail_id', '9260')->first();
+        $this->assertNotNull($greeting);
+        $this->assertSame('greeting_1.wav', $greeting->greeting_filename);
+        $this->assertStringStartsWith(ProvisionLineService::GREETING_HASH_PREFIX, $greeting->greeting_description);
+        $this->assertSame(1, (int) Voicemails::where('voicemail_id', '9260')->value('greeting_id'));
+        $wav = Storage::disk('voicemail')->get('acme.voxra.uk/9260/greeting_1.wav');
+        $this->assertSame(16000, unpack('Vrate', substr($wav, 24, 4))['rate']);
+        $this->assertSame($this->fakePcm(), substr($wav, 44));
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'api.telnyx.com/v2/text-to-speech/speech')
+            && $r['voice'] === 'Azure.en-GB-SoniaNeural'
+            && $r['voice_settings']['output_format'] === 'raw-16khz-16bit-mono-pcm'
+            && str_contains($r['text'], "You've reached Acme Plumbing."));
+
+        // hash unchanged → re-provisioning makes no further TTS calls
+        $sent = count(Http::recorded());
+        app(ProvisionLineService::class)
+            ->ensureLineExtension($this->domain(), '07700 900123', 'Acme Plumbing');
+        $this->assertCount($sent, Http::recorded());
+    }
+
     public function test_missing_api_key_skips_greeting_but_provisioning_succeeds(): void
     {
         config()->set('services.elevenlabs.api_key', '');
@@ -487,7 +527,11 @@ class ProvisionLineServiceTest extends TestCase
 
     public function test_tts_failure_leaves_stock_greeting(): void
     {
-        Http::fake(['api.elevenlabs.io/*' => Http::response('nope', 500)]);
+        config()->set('services.telnyx.api_key', 'telnyx-test-key');
+        Http::fake([
+            'api.elevenlabs.io/*' => Http::response('nope', 500),
+            'api.telnyx.com/*' => Http::response(['errors' => [['title' => 'down']]], 503),
+        ]);
 
         $result = app(ProvisionLineService::class)
             ->ensureLineExtension($this->domain(), '07700 900123', 'Acme Plumbing');

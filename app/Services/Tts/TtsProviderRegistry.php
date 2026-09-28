@@ -10,7 +10,7 @@ class TtsProviderRegistry
     /**
      * Create a TTS provider instance.
      *
-     * @param  string|null  $providerKey  'openai', 'elevenlabs', or null for default
+     * @param  string|null  $providerKey  'openai', 'elevenlabs', 'telnyx', or null for default
      * @return TtsProviderInterface
      */
     public function make(?string $providerKey = null): TtsProviderInterface
@@ -20,6 +20,7 @@ class TtsProviderRegistry
         return match ($providerKey) {
             'openai'     => new OpenAiTtsService(),
             'elevenlabs' => new ElevenLabsTtsService(),
+            'telnyx'     => new TelnyxTtsService(),
             default      => throw new RuntimeException("Unsupported TTS provider: {$providerKey}"),
         };
     }
