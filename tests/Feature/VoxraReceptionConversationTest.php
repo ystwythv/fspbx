@@ -90,6 +90,16 @@ class VoxraReceptionConversationTest extends TestCase
         $this->assertArrayNotHasKey('recording_settings', $b['telephony_settings']);
     }
 
+    public function test_prompt_puts_never_promise_rules_above_tool_results(): void
+    {
+        $p = ProvisionTenantController::RECEPTION_SYSTEM_PROMPT;
+
+        // voxragtm#178: check_availability offered today and the agent booked a
+        // same-day visit the owner never promises.
+        $this->assertStringContainsString('"NEVER promise or agree to" rules outrank everything else', $p);
+        $this->assertStringContainsString('tool results included', $p);
+    }
+
     public function test_prompt_re_asks_after_silence_and_closes_politely(): void
     {
         $p = ProvisionTenantController::RECEPTION_SYSTEM_PROMPT;
