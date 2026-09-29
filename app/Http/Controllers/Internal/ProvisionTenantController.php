@@ -236,6 +236,10 @@ PROMPT;
             'recording_enabled'    => 'nullable|boolean',
             // Record owner-answered calls (voxragtm#157). Omitted → keep.
             'owner_call_recording' => 'nullable|boolean',
+            // The voice the tenant picked in voxraweb Settings (voxraweb#110):
+            // a Telnyx voice id. Omitted or malformed → keep the agent's
+            // current voice (UK_VOICE for a new agent); see resolveVoice().
+            'voice_id'             => 'nullable|string|max:80',
         ]);
 
         $tenantId = $data['tenant_id'];
@@ -313,7 +317,11 @@ PROMPT;
         // reaching the assistant.
         $recording = $request->has('recording_enabled') ? $request->boolean('recording_enabled') : null;
         $existing = AiAgent::reception()->forDomain($domain->domain_uuid)->first();
-        $inputs = $this->receptionAgentInputs($businessName, $agentEnabled);
+        $inputs = $this->receptionAgentInputs(
+            $businessName,
+            $agentEnabled,
+            self::resolveVoice($data['voice_id'] ?? null, $existing?->voice_id),
+        );
         $inputs['first_message'] = self::resolveGreeting(
             $data['greeting'] ?? null,
             $existing?->first_message,
@@ -685,15 +693,37 @@ PROMPT;
         ];
     }
 
+    /**
+     * The reception agent's Telnyx voice (voxraweb#110). A well-formed Telnyx
+     * Ultra voice id from voxraweb Settings wins; otherwise the agent keeps
+     * the voice it has, so a re-provision that omits voice_id (answering
+     * sync, billing flips, older voxraweb) never resets it; a new agent gets
+     * UK_VOICE. Before this the voice was always UK_VOICE, so the Settings
+     * picker had no effect.
+     */
+    public static function resolveVoice(?string $requested, ?string $current): string
+    {
+        $pattern = '/^Telnyx\.Ultra\.[0-9a-f-]{36}$/';
+        $requested = $requested !== null ? trim($requested) : null;
+        if ($requested !== null && preg_match($pattern, $requested) === 1) {
+            return $requested;
+        }
+        $current = $current !== null ? trim($current) : null;
+        if ($current !== null && preg_match($pattern, $current) === 1) {
+            return $current;
+        }
+        return self::UK_VOICE;
+    }
+
     /** Upsert inputs for the reception agent (agent_enabled is stored as the
      *  strings 'true'/'false' — FusionPBX toggle convention). */
-    public function receptionAgentInputs(string $businessName, bool $agentEnabled): array
+    public function receptionAgentInputs(string $businessName, bool $agentEnabled, ?string $voiceId = null): array
     {
         return [
             'agent_name'      => $businessName . ' Reception',
             'provider'        => 'telnyx',
             'model'           => 'moonshotai/Kimi-K2.6',
-            'telnyx_voice_id' => self::UK_VOICE,
+            'telnyx_voice_id' => $voiceId ?: self::UK_VOICE,
             'system_prompt'   => self::RECEPTION_SYSTEM_PROMPT,
             'feature_code'    => '*9',
             'agent_enabled'   => $agentEnabled ? 'true' : 'false',
