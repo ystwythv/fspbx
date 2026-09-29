@@ -9,6 +9,7 @@
     @include('layouts.shared/title-meta', ['title' => $title ?? null])
     @yield('css')
     @include('layouts.shared/head-css', ['mode' => $mode ?? '', 'demo' => $demo ?? ''])
+    <meta name="reverb-key" content="{{ config('broadcasting.connections.reverb.key') }}">
     @vite(['resources/js/app.js','resources/js/hyper-head.js', 'resources/js/hyper-config.js'])
 
     @stack('head.end')

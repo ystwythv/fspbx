@@ -6,6 +6,7 @@
     @include('layouts.shared/title-meta', ['title' => $title ?? null])
     @yield('css')
 
+    <meta name="reverb-key" content="{{ config('broadcasting.connections.reverb.key') }}">
     @vite(['resources/scss/tailwind.css'])
 
     @vite(['resources/js/vue.js'])
