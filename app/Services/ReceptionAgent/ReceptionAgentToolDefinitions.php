@@ -93,11 +93,16 @@ class ReceptionAgentToolDefinitions
             ],
             [
                 'name' => 'capture_lead',
-                'description' => 'Record who is calling and what they need — use this as you qualify a new caller. Capture their name, the job/enquiry, their postcode and how urgent it is. Safe to call more than once as you learn more; it updates the same lead. If the number has rung before, the result says so (returning_caller); what they last wanted is only included once the name the caller gave matches the name on file — the number may be a shared phone.',
+                // voxragtm#194: the visit address (house number + street) and
+                // an email for the booking confirmation. voxraweb checks the
+                // postcode against the service area and returns out_of_area.
+                'description' => 'Record who is calling and what they need — use this as you qualify a new caller. Capture their name, the job/enquiry, their postcode (and, for a job at their address, the house number or name and street) and how urgent it is. Safe to call more than once as you learn more; it updates the same lead. If the result has out_of_area true, the postcode is outside the area the business covers: say its `say` line politely and don\'t book or promise a visit. If the number has rung before, the result says so (returning_caller); what they last wanted is only included once the name the caller gave matches the name on file — the number may be a shared phone.',
                 'properties' => [
                     'name' => ['type' => 'string', 'description' => "Caller's name"],
                     'caller_number' => ['type' => 'string', 'description' => "Caller's phone number (ask if not already known)"],
-                    'postcode' => ['type' => 'string', 'description' => 'Job/site postcode or area'],
+                    'postcode' => ['type' => 'string', 'description' => 'Job/site postcode (e.g. "LE4 6AB"), or the area if that is all they give'],
+                    'address_line1' => ['type' => 'string', 'description' => 'For a job at the caller\'s address: house number or name and street (e.g. "64 Cedric Road")'],
+                    'email' => ['type' => 'string', 'description' => 'Their email address, only if they give one (e.g. for a booking confirmation) — spell it back first'],
                     'job_description' => ['type' => 'string', 'description' => 'What the caller needs, in a sentence'],
                     'urgency' => ['type' => 'string', 'enum' => ['emergency', 'urgent', 'routine'], 'description' => 'How urgent the job is. urgent/emergency (per the business\'s urgent definition) alerts the owner immediately — for those use alert_owner instead.'],
                 ],
@@ -121,10 +126,17 @@ class ReceptionAgentToolDefinitions
             ],
             [
                 'name' => 'book_appointment',
-                'description' => 'Book the job into the diary once the caller has agreed a time. Confirms the booking and returns a reference. Only book a time you have confirmed is free with check_availability.',
+                // voxragtm#194: voxraweb refuses a visit without the address
+                // (needs) or outside the service area (out_of_area), and texts
+                // the caller a confirmation (confirmation_instruction).
+                'description' => 'Book the job into the diary once the caller has agreed a time. Only book a time you have confirmed is free with check_availability. For a job at the caller\'s address, pass address_line1 and postcode — read the address back to them first. If it returns ok false with needs, ask for what it names and try again; with out_of_area, say its `say` line and don\'t book or promise anything. On success, say what confirmation_instruction tells you (usually "I\'ll text you a confirmation").',
                 'properties' => [
                     'starts_at' => ['type' => 'string', 'description' => 'Start date & time, e.g. "2026-07-03 09:30" or ISO 8601'],
                     'service' => ['type' => 'string', 'description' => 'What is being booked (e.g. "boiler repair", "cut & colour")'],
+                    'address_line1' => ['type' => 'string', 'description' => 'For a job at the caller\'s address: house number or name and street (e.g. "64 Cedric Road")'],
+                    'postcode' => ['type' => 'string', 'description' => 'For a job at the caller\'s address: the full postcode (e.g. "LE4 6AB")'],
+                    'visit' => ['type' => 'boolean', 'description' => 'true when this appointment is at the customer\'s address or on location (e.g. a home visit); false when they come to the business. Leave out if unsure.'],
+                    'email' => ['type' => 'string', 'description' => 'Their email address, only if they gave one, for an email confirmation'],
                     'duration_minutes' => ['type' => 'integer', 'description' => 'Expected duration in minutes (default 60)'],
                     'customer_name' => ['type' => 'string', 'description' => "Customer's name (defaults to the captured lead)"],
                     'customer_number' => ['type' => 'string', 'description' => "Customer's phone number (defaults to the captured lead)"],
@@ -211,7 +223,9 @@ class ReceptionAgentToolDefinitions
             ],
             [
                 'name' => 'record_summary',
-                'description' => 'At the end of the call, record a one or two sentence summary of what happened (and the outcome) to the customer\'s timeline.',
+                // voxragtm#194: "Message taken, no further action needed" for a
+                // caller who'd asked for a call back ASAP.
+                'description' => 'At the end of the call, record a one or two sentence summary of what happened (and the outcome) to the customer\'s timeline. Say what the owner needs to do (e.g. "wants a call back today about the quote") — never "no further action" when the caller left a message or asked for a call back.',
                 'properties' => [
                     'summary' => ['type' => 'string', 'description' => 'What happened on this call, briefly'],
                     'outcome' => ['type' => 'string', 'description' => 'Optional: booked | message | transferred | spam | abuse | no_action. spam/abuse ends the call automatically a few seconds later.'],

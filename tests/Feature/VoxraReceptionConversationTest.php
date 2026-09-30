@@ -170,4 +170,44 @@ class VoxraReceptionConversationTest extends TestCase
         $this->assertLessThan($disclosure, $quiet);
         $this->assertStringEndsWith('{{recording_notice}}', trim($p));
     }
+
+    /**
+     * voxragtm#194 test calls: a Leicester electrician booked a survey for a
+     * Bath postcode before it had the house number, then told the caller it
+     * "can't send texts". The tools carry the address and the prompt says
+     * how to take a visit booking and what to say about the confirmation.
+     */
+    public function test_booking_tools_carry_the_visit_address_and_confirmation(): void
+    {
+        $tools = collect(ReceptionAgentToolDefinitions::list([], ReceptionAgentToolDefinitions::VOXRA_RECEPTION_TOOLS))->keyBy('name');
+
+        $book = $tools['book_appointment'];
+        foreach (['address_line1', 'postcode', 'visit', 'email'] as $field) {
+            $this->assertArrayHasKey($field, $book['properties']);
+        }
+        $this->assertSame('boolean', $book['properties']['visit']['type']);
+        $this->assertStringContainsString('out_of_area', $book['description']);
+        $this->assertStringContainsString('confirmation_instruction', $book['description']);
+        // Address fields are optional: voxraweb says when they're needed.
+        $this->assertSame(['starts_at', 'service'], $book['required']);
+
+        $lead = $tools['capture_lead'];
+        $this->assertArrayHasKey('address_line1', $lead['properties']);
+        $this->assertArrayHasKey('email', $lead['properties']);
+        $this->assertStringContainsString('out_of_area', $lead['description']);
+
+        $this->assertStringContainsString('never "no further action"', $tools['record_summary']['description']);
+    }
+
+    public function test_prompt_takes_the_address_before_booking_and_promises_the_text(): void
+    {
+        $p = ProvisionTenantController::RECEPTION_SYSTEM_PROMPT;
+
+        $this->assertStringContainsString('## Bookings', $p);
+        $this->assertStringContainsString('house number (or house', $p);
+        $this->assertStringContainsString('read the whole', $p);
+        $this->assertStringContainsString('out_of_area', $p);
+        $this->assertStringContainsString("Never tell a caller you can't send", $p);
+        $this->assertStringContainsString("don't check a day they haven't", $p);
+    }
 }
