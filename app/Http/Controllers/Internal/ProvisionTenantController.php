@@ -53,9 +53,11 @@ use Illuminate\Support\Str;
  * complete_mode (voxragtm#45) provisions Voxra Complete: agent on, plus a
  * registerable "mobile extension" (200–299, ProvisionCompleteService) whose
  * SIP credentials are returned so voxraweb can hand them to iqportal, where
- * the FMC platform registers the tenant's eSIM as that extension. `did`
- * stamps the tenant's number as the extension's caller-ID; `sim_msisdn`
- * routes calls to the SIM's own mobile number into the same extension.
+ * the FMC platform registers the tenant's eSIM as that extension.
+ * `sim_msisdn` routes calls to the SIM's own mobile number into the same
+ * extension. The extension's own outbound calls present that mobile number
+ * by default, or the tenant's number (`did`) when `outbound_cli` is
+ * "business" (stored per domain; omitted → last value, else mobile).
  * Ring-first / line routing are no-ops in complete mode (the handset rings
  * natively as the extension; no PSTN loopback).
  *
@@ -229,6 +231,11 @@ PROMPT;
             'rotate_sip_password'  => 'nullable|boolean',
             'did'                  => ['nullable', 'string', 'max:20', 'regex:/^\+\d{10,15}$/'],
             'sim_msisdn'           => ['nullable', 'string', 'max:20', 'regex:/^\+\d{10,15}$/'],
+            // Complete: what the eSIM's own outbound calls show — "mobile"
+            // (the SIM's number, default) or "business" (the DDI). Omitted
+            // or unknown → the stored choice (resolveOutboundCli); never
+            // fails the request.
+            'outbound_cli'         => 'nullable|string|max:20',
             // AI + recording disclosure (voxragtm#83): the assistant's opening
             // line (voxraweb builds it from the tenant's wording choice) and
             // whether Telnyx records the call audio. Omitted → keep current.
@@ -298,6 +305,10 @@ PROMPT;
             $previous,
             $mode,
         );
+        $outboundCli = \App\Services\ProvisionCompleteService::resolveOutboundCli(
+            is_string($data['outbound_cli'] ?? null) ? $data['outbound_cli'] : null,
+            $previous,
+        );
 
         try {
             VoxraRoutingState::save($domain->domain_uuid, [
@@ -307,6 +318,7 @@ PROMPT;
                 'ring_first_timeout'   => $timeout,
                 'service_suspended'    => $suspended,
                 'owner_call_recording' => $ownerRecording,
+                'outbound_cli'         => $outboundCli,
             ]);
         } catch (\Throwable $e) {
             logger()->error('Voxra routing state save failed for ' . $domain->domain_name . ': ' . $e->getMessage());
@@ -391,6 +403,7 @@ PROMPT;
         // retries the idempotent call). Caller-ID + MSISDN routing are
         // best-effort follow-ups on the same extension.
         $mobile = null;
+        $outboundCallerId = null;
         if ($completeMode) {
             $completeSvc = app(\App\Services\ProvisionCompleteService::class);
             $recordMobile = false;
@@ -419,20 +432,28 @@ PROMPT;
                 ], 500);
             }
 
-            if (! empty($data['did'])) {
-                try {
-                    $completeSvc->applyCallerId($domain, $data['did'], $businessName);
-                } catch (\Throwable $e) {
-                    logger()->error('Voxra Complete caller-ID failed for ' . $domain->domain_name . ': ' . $e->getMessage());
-                }
-            }
-
             if (! empty($data['sim_msisdn'])) {
                 try {
                     $completeSvc->ensureMsisdnDestination($domain, $data['sim_msisdn']);
                 } catch (\Throwable $e) {
                     logger()->error('Voxra Complete MSISDN routing failed for ' . $domain->domain_name . ': ' . $e->getMessage());
                 }
+            }
+
+            // Outbound caller-ID: the SIM's mobile number by default, the
+            // DDI when the tenant chose it or the MSISDN isn't known yet. A
+            // request without sim_msisdn uses the MSISDN destination row.
+            try {
+                $cliExtension = $completeSvc->applyCallerId(
+                    $domain,
+                    $data['did'] ?? null,
+                    $businessName,
+                    $data['sim_msisdn'] ?? null,
+                    $outboundCli,
+                );
+                $outboundCallerId = $cliExtension ? '+' . $cliExtension->getRawOriginal('outbound_caller_id_number') : null;
+            } catch (\Throwable $e) {
+                logger()->error('Voxra Complete caller-ID failed for ' . $domain->domain_name . ': ' . $e->getMessage());
             }
         }
 
@@ -535,6 +556,10 @@ PROMPT;
             'line_straight_to_voicemail' => $line['straight_to_voicemail'] ?? null,
             // Voxra Complete: the SIM's registration credentials. Internal
             // (HMAC) only — never surfaced on the V1 API.
+            // Complete: the eSIM's outbound caller-ID choice and the number
+            // it now presents (+E.164; null when not applied).
+            'outbound_cli'        => $completeMode ? $outboundCli : null,
+            'outbound_caller_id'  => $outboundCallerId,
             'mobile_extension'    => $mobile ? [
                 'extension' => $mobile['extension'],
                 'password'  => $mobile['password'],

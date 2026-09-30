@@ -15,7 +15,8 @@ use Illuminate\Support\Str;
  * This service owns that "mobile extension": a registerable extension in
  * the 200–299 block whose credentials voxraweb hands to iqportal
  * (sim_card_config.sip_username / sip_password / sip_host / sip_proxy),
- * with ring_target=fmc, the DDI as outbound caller-ID, and no-answer /
+ * with ring_target=fmc, the SIM's own mobile number (or, by the tenant's
+ * choice, the DDI) as outbound caller-ID, and no-answer /
  * busy / unregistered failover to the reception agent (push_wake.lua honours
  * those forwards for ring_target=fmc; the box's voicemail is off while an
  * agent exists). With the AI off the same forwards point at the tenant's
@@ -37,6 +38,12 @@ class ProvisionCompleteService
 
     /** Ring the handset this long before failover (agent / voicemail). */
     public const CALL_TIMEOUT = 20;
+
+    /** Caller-ID on the eSIM's own outbound calls: its mobile number (default)… */
+    public const OUTBOUND_CLI_MOBILE = 'mobile';
+    /** …or the tenant's Voxra business number (DDI). */
+    public const OUTBOUND_CLI_BUSINESS = 'business';
+    public const OUTBOUND_CLI_CHOICES = [self::OUTBOUND_CLI_MOBILE, self::OUTBOUND_CLI_BUSINESS];
 
     /**
      * Idempotently create/update the mobile extension + its voicemail box and
@@ -126,33 +133,94 @@ class ProvisionCompleteService
     }
 
     /**
-     * Stamp the tenant's DDI on the mobile extension as outbound + emergency
-     * caller-ID. The Extensions setter strips the leading '+' (the stock
-     * OUTBOUND_CALLER_ID dialplan only fires on ^\d{6,25}$, and
-     * OutboundCallerIdFixer re-adds the '+'). Idempotent.
+     * Stamp the mobile extension's outbound + emergency caller-ID
+     * (voxragtm#45, eSIM CLI fix 30 Sept). Outbound: the eSIM's own mobile
+     * number by default ($outboundCli = mobile), or the tenant's DDI when
+     * they chose "your business number" — also the fallback while the
+     * MSISDN isn't known yet. Emergency: always the DDI when there is one
+     * (unchanged), else the MSISDN.
+     *
+     * $msisdn null → the SIM's number from its MSISDN destination row, so a
+     * routine re-provision that only sends `did` still presents the mobile.
+     *
+     * Only the extension's own calls use these fields (the stock
+     * OUTBOUND_CALLER_ID dialplan turns them into the From / P-Asserted-
+     * Identity on the trunk); AI transfers and forwarded calls keep the
+     * original caller's CLI. The Extensions setter strips the leading '+'
+     * (that dialplan only fires on ^\d{6,25}$, and OutboundCallerIdFixer
+     * re-adds the '+'). Idempotent.
      */
-    public function applyCallerId(Domain $domain, string $did, string $businessName): ?Extensions
-    {
+    public function applyCallerId(
+        Domain $domain,
+        ?string $did,
+        string $businessName,
+        ?string $msisdn = null,
+        string $outboundCli = self::OUTBOUND_CLI_MOBILE,
+    ): ?Extensions {
         $extension = $this->findMobileExtension($domain);
         if (! $extension) {
             return null;
         }
 
-        $digits = self::e164Digits($did);
-        if ($digits === null) {
-            throw new \InvalidArgumentException('did must be E.164 (+ followed by 10-15 digits)');
+        $didDigits = null;
+        if ($did !== null && $did !== '') {
+            $didDigits = self::e164Digits($did);
+            if ($didDigits === null) {
+                throw new \InvalidArgumentException('did must be E.164 (+ followed by 10-15 digits)');
+            }
+        }
+        $msisdnDigits = self::e164Digits($msisdn ?? $this->currentMsisdn($domain));
+
+        $outbound = self::outboundCliDigits($outboundCli, $didDigits, $msisdnDigits);
+        if ($outbound === null) {
+            return null; // neither number known yet — leave the extension as it is
         }
 
         $businessName = trim($businessName) ?: 'Voxra';
-        $extension->outbound_caller_id_number  = $digits;
+        $extension->outbound_caller_id_number  = $outbound;
         $extension->outbound_caller_id_name    = $businessName;
-        $extension->emergency_caller_id_number = $digits;
+        $extension->emergency_caller_id_number = $didDigits ?? $msisdnDigits;
         $extension->emergency_caller_id_name   = $businessName;
         $extension->save();
 
         FusionCache::clear('directory:' . $extension->extension . '@' . $domain->domain_name);
 
         return $extension;
+    }
+
+    /**
+     * The tenant's "Show on calls you make from your Voxra mobile" choice:
+     * the request value when valid, else the stored one, else the mobile.
+     */
+    public static function resolveOutboundCli(?string $requested, array $previous): string
+    {
+        foreach ([$requested, $previous['outbound_cli'] ?? null] as $value) {
+            if (is_string($value) && in_array($value, self::OUTBOUND_CLI_CHOICES, true)) {
+                return $value;
+            }
+        }
+
+        return self::OUTBOUND_CLI_MOBILE;
+    }
+
+    /** Digits to present for $choice; falls back to whichever number is known. */
+    public static function outboundCliDigits(string $choice, ?string $didDigits, ?string $msisdnDigits): ?string
+    {
+        return $choice === self::OUTBOUND_CLI_BUSINESS
+            ? ($didDigits ?? $msisdnDigits)
+            : ($msisdnDigits ?? $didDigits);
+    }
+
+    /** The SIM's own number (+E.164) from its MSISDN destination row, newest first. */
+    public function currentMsisdn(Domain $domain): ?string
+    {
+        $number = Destinations::where('domain_uuid', $domain->domain_uuid)
+            ->where('destination_type', 'inbound')
+            ->where('destination_description', self::MSISDN_DESTINATION_DESCRIPTION)
+            ->orderByDesc('insert_date')
+            ->value('destination_number');
+
+        return is_string($number) && self::e164Digits($number) !== null ? $number : null;
     }
 
     /**
