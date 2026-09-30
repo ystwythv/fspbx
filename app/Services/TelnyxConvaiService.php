@@ -178,6 +178,12 @@ class TelnyxConvaiService
                     ['name' => 'X-Voxra-Domain-Uuid', 'value' => '{{domain_uuid}}'],
                     ['name' => 'X-Voxra-Conversation-Id', 'value' => '{{conversation_id}}'],
                     ['name' => 'X-Voxra-Caller-Number', 'value' => '{{caller_number}}'],
+                    // The same context without the dynamic-variables webhook
+                    // (voxragtm#141): when it misses Telnyx's 1.5s timeout the
+                    // three headers above arrive empty and every data tool
+                    // failed "tenant not resolved". These come from the call's
+                    // own SIP headers and Telnyx's system variables.
+                    ...self::callContextFallbackHeaders(),
                 ];
             } else {
                 // Tool name in the path — robust against the LLM omitting it
@@ -186,6 +192,7 @@ class TelnyxConvaiService
                 $headers = [
                     ['name' => 'Content-Type', 'value' => 'application/json'],
                     ['name' => 'X-Voxra-Conversation-Id', 'value' => '{{conversation_id}}'],
+                    ['name' => 'X-Voxra-Sip-Conversation-Id', 'value' => '{{voxra_conversation_id}}'],
                 ];
                 if ($toolSecret !== '') {
                     $headers[] = ['name' => 'X-Voxra-Tool-Secret', 'value' => $toolSecret];
@@ -579,5 +586,25 @@ class TelnyxConvaiService
                 },
                 throw: false
             );
+    }
+
+    /**
+     * Tool headers that don't depend on the dynamic-variables webhook
+     * (voxragtm#141): the X-Voxra-* SIP headers the PBX puts on the call
+     * (Telnyx exposes them as {{voxra_*}}), and Telnyx's own system variables
+     * for the assistant and the caller. voxraweb falls back to these when
+     * X-Voxra-Domain-Uuid / -Conversation-Id / -Caller-Number are empty.
+     *
+     * @return list<array{name: string, value: string}>
+     */
+    public static function callContextFallbackHeaders(): array
+    {
+        return [
+            ['name' => 'X-Voxra-Sip-Domain-Uuid', 'value' => '{{voxra_domain_uuid}}'],
+            ['name' => 'X-Voxra-Sip-Conversation-Id', 'value' => '{{voxra_conversation_id}}'],
+            ['name' => 'X-Voxra-Sip-Caller-Number', 'value' => '{{voxra_caller_number}}'],
+            ['name' => 'X-Voxra-Agent-Target', 'value' => '{{telnyx_agent_target}}'],
+            ['name' => 'X-Voxra-End-User', 'value' => '{{telnyx_end_user_target}}'],
+        ];
     }
 }

@@ -167,6 +167,10 @@ class VoxraReceptionToolAllowlistTest extends TestCase
             $this->assertSame('{{domain_uuid}}', $headers['X-Voxra-Domain-Uuid'], $name);
             $this->assertSame('{{conversation_id}}', $headers['X-Voxra-Conversation-Id'], $name);
             $this->assertSame('{{caller_number}}', $headers['X-Voxra-Caller-Number'], $name);
+            // Webhook-independent fallbacks (voxragtm#141).
+            $this->assertSame('{{voxra_domain_uuid}}', $headers['X-Voxra-Sip-Domain-Uuid'], $name);
+            $this->assertSame('{{telnyx_agent_target}}', $headers['X-Voxra-Agent-Target'], $name);
+            $this->assertSame('{{telnyx_end_user_target}}', $headers['X-Voxra-End-User'], $name);
             $this->assertTrue(ReceptionAgentToolDefinitions::isDataTool($name), $name);
         }
 
