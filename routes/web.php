@@ -109,6 +109,12 @@ Route::post('/internal/voxra/hangup-call', [
     \App\Http\Controllers\Internal\VoxraCallScreenController::class, 'hangup',
 ])->middleware(\App\Http\Middleware\VerifyVoxraInternalSignature::class);
 
+// voxraweb → click-to-call for urgent-call escalations (voxragtm#24): ring the
+// owner first, bridge to the caller on answer, presenting the business number.
+Route::post('/internal/voxra/click-to-call', [
+    \App\Http\Controllers\Internal\VoxraClickToCallController::class, 'start',
+])->middleware(\App\Http\Middleware\VerifyVoxraInternalSignature::class);
+
 // voxraweb → provision a tenant's PBX (domain + reception agent) on activation. voxragtm#42
 Route::post('/internal/voxra/provision-tenant', [
     \App\Http\Controllers\Internal\ProvisionTenantController::class, 'provision',

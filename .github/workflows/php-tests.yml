@@ -73,6 +73,9 @@ jobs:
           vendor/bin/phpunit tests/Feature/VoxraReceptionConversationTest.php
           vendor/bin/phpunit tests/Feature/VoxraAlertOwnerTest.php
 
+      - name: Voxra click-to-call tests (in-memory sqlite, mocked ESL)
+        run: vendor/bin/phpunit tests/Feature/VoxraClickToCallTest.php
+
       - name: Voxra reception tool allowlist tests (in-memory sqlite)
         run: vendor/bin/phpunit tests/Feature/VoxraReceptionToolAllowlistTest.php
 
