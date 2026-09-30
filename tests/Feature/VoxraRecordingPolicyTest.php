@@ -92,6 +92,8 @@ class VoxraRecordingPolicyTest extends TestCase
                 && $b['telephony_settings']['recording_settings']['channels'] === 'dual'
                 && $b['interruption_settings']['enable'] === true
                 && $b['interruption_settings']['disable_greeting_interruption'] === true
+                // Backchannels ("yes", "okay") mustn't cut the agent off.
+                && $b['interruption_settings']['interrupt_prediction_threshold'] === 0.4
                 && str_contains($b['dynamic_variables']['recording_notice'], 'not audio-recorded');
         });
     }
