@@ -148,6 +148,18 @@ class ProvisionOutboundRouteServiceTest extends TestCase
         $this->assertSame(0, Dialplans::count());
     }
 
+    public function test_best_effort_provisions_and_never_throws(): void
+    {
+        $svc = app(ProvisionOutboundRouteService::class);
+
+        $this->assertNotNull($svc->ensureOutboundRouteBestEffort($this->domain()));
+        $this->assertSame(1, Dialplans::count());
+
+        // a DB failure mid-provision is logged, not thrown, so domain creation survives
+        Schema::drop('v_dialplans');
+        $this->assertNull($svc->ensureOutboundRouteBestEffort($this->domain()));
+    }
+
     public function test_route_patterns_cover_uk_national_and_e164_only(): void
     {
         $national = '/' . ProvisionOutboundRouteService::UK_NATIONAL_PATTERN . '/';
