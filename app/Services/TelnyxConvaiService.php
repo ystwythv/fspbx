@@ -43,6 +43,9 @@ class TelnyxConvaiService
     public const USER_IDLE_TIMEOUT_SECS = 60;
 
     /** Mirrors voxraweb's default for tenants that haven't set one. */
+    /** Telnyx interrupt prediction for reception assistants (see applyVoxraCallPolicy). */
+    public const INTERRUPT_PREDICTION_THRESHOLD = 0.4;
+
     public const DEFAULT_URGENT_DEFINITION = "anything that can't wait for a normal call-back: a risk to someone's health or safety, damage happening now, or a problem caused by work the business has just done";
 
     private string $apiKey;
@@ -466,6 +469,12 @@ class TelnyxConvaiService
 
         $interruption = (array) ($current['interruption_settings'] ?? []);
         $interruption['disable_greeting_interruption'] = true;
+        // Backchannels ("yes", "okay", "mm") mustn't cut the agent off mid-
+        // sentence (voxragtm#194 test calls: it restarted after every "yes").
+        // Telnyx interrupt prediction only yields the turn when it's confident
+        // the caller wants it; 0 = off (plain barge-in). 0.4 is Telnyx's
+        // recommended starting point; higher is stricter.
+        $interruption['interrupt_prediction_threshold'] = self::INTERRUPT_PREDICTION_THRESHOLD;
 
         $vars = (array) ($current['dynamic_variables'] ?? []);
         // Recording unknown (null) keeps the current notice — a prompt/tools
