@@ -366,6 +366,118 @@ class ProvisionTenantCompleteModeTest extends TestCase
         $this->assertNull(app(ProvisionCompleteService::class)->applyCallerId($this->domain(), '+443333051809', 'Acme'));
     }
 
+    // ---- outbound caller-ID: the eSIM's mobile number by default ---------
+
+    public function test_msisdn_is_the_default_outbound_caller_id(): void
+    {
+        $svc = app(ProvisionCompleteService::class);
+        $svc->ensureMobileExtension($this->domain(), 'Jess & Co Hair');
+
+        $svc->applyCallerId($this->domain(), '+441273936802', 'Jess & Co Hair', '+447940827400');
+
+        $ext = $this->mobile();
+        // the eSIM's own calls show its mobile number…
+        $this->assertSame('447940827400', $ext->getRawOriginal('outbound_caller_id_number'));
+        $this->assertSame('Jess & Co Hair', $ext->outbound_caller_id_name);
+        // …while emergency caller-ID stays the business number
+        $this->assertSame('441273936802', $ext->getRawOriginal('emergency_caller_id_number'));
+    }
+
+    public function test_business_choice_presents_the_did(): void
+    {
+        $svc = app(ProvisionCompleteService::class);
+        $svc->ensureMobileExtension($this->domain(), 'Acme');
+
+        $svc->applyCallerId($this->domain(), '+441273936802', 'Acme', '+447940827400', ProvisionCompleteService::OUTBOUND_CLI_BUSINESS);
+        $this->assertSame('441273936802', $this->mobile()->getRawOriginal('outbound_caller_id_number'));
+
+        // and back to the mobile on the next provision
+        $svc->applyCallerId($this->domain(), '+441273936802', 'Acme', '+447940827400', ProvisionCompleteService::OUTBOUND_CLI_MOBILE);
+        $this->assertSame('447940827400', $this->mobile()->getRawOriginal('outbound_caller_id_number'));
+    }
+
+    public function test_did_only_request_uses_the_msisdn_destination_row(): void
+    {
+        // a routine re-provision sends `did` but not `sim_msisdn`
+        $svc = app(ProvisionCompleteService::class);
+        $svc->ensureMobileExtension($this->domain(), 'Acme');
+        $svc->ensureMsisdnDestination($this->domain(), '+447940827400');
+
+        $this->assertSame('+447940827400', $svc->currentMsisdn($this->domain()));
+        $svc->applyCallerId($this->domain(), '+441273936802', 'Acme');
+
+        $this->assertSame('447940827400', $this->mobile()->getRawOriginal('outbound_caller_id_number'));
+        $this->assertSame('441273936802', $this->mobile()->getRawOriginal('emergency_caller_id_number'));
+    }
+
+    public function test_msisdn_without_did_sets_both_caller_ids(): void
+    {
+        $svc = app(ProvisionCompleteService::class);
+        $svc->ensureMobileExtension($this->domain(), 'Acme');
+
+        $svc->applyCallerId($this->domain(), null, 'Acme', '+447940827400', ProvisionCompleteService::OUTBOUND_CLI_BUSINESS);
+
+        // "business" with no DDI known falls back to the mobile
+        $this->assertSame('447940827400', $this->mobile()->getRawOriginal('outbound_caller_id_number'));
+        $this->assertSame('447940827400', $this->mobile()->getRawOriginal('emergency_caller_id_number'));
+    }
+
+    public function test_no_numbers_leaves_the_extension_alone(): void
+    {
+        $svc = app(ProvisionCompleteService::class);
+        $svc->ensureMobileExtension($this->domain(), 'Acme');
+
+        $this->assertNull($svc->applyCallerId($this->domain(), null, 'Acme'));
+        $this->assertNull($this->mobile()->getRawOriginal('outbound_caller_id_number'));
+    }
+
+    public function test_resolve_outbound_cli(): void
+    {
+        $this->assertSame('mobile', ProvisionCompleteService::resolveOutboundCli(null, []));
+        $this->assertSame('business', ProvisionCompleteService::resolveOutboundCli('business', []));
+        $this->assertSame('mobile', ProvisionCompleteService::resolveOutboundCli('mobile', ['outbound_cli' => 'business']));
+        // omitted → the stored choice survives a bare re-provision
+        $this->assertSame('business', ProvisionCompleteService::resolveOutboundCli(null, ['outbound_cli' => 'business']));
+        // unknown values never fail provisioning
+        $this->assertSame('business', ProvisionCompleteService::resolveOutboundCli('hidden', ['outbound_cli' => 'business']));
+        $this->assertSame('mobile', ProvisionCompleteService::resolveOutboundCli('hidden', ['outbound_cli' => 'nonsense']));
+    }
+
+    public function test_outbound_cli_digits(): void
+    {
+        $this->assertSame('447940827400', ProvisionCompleteService::outboundCliDigits('mobile', '441273936802', '447940827400'));
+        $this->assertSame('441273936802', ProvisionCompleteService::outboundCliDigits('business', '441273936802', '447940827400'));
+        $this->assertSame('441273936802', ProvisionCompleteService::outboundCliDigits('mobile', '441273936802', null));
+        $this->assertSame('447940827400', ProvisionCompleteService::outboundCliDigits('business', null, '447940827400'));
+        $this->assertNull(ProvisionCompleteService::outboundCliDigits('mobile', null, null));
+    }
+
+    public function test_backfill_command_moves_existing_esims_to_their_mobile(): void
+    {
+        Schema::create('v_domains', function ($t) {
+            $t->string('domain_uuid')->primary();
+            $t->string('domain_name')->nullable();
+            $t->string('domain_description')->nullable();
+        });
+        \Illuminate\Support\Facades\DB::table('v_domains')->insert([
+            'domain_uuid' => 'dom-uuid-1', 'domain_name' => 'acme.voxra.uk', 'domain_description' => 'voxra-tenant:t-1',
+        ]);
+        $svc = app(ProvisionCompleteService::class);
+        $svc->ensureMobileExtension($this->domain(), 'Acme');
+        // today's state: the DDI on both caller-IDs
+        $svc->applyCallerId($this->domain(), '+441273936802', 'Acme', null);
+        $svc->ensureMsisdnDestination($this->domain(), '+447940827400');
+        $this->assertSame('441273936802', $this->mobile()->getRawOriginal('outbound_caller_id_number'));
+
+        $this->artisan('voxra:apply-mobile-cli', ['--dry-run' => true])->assertExitCode(0);
+        $this->assertSame('441273936802', $this->mobile()->getRawOriginal('outbound_caller_id_number'));
+
+        $this->artisan('voxra:apply-mobile-cli')->assertExitCode(0);
+        $this->assertSame('447940827400', $this->mobile()->getRawOriginal('outbound_caller_id_number'));
+        $this->assertSame('441273936802', $this->mobile()->getRawOriginal('emergency_caller_id_number'));
+        $this->assertSame('Acme', $this->mobile()->outbound_caller_id_name);
+    }
+
     // ---- sim_msisdn → inbound destination --------------------------------
 
     public function test_sim_msisdn_creates_inbound_destination_to_mobile_extension(): void
