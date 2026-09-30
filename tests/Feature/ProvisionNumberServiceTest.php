@@ -115,8 +115,13 @@ class ProvisionNumberServiceTest extends TestCase
         $bridge = collect($actions)->firstWhere('destination_app', 'bridge');
         $this->assertNotNull($bridge);
         // Press-1-to-accept so mobile voicemail can't swallow the call.
-        $this->assertStringContainsString('group_confirm_key=1', $bridge['destination_data']);
-        $this->assertStringContainsString('group_confirm_file=ivr/ivr-accept_reject_voicemail.wav', $bridge['destination_data']);
+        // Asked once, on the phone leg only (voxragtm#141).
+        $this->assertStringContainsString('group_confirm_key=exec', $bridge['destination_data']);
+        $this->assertStringContainsString('group_confirm_file=lua lua/voxra_owner_confirm.lua', $bridge['destination_data']);
+        $this->assertStringNotContainsString('group_confirm_key=1', $bridge['destination_data']);
+        $lua = (string) file_get_contents(base_path('resources/lua/voxra_owner_confirm.lua'));
+        $this->assertStringContainsString('^loopback/', $lua, 'the loopback leg must accept without prompting');
+        $this->assertStringContainsString('playAndGetDigits', $lua);
         $this->assertStringContainsString('group_confirm_cancel_timeout=1', $bridge['destination_data']);
         $this->assertStringContainsString('loopback/+447700900123/acme.voxra.uk', $bridge['destination_data']);
 
