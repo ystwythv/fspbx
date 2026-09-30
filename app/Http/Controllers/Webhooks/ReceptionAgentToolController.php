@@ -84,7 +84,12 @@ class ReceptionAgentToolController extends Controller
 
         // Telnyx carries conversation_id in a templated tool header; ElevenLabs
         // puts it in the body (directly or under dynamic_variables).
-        $convId = (string) $request->header('X-Voxra-Conversation-Id', '');
+        $convId = self::renderedHeader($request->header('X-Voxra-Conversation-Id', ''));
+        if ($convId === '') {
+            // The call's own SIP header, when the dynamic-variables webhook
+            // missed Telnyx's timeout (voxragtm#141).
+            $convId = self::renderedHeader($request->header('X-Voxra-Sip-Conversation-Id', ''));
+        }
         if ($convId === '') {
             $convId = (string) $request->input('conversation_id', $request->input('dynamic_variables.conversation_id', ''));
         }
@@ -142,5 +147,13 @@ class ReceptionAgentToolController extends Controller
             logger()->error("reception-agent tool {$tool} failed: " . $e->getMessage());
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);
         }
+    }
+
+    /** A header value, or '' when Telnyx left the template unrendered ("{{x}}"). */
+    private static function renderedHeader(mixed $v): string
+    {
+        $t = trim((string) $v);
+
+        return preg_match('/^\{\{.*\}\}$/', $t) ? '' : $t;
     }
 }
