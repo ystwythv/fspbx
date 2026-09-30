@@ -23,6 +23,9 @@ use Illuminate\Support\Str;
  */
 class ProvisionNumberService
 {
+    /** The ring-first press-1 confirm (resources/lua/voxra_owner_confirm.lua). */
+    public const OWNER_CONFIRM_APP = 'lua lua/voxra_owner_confirm.lua';
+
     /** Pro's ring-first default (voxragtm#23); Line+AI uses 25 s. */
     public const DEFAULT_RING_FIRST_TIMEOUT = 20;
     public const MIN_RING_FIRST_TIMEOUT = 10;
@@ -366,8 +369,13 @@ class ProvisionNumberService
      */
     public function ringFirstBridgeActions(Domain $domain, string $mobile, int $timeout, ?string $recordPrompt = null): array
     {
-        $confirm = 'group_confirm_key=1'
-            . ',group_confirm_file=ivr/ivr-accept_reject_voicemail.wav'
+        // Asked once (voxragtm#141): mod_loopback copies these variables to
+        // the loopback's b-leg, so a plain group_confirm_key=1 prompted on the
+        // mobile leg AND again on loopback-a — an owner who pressed 1 once was
+        // dropped. The script accepts the loopback leg and prompts only on
+        // the real phone leg.
+        $confirm = 'group_confirm_key=exec'
+            . ',group_confirm_file=' . self::OWNER_CONFIRM_APP
             . ',group_confirm_cancel_timeout=1';
 
         $bridge = [
