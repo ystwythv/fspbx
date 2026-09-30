@@ -299,7 +299,7 @@ class DomainController extends Controller
             // off the end of the dialplan with 480 (iqportal#1314, Greenhouse 2026-09-05).
             // Same idempotent provisioning the Voxra tenant flow already runs; best-effort
             // so a gateway lookup problem cannot fail the domain creation.
-            $this->ensureOutboundRouteBestEffort($domain);
+            app(ProvisionOutboundRouteService::class)->ensureOutboundRouteBestEffort($domain);
 
             $payload = new DomainData(
                 domain_uuid: (string) $domain->domain_uuid,
@@ -432,18 +432,6 @@ class DomainController extends Controller
             'dialplan_name' => (string) $dialplan->dialplan_name,
             'dialplan_enabled' => $dialplan->dialplan_enabled === 'true' || $dialplan->dialplan_enabled === true,
         ], 200);
-    }
-
-    private function ensureOutboundRouteBestEffort(Domain $domain): void
-    {
-        try {
-            $dialplan = app(ProvisionOutboundRouteService::class)->ensureOutboundRoute($domain);
-            if (! $dialplan) {
-                logger()->warning('API domain created without an outbound route (gateway unresolved): ' . $domain->domain_name);
-            }
-        } catch (\Throwable $e) {
-            logger()->error('API domain outbound route provisioning failed for ' . $domain->domain_name, ['exception' => $e]);
-        }
     }
 
     public function update(UpdateDomainRequest $request, string $domain_uuid)

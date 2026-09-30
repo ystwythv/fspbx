@@ -93,6 +93,26 @@ class ProvisionOutboundRouteService
     }
 
     /**
+     * ensureOutboundRoute() for domain-creation paths: logs instead of throwing
+     * so a gateway or dialplan problem can never fail the domain creation.
+     */
+    public function ensureOutboundRouteBestEffort(Domain $domain): ?Dialplans
+    {
+        try {
+            $dialplan = $this->ensureOutboundRoute($domain);
+            if (! $dialplan) {
+                logger()->warning('Domain created without an outbound route (gateway unresolved): ' . $domain->domain_name);
+            }
+
+            return $dialplan;
+        } catch (\Throwable $e) {
+            logger()->error('Outbound route provisioning failed for ' . $domain->domain_name, ['exception' => $e]);
+
+            return null;
+        }
+    }
+
+    /**
      * The route XML. Multi-condition semantics mirror the deployed
      * Magrathea_Outbound (tekels.voxra.uk): a 0… number passes the first
      * condition (bridge queued, break="never" so evaluation continues, the

@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Spatie\QueryBuilder\QueryBuilder;
 use App\Services\SessionDomainService;
+use App\Services\ProvisionOutboundRouteService;
 use Spatie\QueryBuilder\AllowedFilter;
 use Illuminate\Support\Facades\Session;
 use App\Http\Requests\StoreDomainRequest;
@@ -297,6 +298,12 @@ class DomainController extends Controller
             $domain->save();
 
             DB::commit();
+
+            // Same PSTN outbound route the API and Voxra tenant flows provision:
+            // without it the stock dialplans have no route out and every outbound
+            // call from a UI-created domain falls off the dialplan (monksacre.voxra.uk,
+            // 2026-09-30). Best-effort, so it can't fail the domain creation.
+            app(ProvisionOutboundRouteService::class)->ensureOutboundRouteBestEffort($domain);
 
             // Keep session domains array in sync
             $this->sessionDomainService->refreshForUser(Auth::user());
