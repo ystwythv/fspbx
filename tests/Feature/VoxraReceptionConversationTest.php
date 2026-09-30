@@ -209,5 +209,7 @@ class VoxraReceptionConversationTest extends TestCase
         $this->assertStringContainsString('out_of_area', $p);
         $this->assertStringContainsString("Never tell a caller you can't send", $p);
         $this->assertStringContainsString("don't check a day they haven't", $p);
+        // QA line.visit_booking: the agent called "Jo Taylor" "Sarah".
+        $this->assertStringContainsString('never make one up', $p);
     }
 }
