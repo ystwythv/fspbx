@@ -143,7 +143,7 @@ class ProvisionLineAiRoutingTest extends TestCase
         $this->assertContains('set call_timeout=25', $data);
         $this->assertContains('set continue_on_fail=true', $data);
         $this->assertStringContainsString('loopback/' . self::MOBILE . '/acme.voxra.uk', $data[3]);
-        $this->assertStringContainsString('group_confirm_key=exec', $data[3]);
+        $this->assertStringContainsString('group_confirm_key=1,', $data[3]);
         $this->assertSame('transfer 9250 XML acme.voxra.uk', end($data));
     }
 

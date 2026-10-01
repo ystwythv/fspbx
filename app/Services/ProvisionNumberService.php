@@ -369,13 +369,15 @@ class ProvisionNumberService
      */
     public function ringFirstBridgeActions(Domain $domain, string $mobile, int $timeout, ?string $recordPrompt = null): array
     {
-        // Asked once (voxragtm#141): mod_loopback copies these variables to
-        // the loopback's b-leg, so a plain group_confirm_key=1 prompted on the
-        // mobile leg AND again on loopback-a — an owner who pressed 1 once was
-        // dropped. The script accepts the loopback leg and prompts only on
-        // the real phone leg.
-        $confirm = 'group_confirm_key=exec'
-            . ',group_confirm_file=' . self::OWNER_CONFIRM_APP
+        // voxragtm#220: the single-press script (group_confirm_key=exec, #141)
+        // accepted the loopback leg on early media, so call_timeout never
+        // fired and unanswered ring-first calls never reached the AI. Back to
+        // the plain confirm, which times out correctly; the owner may be
+        // asked to press 1 twice (mod_loopback copies the variables to the
+        // b-leg) until a single-press fix is proven on a live call. The
+        // script stays for click-to-call (an originate, no ring timeout).
+        $confirm = 'group_confirm_key=1'
+            . ',group_confirm_file=ivr/ivr-accept_reject_voicemail.wav'
             . ',group_confirm_cancel_timeout=1';
 
         $bridge = [
