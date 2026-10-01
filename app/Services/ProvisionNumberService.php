@@ -295,7 +295,9 @@ class ProvisionNumberService
                 }
             } elseif ($app === 'set' && $data === self::SUSPENDED_MARKER) {
                 $voxraActions = true;
-            } elseif ($app === 'bridge' && str_contains($data, '}loopback/') && str_ends_with($data, '/' . $domainName)) {
+            } elseif ($app === 'bridge' && preg_match('#[}\]]loopback/#', $data) && str_ends_with($data, '/' . $domainName)) {
+                // The ring-first bridge: {…}loopback/… before voxragtm#141,
+                // {…}[…]loopback/… since.
                 $voxraActions = true;
             }
         }
@@ -360,8 +362,8 @@ class ProvisionNumberService
      * follow-me does) so a carrier voicemail answering the leg cancels it
      * instead of swallowing the call, and continue_on_fail so whatever
      * follows (the agent, or voicemail when the AI is off) runs when the
-     * owner doesn't take it. The confirm variables ride the dial string so
-     * they scope to this bridge only, not the next leg.
+     * owner doesn't take it. See ringFirstDialString for how the confirm is
+     * asked once and the ring timeout still holds.
      *
      * With $recordPrompt (owner-call recording, voxragtm#157) the caller
      * first hears it as early media, the leg the owner answers is recorded,
@@ -369,22 +371,11 @@ class ProvisionNumberService
      */
     public function ringFirstBridgeActions(Domain $domain, string $mobile, int $timeout, ?string $recordPrompt = null): array
     {
-        // voxragtm#220: the single-press script (group_confirm_key=exec, #141)
-        // accepted the loopback leg on early media, so call_timeout never
-        // fired and unanswered ring-first calls never reached the AI. Back to
-        // the plain confirm, which times out correctly; the owner may be
-        // asked to press 1 twice (mod_loopback copies the variables to the
-        // b-leg) until a single-press fix is proven on a live call. The
-        // script stays for click-to-call (an originate, no ring timeout).
-        $confirm = 'group_confirm_key=1'
-            . ',group_confirm_file=ivr/ivr-accept_reject_voicemail.wav'
-            . ',group_confirm_cancel_timeout=1';
-
         $bridge = [
             ['destination_app' => 'set', 'destination_data' => 'hangup_after_bridge=true'],
             ['destination_app' => 'set', 'destination_data' => 'call_timeout=' . self::clampRingFirstTimeout($timeout)],
             ['destination_app' => 'set', 'destination_data' => 'continue_on_fail=true'],
-            ['destination_app' => 'bridge', 'destination_data' => '{' . $confirm . '}loopback/' . $mobile . '/' . $domain->domain_name],
+            ['destination_app' => 'bridge', 'destination_data' => self::ringFirstDialString($mobile, $domain->domain_name)],
         ];
 
         if ($recordPrompt === null || $recordPrompt === '') {
@@ -396,6 +387,111 @@ class ProvisionNumberService
             $bridge,
             VoxraOwnerCallRecording::afterBridgeActions(),
         );
+    }
+
+    /**
+     * The ring-first bridge's dial string (voxragtm#141, #220):
+     *
+     *   {ignore_early_media=true}[group_confirm_key=1,group_confirm_file=…,
+     *    group_confirm_cancel_timeout=1]loopback/<mobile>/<domain>
+     *
+     * The owner is asked to press 1 ONCE, on the real phone leg, and
+     * call_timeout still ends the ring:
+     *
+     * - The confirm variables are per-leg ([…]), not global ({…}).
+     *   mod_loopback copies the leg's variables to loopback-b, where the
+     *   domain's "Voxra Outbound" bridge inherits them and confirms on the
+     *   phone leg, then deletes group_confirm_* from loopback-a. With {…}
+     *   they were also the outer originate's own confirm, so loopback-a asked
+     *   again once the phone leg was bridged: two presses (QA, 30 Sept).
+     * - ignore_early_media=true: without a confirm of its own the outer
+     *   originate would accept loopback-a on its first early media (the
+     *   ringback the inner bridge plays) and stop timing out, so unanswered
+     *   calls would never reach the AI — the exec/lua attempt failed this
+     *   way (voxragtm#220). It now waits for a real answer, which loopback-a
+     *   only gets once the owner has pressed 1, and the caller hears the
+     *   PBX's own UK ringback. Copied to loopback-b too, so the phone leg's
+     *   prompt starts when it is answered, not while it rings.
+     * - group_confirm_cancel_timeout=1 lifts the phone leg's own timeout
+     *   while the owner listens to the prompt; the outer call_timeout still
+     *   bounds the whole ring. A carrier voicemail never presses 1, so its
+     *   leg is dropped at call_timeout and the call goes on to the AI or
+     *   voicemail.
+     *
+     * Click-to-call (an originate with no ring timeout) keeps the lua
+     * confirm, OWNER_CONFIRM_APP.
+     */
+    public static function ringFirstDialString(string $mobile, string $domainName): string
+    {
+        return '{ignore_early_media=true}'
+            . '[group_confirm_key=1'
+            . ',group_confirm_file=ivr/ivr-accept_reject_voicemail.wav'
+            . ',group_confirm_cancel_timeout=1]'
+            . 'loopback/' . $mobile . '/' . $domainName;
+    }
+
+    /**
+     * Bring the ring-first bridges in a DID's actions up to the current
+     * ringFirstDialString (rolls voxragtm#141 out to existing tenants: see
+     * voxra:rebuild-ring-first). Only a bridge to loopback/<mobile>/<domain>
+     * that carries group_confirm is touched; every other action stays as it
+     * is. Pure. Returns the new actions JSON, or null when nothing changes.
+     */
+    public static function refreshRingFirstActions(?string $actionsJson, string $domainName): ?string
+    {
+        $actions = json_decode((string) $actionsJson, true);
+        if (! is_array($actions)) {
+            return null;
+        }
+
+        $changed = false;
+        foreach ($actions as $i => $action) {
+            $data = (string) ($action['destination_data'] ?? '');
+            if (($action['destination_app'] ?? null) !== 'bridge'
+                || ! str_contains($data, 'group_confirm_')
+                || ! preg_match('#loopback/(\+\d{8,15})/([^/\s]+)$#', $data, $m)
+                || $m[2] !== $domainName) {
+                continue;
+            }
+
+            $wanted = self::ringFirstDialString($m[1], $domainName);
+            if ($data !== $wanted) {
+                $actions[$i]['destination_data'] = $wanted;
+                $changed = true;
+            }
+        }
+
+        return $changed ? json_encode($actions) : null;
+    }
+
+    /**
+     * Rewrite the ring-first bridge of every Voxra DID of the tenant to the
+     * current dial string and rebuild those dialplans. Nothing else in the
+     * routing changes (mode, timeout, recording, what follows the bridge).
+     *
+     * @return array<int, string> the DIDs rewritten (or that would be, on a dry run)
+     */
+    public function refreshRingFirst(Domain $domain, bool $dryRun = false): array
+    {
+        $rewritten = [];
+        foreach ($this->findVoxraDestinations($domain) as $dest) {
+            $json = self::refreshRingFirstActions($dest->destination_actions, $domain->domain_name);
+            if ($json === null) {
+                continue;
+            }
+
+            $rewritten[] = (string) $dest->destination_number;
+            if ($dryRun) {
+                continue;
+            }
+
+            $dest->destination_actions = $json;
+            $dest->save();
+
+            dispatch(new \App\Jobs\BuildDialplanForPhoneNumber($dest->destination_uuid, $domain->domain_name));
+        }
+
+        return $rewritten;
     }
 
     /** DID → the tenant's Voxra voicemail box via the stock *99<box>

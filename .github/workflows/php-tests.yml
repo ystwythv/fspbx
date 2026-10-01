@@ -79,6 +79,13 @@ jobs:
       - name: Voxra reception tool allowlist tests (in-memory sqlite)
         run: vendor/bin/phpunit tests/Feature/VoxraReceptionToolAllowlistTest.php
 
+      - name: Ring-first routing + single press-1 tests (in-memory sqlite)
+        run: |
+          vendor/bin/phpunit tests/Feature/VoxraRingFirstSinglePressTest.php
+          vendor/bin/phpunit tests/Feature/ProvisionNumberServiceTest.php
+          vendor/bin/phpunit tests/Feature/ProvisionLineAiRoutingTest.php
+          vendor/bin/phpunit tests/Feature/ProvisionVoxraDestinationsTest.php
+
       - name: Voxra Complete provisioning tests (in-memory sqlite)
         run: vendor/bin/phpunit tests/Feature/ProvisionTenantCompleteModeTest.php
 
