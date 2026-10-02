@@ -76,6 +76,18 @@ class ProvisionTenantCompleteModeTest extends TestCase
             $t->string('forward_user_not_registered_destination')->nullable();
             $t->string('insert_date')->nullable();
         });
+        Schema::create('v_extension_settings', function ($t) {
+            $t->string('extension_setting_uuid')->primary();
+            $t->string('extension_uuid')->nullable();
+            $t->string('domain_uuid')->nullable();
+            $t->string('extension_setting_type')->nullable();
+            $t->string('extension_setting_name')->nullable();
+            $t->string('extension_setting_value')->nullable();
+            $t->boolean('extension_setting_enabled')->default(true);
+            $t->string('extension_setting_description')->nullable();
+            $t->timestamp('insert_date')->nullable();
+            $t->string('insert_user')->nullable();
+        });
         Schema::create('extension_advanced_settings', function ($t) {
             $t->string('uuid')->primary();
             $t->string('extension_uuid')->nullable();
@@ -429,6 +441,31 @@ class ProvisionTenantCompleteModeTest extends TestCase
 
         $this->assertNull($svc->applyCallerId($this->domain(), null, 'Acme'));
         $this->assertNull($this->mobile()->getRawOriginal('outbound_caller_id_number'));
+    }
+
+    public function test_owner_confirm_sets_the_directory_variable_and_a_30s_ring(): void
+    {
+        $this->seedAgent();
+        $svc = app(ProvisionCompleteService::class);
+
+        $svc->ensureMobileExtension($this->domain(), 'Acme', false, false, true);
+        $ext = $this->mobile()->fresh();
+        $this->assertSame((string) ProvisionCompleteService::CONFIRM_CALL_TIMEOUT, (string) $ext->call_timeout);
+        $this->assertSame('true', $ext->variableValue(ProvisionCompleteService::OWNER_CONFIRM_VARIABLE));
+
+        // Turned off: variable removed, ring back to the default.
+        $svc->ensureMobileExtension($this->domain(), 'Acme', false, false, false);
+        $ext = $this->mobile()->fresh();
+        $this->assertSame((string) ProvisionCompleteService::CALL_TIMEOUT, (string) $ext->call_timeout);
+        $this->assertNull($ext->variableValue(ProvisionCompleteService::OWNER_CONFIRM_VARIABLE));
+    }
+
+    public function test_resolve_owner_confirm(): void
+    {
+        $this->assertTrue(ProvisionCompleteService::resolveOwnerConfirm(true, []));
+        $this->assertFalse(ProvisionCompleteService::resolveOwnerConfirm(false, ['owner_confirm' => true]));
+        $this->assertTrue(ProvisionCompleteService::resolveOwnerConfirm(null, ['owner_confirm' => true]));
+        $this->assertFalse(ProvisionCompleteService::resolveOwnerConfirm(null, []));
     }
 
     public function test_resolve_outbound_cli(): void
