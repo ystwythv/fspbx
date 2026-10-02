@@ -114,14 +114,15 @@ class ProvisionNumberServiceTest extends TestCase
 
         $bridge = collect($actions)->firstWhere('destination_app', 'bridge');
         $this->assertNotNull($bridge);
-        // Press-1-to-accept so mobile voicemail can't swallow the call.
-        // Plain confirm (voxragtm#220): the exec/lua single-press variant
-        // stopped call_timeout firing, so unanswered calls never reached the AI.
-        $this->assertStringContainsString('group_confirm_key=1', $bridge['destination_data']);
+        // Press-1-to-accept so mobile voicemail can't swallow the call, asked
+        // once: per-leg [...] confirm vars, which mod_loopback moves to the
+        // phone leg (voxragtm#141). Plain confirm, not exec/lua, and the outer
+        // bridge ignores early media, so call_timeout still fires (#220).
+        $this->assertStringStartsWith('{ignore_early_media=true}[group_confirm_key=1,', $bridge['destination_data']);
         $this->assertStringContainsString('group_confirm_file=ivr/ivr-accept_reject_voicemail.wav', $bridge['destination_data']);
         $this->assertStringNotContainsString('group_confirm_key=exec', $bridge['destination_data']);
-        $this->assertStringContainsString('group_confirm_cancel_timeout=1', $bridge['destination_data']);
-        $this->assertStringContainsString('loopback/+447700900123/acme.voxra.uk', $bridge['destination_data']);
+        $this->assertStringContainsString('group_confirm_cancel_timeout=1]', $bridge['destination_data']);
+        $this->assertStringEndsWith(']loopback/+447700900123/acme.voxra.uk', $bridge['destination_data']);
 
         // Unconfirmed/unanswered falls through to the agent transfer.
         $last = end($actions);
