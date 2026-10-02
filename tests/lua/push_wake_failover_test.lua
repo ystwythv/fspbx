@@ -265,5 +265,28 @@ check("owner recording, nobody answers → AI, nothing recorded here",
     r.vars.execute_on_answer == nil and r.vars.record_name == nil
         and find(r, "transfer") and find(r, "transfer").data == "9250 XML acme.voxra.uk", r)
 
+-- Press 1 to accept (voxragtm#194, opt-in).
+local confirm_fwd = {}
+for k, v in pairs(complete_fwd) do confirm_fwd[k] = v end
+confirm_fwd.voxra_owner_confirm = "true"
+
+r = run({ user_data = confirm_fwd, contacts = fmc_contact, bridge_cause = "NO_ANSWER", vars = mobile_call })
+b = find(r, "bridge")
+check("press-1 on: the handset leg must confirm; caller hears our ringing",
+    b.data:match("ignore_early_media=true")
+        and b.data:match("%[group_confirm_key=1,group_confirm_file=ivr/ivr%-accept_reject_voicemail%.wav,group_confirm_cancel_timeout=1%]sofia/internal/sip:200@")
+        and find(r, "transfer") and find(r, "transfer").data == "9250 XML acme.voxra.uk", r)
+
+r = run({ user_data = confirm_fwd, contacts = fmc_contact, bridge_cause = "NO_ANSWER",
+    vars = { caller_destination = "+441162987910", call_timeout = "30" } })
+b = find(r, "bridge")
+check("press-1 on, landline call: confirm too (not answered early)",
+    b.data:match("^{sip_invite_domain=acme%.voxra%.uk,ignore_early_media=true}%[group_confirm_key=1")
+        and set_value(r, "voxra_pre_answered") == nil, r)
+
+r = run({ user_data = complete_fwd, contacts = fmc_contact, vars = mobile_call })
+check("press-1 off: no confirm on the handset leg",
+    not find(r, "bridge").data:match("group_confirm") and not find(r, "bridge").data:match("ignore_early_media"), r)
+
 print(string.format("\n%d passed, %d failed", passed, failures))
 os.exit(failures == 0 and 0 or 1)

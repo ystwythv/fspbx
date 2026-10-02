@@ -113,6 +113,18 @@ class VoxraOwnerCallRecordingTest extends TestCase
             $t->string('forward_user_not_registered_destination')->nullable();
             $t->string('insert_date')->nullable();
         });
+        Schema::create('v_extension_settings', function ($t) {
+            $t->string('extension_setting_uuid')->primary();
+            $t->string('extension_uuid')->nullable();
+            $t->string('domain_uuid')->nullable();
+            $t->string('extension_setting_type')->nullable();
+            $t->string('extension_setting_name')->nullable();
+            $t->string('extension_setting_value')->nullable();
+            $t->boolean('extension_setting_enabled')->default(true);
+            $t->string('extension_setting_description')->nullable();
+            $t->timestamp('insert_date')->nullable();
+            $t->string('insert_user')->nullable();
+        });
         Schema::create('extension_advanced_settings', function ($t) {
             $t->string('uuid')->primary();
             $t->string('extension_uuid')->nullable();

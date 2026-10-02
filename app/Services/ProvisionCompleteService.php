@@ -44,6 +44,13 @@ class ProvisionCompleteService
      *  push_wake.lua, so the carrier's MT timer no longer limits them. */
     public const CALL_TIMEOUT = 20;
 
+    /** With press-1-to-accept on (voxragtm#194) a screening / voicemail
+     *  answer can't take the call, so the handset can ring longer. */
+    public const CONFIRM_CALL_TIMEOUT = 30;
+
+    /** Directory variable push_wake.lua reads to add the press-1 confirm. */
+    public const OWNER_CONFIRM_VARIABLE = 'voxra_owner_confirm';
+
     /** Caller-ID on the eSIM's own outbound calls: its mobile number (default)… */
     public const OUTBOUND_CLI_MOBILE = 'mobile';
     /** …or the tenant's Voxra business number (DDI). */
@@ -58,7 +65,7 @@ class ProvisionCompleteService
      *
      * @return array{extension: string, password: string, sip_host: string, sip_proxy: string, created: bool}
      */
-    public function ensureMobileExtension(Domain $domain, string $businessName, bool $rotatePassword = false, bool $recordOwnerCalls = false): array
+    public function ensureMobileExtension(Domain $domain, string $businessName, bool $rotatePassword = false, bool $recordOwnerCalls = false, bool $ownerConfirm = false): array
     {
         $businessName = trim($businessName) ?: 'Voxra';
         $extension = $this->findMobileExtension($domain);
@@ -90,7 +97,7 @@ class ProvisionCompleteService
         $extension->directory_first_name     = $businessName;
         $extension->directory_last_name      = 'Mobile';
         $extension->ring_target              = 'fmc';
-        $extension->call_timeout             = self::CALL_TIMEOUT;
+        $extension->call_timeout             = $ownerConfirm ? self::CONFIRM_CALL_TIMEOUT : self::CALL_TIMEOUT;
         $extension->enabled                  = 'true';
         // Owner-answered calls are recorded only when the tenant opted in
         // (voxragtm#157; inbound only, after the caller announcement);
@@ -100,6 +107,8 @@ class ProvisionCompleteService
 
         $hasAgent = $this->applyAgentFailover($domain, $extension);
         $extension->save();
+        // Press 1 to accept (voxragtm#194): push_wake.lua confirms the handset leg.
+        $extension->setVariable(self::OWNER_CONFIRM_VARIABLE, $ownerConfirm);
 
         // With an agent the mobile extension's own voicemail box is off:
         // every unanswered call (unregistered eSIM, phone off, no answer,
@@ -206,6 +215,12 @@ class ProvisionCompleteService
         }
 
         return self::OUTBOUND_CLI_MOBILE;
+    }
+
+    /** owner_confirm from the request, else the stored choice, else off. */
+    public static function resolveOwnerConfirm(?bool $requested, array $previous): bool
+    {
+        return $requested ?? (bool) ($previous['owner_confirm'] ?? false);
     }
 
     /** Digits to present for $choice; falls back to whichever number is known. */

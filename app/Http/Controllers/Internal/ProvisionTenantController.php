@@ -58,6 +58,11 @@ use Illuminate\Support\Str;
  * extension. The extension's own outbound calls present that mobile number
  * by default, or the tenant's number (`did`) when `outbound_cli` is
  * "business" (stored per domain; omitted → last value, else mobile).
+ * `owner_confirm` (voxragtm#194, opt-in) makes whoever answers the eSIM
+ * press 1 before the caller is put through, so handset call screening and
+ * voicemail (iPhone Live Voicemail, Android screening, network voicemail)
+ * can't take the call: no press → the AI. With it on the handset rings 30s,
+ * otherwise 20s (stored per domain; omitted → last value, else off).
  * Ring-first / line routing are no-ops in complete mode (the handset rings
  * natively as the extension; no PSTN loopback).
  *
@@ -253,6 +258,8 @@ PROMPT;
             // or unknown → the stored choice (resolveOutboundCli); never
             // fails the request.
             'outbound_cli'         => 'nullable|string|max:20',
+            // eSIM press-1-to-accept (voxragtm#194). Omitted → keep.
+            'owner_confirm'        => 'nullable|boolean',
             // AI + recording disclosure (voxragtm#83): the assistant's opening
             // line (voxraweb builds it from the tenant's wording choice) and
             // whether Telnyx records the call audio. Omitted → keep current.
@@ -326,6 +333,10 @@ PROMPT;
             is_string($data['outbound_cli'] ?? null) ? $data['outbound_cli'] : null,
             $previous,
         );
+        $ownerConfirm = \App\Services\ProvisionCompleteService::resolveOwnerConfirm(
+            $request->input('owner_confirm') !== null ? $request->boolean('owner_confirm') : null,
+            $previous,
+        );
 
         try {
             VoxraRoutingState::save($domain->domain_uuid, [
@@ -336,6 +347,7 @@ PROMPT;
                 'service_suspended'    => $suspended,
                 'owner_call_recording' => $ownerRecording,
                 'outbound_cli'         => $outboundCli,
+                'owner_confirm'        => $ownerConfirm,
             ]);
         } catch (\Throwable $e) {
             logger()->error('Voxra routing state save failed for ' . $domain->domain_name . ': ' . $e->getMessage());
@@ -436,6 +448,7 @@ PROMPT;
                     $businessName,
                     $request->boolean('rotate_sip_password', false),
                     $recordMobile,
+                    $ownerConfirm,
                 );
             } catch (\Throwable $e) {
                 logger()->error('Voxra Complete mobile extension failed for ' . $domain->domain_name . ': ' . $e->getMessage());
@@ -576,6 +589,8 @@ PROMPT;
             // Complete: the eSIM's outbound caller-ID choice and the number
             // it now presents (+E.164; null when not applied).
             'outbound_cli'        => $completeMode ? $outboundCli : null,
+            // Complete: whoever answers the eSIM presses 1 first (voxragtm#194).
+            'owner_confirm'       => $completeMode ? $ownerConfirm : null,
             'outbound_caller_id'  => $outboundCallerId,
             'mobile_extension'    => $mobile ? [
                 'extension' => $mobile['extension'],

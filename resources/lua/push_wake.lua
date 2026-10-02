@@ -488,11 +488,25 @@ local function failover(cause, reason)
     goto_voicemail(string.format("%s (cause=%s, no forward_%s)", reason, tostring(cause), kind))
 end
 
+-- Press 1 to accept (voxragtm#194, opt-in per tenant): whoever answers the
+-- eSIM hears a prompt and must press 1 before the caller is put through.
+-- Handset call screening and voicemail (iPhone Live Voicemail, Android
+-- screening, network voicemail) answer but never press, so their leg is
+-- dropped and the call fails over to the AI. Same per-leg confirm as
+-- ring-first (fspbx#150); group_confirm_cancel_timeout lets the prompt run
+-- past call_timeout when the owner answers late.
+local OWNER_CONFIRM_LEG_VARS = "[group_confirm_key=1,group_confirm_file=ivr/ivr-accept_reject_voicemail.wav,group_confirm_cancel_timeout=1]"
+local owner_confirm = api_value("user_data " .. aor .. " var voxra_owner_confirm") == "true"
+
 local contacts = get_contacts()
 local matched = {}
 for _, c in ipairs(contacts) do
     if ring_target == "both" or c.class == ring_target then
-        table.insert(matched, c.dial)
+        if owner_confirm and c.class == "fmc" then
+            table.insert(matched, OWNER_CONFIRM_LEG_VARS .. c.dial)
+        else
+            table.insert(matched, c.dial)
+        end
     end
 end
 
@@ -572,6 +586,11 @@ session:execute("set", "hangup_after_bridge=true")
 -- PBX IP. The FMC platform (iqm-fmc-origination) disambiguates extensions
 -- that exist in several Voxra tenants by matching the From host against the
 -- SIM's sip_host (ystwythv/iqm-fmc-origination#66).
+-- With the press-1 confirm the caller hears our UK ringing, not the handset
+-- leg's early media or the prompt, until the owner has pressed 1.
+if owner_confirm then
+    table.insert(b_leg_vars, 1, "ignore_early_media=true")
+end
 local bridge_vars = string.format("{sip_invite_domain=%s}", domain_name)
 if #b_leg_vars > 0 then
     bridge_vars = string.format("{sip_invite_domain=%s,%s}", domain_name, table.concat(b_leg_vars, ","))
