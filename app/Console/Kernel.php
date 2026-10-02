@@ -116,6 +116,10 @@ class Kernel extends ConsoleKernel
             $schedule->command('webhooks:dispatch-cdr-events')->everyMinute();
         }
 
+        // Every PBX: drop FusionPBX cache files older than the latest DB change,
+        // so eu1 doesn't keep serving a copy cached before lon1 changed it (voxragtm#194).
+        $schedule->command('voxra:expire-stale-cache')->everyMinute()->withoutOverlapping();
+
         // Voxra call-audio retention (voxragtm#83): PBX recordings, voicemail
         // audio and Telnyx AI recordings/conversations for Voxra tenants older
         // than services.voxra.recording_retention_days (10). Always on — it's what the privacy policy promises —
