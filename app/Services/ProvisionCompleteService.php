@@ -36,11 +36,13 @@ class ProvisionCompleteService
     /** Marker on the inbound destination routing the SIM's own MSISDN → extension. */
     public const MSISDN_DESTINATION_DESCRIPTION = 'Voxra mobile MSISDN (auto-provisioned)';
 
-    /** Ring the handset this long before failover (agent / voicemail). 30s
-     *  (was 20) so the owner has time to pick up; calls to the eSIM's own
-     *  mobile number are answered early by push_wake.lua so the carrier's
-     *  ~14-20s no-answer timer can't cut the ring short (voxragtm#194). */
-    public const CALL_TIMEOUT = 30;
+    /** Ring the handset this long before failover (agent / voicemail).
+     *  Must stay under the eSIM network's own no-reply timer: Transatel
+     *  diverts an unanswered SIM leg to its network voicemail at ~21s, which
+     *  answers, so the AI never gets the call (30s tried 2 Oct, voxragtm#194).
+     *  Calls to the eSIM's own mobile number are answered early by
+     *  push_wake.lua, so the carrier's MT timer no longer limits them. */
+    public const CALL_TIMEOUT = 20;
 
     /** Caller-ID on the eSIM's own outbound calls: its mobile number (default)… */
     public const OUTBOUND_CLI_MOBILE = 'mobile';
