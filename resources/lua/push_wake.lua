@@ -394,7 +394,8 @@ end
 -- record_path/record_name so the CDR doesn't point at a file never written.
 -- Only before answer: an already-answered call's recording is left alone.
 local function disarm_owner_recording()
-    if session:getVariable("call_answered") == "true" then return end
+    -- Answered early for a mobile-number call (below): not the owner answering.
+    if session:getVariable("call_answered") == "true" and session:getVariable("voxra_pre_answered") ~= "true" then return end
     local armed = session:getVariable("execute_on_answer")
     if armed == nil or not tostring(armed):match("^record_session") then return end
     for _, name in ipairs({ "execute_on_answer", "RECORD_ANSWER_REQ", "record_path",
@@ -506,12 +507,16 @@ local bridge_str = table.concat(matched, ",")
 
 -- A call to the eSIM's own mobile number (voxragtm#194, 2 Oct test call)
 -- reaches us through the mobile network, which gives up on an unanswered
--- mobile-terminated call after ~14s (CANCEL → 487) and re-presents it. The
--- extension's 20s ring then never runs out, so the no-answer forward to the
--- AI never fires and the caller gets nothing. Cap the ring for calls dialled
--- to a UK mobile number so the forward fires (and the AI answers) inside the
--- carrier's window. Calls to the business DDI keep the full call_timeout.
-local MOBILE_RING_CAP_SECONDS = 10
+-- mobile-terminated call after ~14-20s depending on the SIM (CANCEL → 487)
+-- and re-presents it. Left alone, the extension's ring never runs out, so the
+-- no-answer forward to the AI never fires and the caller gets nothing.
+--
+-- So for those calls, when the extension fails over somewhere (the AI), we
+-- answer the caller's leg ourselves and play UK ringing: the carrier's timer
+-- stops, the owner's handset gets its full call_timeout, and the AI only
+-- picks up if the owner doesn't. Calls to the business DDI are unchanged.
+-- The CDR marks the call voxra_pre_answered; with no bridge it's reported as
+-- missed (CallStatusResolver), so missed-call texts still go out.
 local function dialled_uk_mobile()
     for _, name in ipairs({ "caller_destination", "sip_req_user", "sip_to_user" }) do
         local v = tostring(session:getVariable(name) or ""):gsub("[%s%-]", "")
@@ -521,13 +526,36 @@ local function dialled_uk_mobile()
     end
     return false
 end
-if dialled_uk_mobile() then
-    local current = tonumber(session:getVariable("call_timeout") or "")
-    if current == nil or current <= 0 or current > MOBILE_RING_CAP_SECONDS then
-        session:execute("set", "call_timeout=" .. MOBILE_RING_CAP_SECONDS)
-        log("INFO", string.format("dialled a mobile number: ring capped at %ds (was %s) for %s",
-            MOBILE_RING_CAP_SECONDS, tostring(current), aor))
+
+local pre_answer = dialled_uk_mobile()
+    and session:getVariable("call_answered") ~= "true"
+    and forward_destination("no_answer") ~= nil
+
+-- Extra B-leg variables: when the owner answers, tell the caller's leg (for
+-- the CDR) and start the owner-call recording there rather than on our early
+-- answer (voxragtm#157 — the AI and voicemail are never recorded here).
+local b_leg_vars = {}
+if pre_answer then
+    local a_uuid = session:getVariable("uuid") or ""
+    local on_answer = { "voxra_owner_answered=true" }
+    local armed = session:getVariable("execute_on_answer")
+    if armed ~= nil and tostring(armed):match("^record_session ") then
+        local rec_path = session:getVariable("record_path") or ""
+        local rec_name = session:getVariable("record_name") or ""
+        for _, name in ipairs({ "execute_on_answer", "RECORD_ANSWER_REQ", "record_path", "record_name", "record_session" }) do
+            session:execute("unset", name)
+        end
+        table.insert(b_leg_vars, "execute_on_answer='" .. tostring(armed) .. "'")
+        if rec_path ~= "" then table.insert(on_answer, "record_path=" .. rec_path) end
+        if rec_name ~= "" then table.insert(on_answer, "record_name=" .. rec_name) end
     end
+    table.insert(b_leg_vars, "api_on_answer='uuid_setvar_multi " .. a_uuid .. " " .. table.concat(on_answer, ";") .. "'")
+    session:execute("set", "voxra_pre_answered=true")
+    session:execute("set", "transfer_ringback=${uk-ring}")
+    session:execute("set", "instant_ringback=true")
+    session:answer()
+    log("INFO", string.format("dialled a mobile number: answered early with ringing, ringing %s for %ss before failover",
+        aor, tostring(session:getVariable("call_timeout"))))
 end
 
 log("INFO", string.format("ring_target=%s contacts=%d bridge=%s",
@@ -545,6 +573,9 @@ session:execute("set", "hangup_after_bridge=true")
 -- that exist in several Voxra tenants by matching the From host against the
 -- SIM's sip_host (ystwythv/iqm-fmc-origination#66).
 local bridge_vars = string.format("{sip_invite_domain=%s}", domain_name)
+if #b_leg_vars > 0 then
+    bridge_vars = string.format("{sip_invite_domain=%s,%s}", domain_name, table.concat(b_leg_vars, ","))
+end
 session:execute("bridge", bridge_vars .. bridge_str)
 
 -- After bridge: if a leg answered the bridge succeeds and the channel is

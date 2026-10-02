@@ -90,6 +90,45 @@ class CallStatusResolverTest extends TestCase
         $this->assertSame(CallStatus::Failed, $this->resolver->resolve($cdr));
     }
 
+    public function test_pre_answered_mobile_call_never_connected_is_missed(): void
+    {
+        // Answered early by push_wake.lua, caller hung up while it rang.
+        $cdr = $this->cdr([
+            'answer_epoch' => 1712048047,
+            'hangup_cause' => 'NORMAL_CLEARING',
+            'bridge_uuid' => null,
+            'json' => json_encode(['variables' => ['voxra_pre_answered' => 'true']]),
+        ]);
+
+        $this->assertSame(CallStatus::Missed, $this->resolver->resolve($cdr));
+    }
+
+    public function test_pre_answered_mobile_call_connected_is_answered(): void
+    {
+        // The owner (or the AI) picked up: there's a bridge.
+        $cdr = $this->cdr([
+            'answer_epoch' => 1712048047,
+            'hangup_cause' => 'NORMAL_CLEARING',
+            'bridge_uuid' => 'b-leg-uuid',
+            'json' => json_encode(['variables' => ['voxra_pre_answered' => 'true']]),
+        ]);
+
+        $this->assertSame(CallStatus::Answered, $this->resolver->resolve($cdr));
+    }
+
+    public function test_answered_without_bridge_but_not_pre_answered_stays_answered(): void
+    {
+        // An IVR / conference answer with no bridge is still an answered call.
+        $cdr = $this->cdr([
+            'answer_epoch' => 1712048047,
+            'hangup_cause' => 'NORMAL_CLEARING',
+            'bridge_uuid' => null,
+            'json' => json_encode(['variables' => ['caller_destination' => '+441162987910']]),
+        ]);
+
+        $this->assertSame(CallStatus::Answered, $this->resolver->resolve($cdr));
+    }
+
     private function cdr(array $fields): stdClass
     {
         $defaults = [

@@ -216,8 +216,9 @@ check("owner recording: an unrelated execute_on_answer is left alone",
     r.vars.execute_on_answer == "lua something_else.lua" and not find(r, "unset"), r)
 
 
--- Mobile-number ring cap (voxragtm#194): a call dialled to the eSIM's own
--- mobile number must fail over before the carrier's ~14s CANCEL.
+-- Calls to the eSIM's mobile number (voxragtm#194): answered early with
+-- ringing so the carrier can't time out; the handset gets its full ring and
+-- the AI only picks up if the owner doesn't.
 local function set_value(res, name)
     local v
     for _, e in ipairs(res.executed) do
@@ -225,21 +226,44 @@ local function set_value(res, name)
     end
     return v
 end
+local mobile_call = { caller_destination = "+447940827089", call_timeout = "20" }
 
-r = run({ user_data = complete_fwd, contacts = fmc_contact, bridge_cause = "NO_ANSWER",
-    vars = { caller_destination = "+447940827089", call_timeout = "20" } })
-check("dialled the mobile number → ring capped at 10s before the bridge",
-    set_value(r, "call_timeout") == "call_timeout=10"
-        and index_of(r, "set", "call_timeout=10") < index_of(r, "bridge")
+r = run({ user_data = complete_fwd, contacts = fmc_contact, bridge_cause = "NO_ANSWER", vars = mobile_call })
+check("dialled the mobile number → answered before the bridge, full ring, then the AI",
+    r.vars.call_answered == "true" and set_value(r, "voxra_pre_answered") == "voxra_pre_answered=true"
+        and index_of(r, "set", "voxra_pre_answered=true") < index_of(r, "bridge")
+        and set_value(r, "call_timeout") == nil
         and find(r, "transfer") and find(r, "transfer").data == "9250 XML acme.voxra.uk", r)
+
+r = run({ user_data = complete_fwd, contacts = fmc_contact, vars = mobile_call })
+local b = find(r, "bridge")
+check("the owner answering is marked on the caller's leg (api_on_answer)",
+    b and b.data:match("^{sip_invite_domain=acme%.voxra%.uk,api_on_answer='uuid_setvar_multi call%-uuid%-1 voxra_owner_answered=true'}"), r)
 
 r = run({ user_data = complete_fwd, contacts = fmc_contact, bridge_cause = "NO_ANSWER",
     vars = { caller_destination = "+441162987910", call_timeout = "20" } })
-check("dialled the business landline → full call_timeout kept", set_value(r, "call_timeout") == nil, r)
+check("dialled the business landline → not answered early",
+    set_value(r, "voxra_pre_answered") == nil and r.vars.call_answered == nil and not find(r, "bridge").data:match("api_on_answer"), r)
 
-r = run({ user_data = complete_fwd, contacts = fmc_contact,
-    vars = { caller_destination = "447940827089", call_timeout = "8" } })
-check("mobile number, ring already shorter than the cap → left alone", set_value(r, "call_timeout") == nil, r)
+r = run({ user_data = { ring_target = "fmc" }, contacts = fmc_contact, vars = mobile_call })
+check("mobile number but nowhere to fail over to (no AI) → not answered early",
+    set_value(r, "voxra_pre_answered") == nil and not find(r, "bridge").data:match("api_on_answer"), r)
+
+local mobile_armed = {}
+for k, v in pairs(armed) do mobile_armed[k] = v end
+for k, v in pairs(mobile_call) do mobile_armed[k] = v end
+
+r = run({ user_data = complete_fwd, contacts = fmc_contact, bridge_answers = true, vars = mobile_armed })
+b = find(r, "bridge")
+check("owner recording moves to the owner's leg: not started by our early answer",
+    r.vars.execute_on_answer == nil and index_of(r, "unset", "execute_on_answer") < index_of(r, "bridge")
+        and b.data:match("execute_on_answer='record_session /rec/acme%.voxra%.uk/archive/2026/Sep/27/call%-uuid%-1%.wav'")
+        and b.data:match("record_path=/rec/acme%.voxra%.uk/archive/2026/Sep/27;record_name=call%-uuid%-1%.wav"), r)
+
+r = run({ user_data = complete_fwd, contacts = fmc_contact, bridge_cause = "NO_ANSWER", vars = mobile_armed })
+check("owner recording, nobody answers → AI, nothing recorded here",
+    r.vars.execute_on_answer == nil and r.vars.record_name == nil
+        and find(r, "transfer") and find(r, "transfer").data == "9250 XML acme.voxra.uk", r)
 
 print(string.format("\n%d passed, %d failed", passed, failures))
 os.exit(failures == 0 and 0 or 1)
