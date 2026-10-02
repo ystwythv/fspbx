@@ -504,6 +504,32 @@ end
 
 local bridge_str = table.concat(matched, ",")
 
+-- A call to the eSIM's own mobile number (voxragtm#194, 2 Oct test call)
+-- reaches us through the mobile network, which gives up on an unanswered
+-- mobile-terminated call after ~14s (CANCEL → 487) and re-presents it. The
+-- extension's 20s ring then never runs out, so the no-answer forward to the
+-- AI never fires and the caller gets nothing. Cap the ring for calls dialled
+-- to a UK mobile number so the forward fires (and the AI answers) inside the
+-- carrier's window. Calls to the business DDI keep the full call_timeout.
+local MOBILE_RING_CAP_SECONDS = 10
+local function dialled_uk_mobile()
+    for _, name in ipairs({ "caller_destination", "sip_req_user", "sip_to_user" }) do
+        local v = tostring(session:getVariable(name) or ""):gsub("[%s%-]", "")
+        if v ~= "" then
+            return v:match("^%+?447%d%d%d%d%d%d%d%d%d$") ~= nil or v:match("^07%d%d%d%d%d%d%d%d%d$") ~= nil
+        end
+    end
+    return false
+end
+if dialled_uk_mobile() then
+    local current = tonumber(session:getVariable("call_timeout") or "")
+    if current == nil or current <= 0 or current > MOBILE_RING_CAP_SECONDS then
+        session:execute("set", "call_timeout=" .. MOBILE_RING_CAP_SECONDS)
+        log("INFO", string.format("dialled a mobile number: ring capped at %ds (was %s) for %s",
+            MOBILE_RING_CAP_SECONDS, tostring(current), aor))
+    end
+end
+
 log("INFO", string.format("ring_target=%s contacts=%d bridge=%s",
     ring_target, #matched, bridge_str))
 

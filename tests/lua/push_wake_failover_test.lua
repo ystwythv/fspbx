@@ -215,5 +215,31 @@ r = run({ user_data = complete_fwd, contacts = fmc_contact, bridge_cause = "NO_A
 check("owner recording: an unrelated execute_on_answer is left alone",
     r.vars.execute_on_answer == "lua something_else.lua" and not find(r, "unset"), r)
 
+
+-- Mobile-number ring cap (voxragtm#194): a call dialled to the eSIM's own
+-- mobile number must fail over before the carrier's ~14s CANCEL.
+local function set_value(res, name)
+    local v
+    for _, e in ipairs(res.executed) do
+        if e.app == "set" and tostring(e.data):match("^" .. name .. "=") then v = e.data end
+    end
+    return v
+end
+
+r = run({ user_data = complete_fwd, contacts = fmc_contact, bridge_cause = "NO_ANSWER",
+    vars = { caller_destination = "+447940827089", call_timeout = "20" } })
+check("dialled the mobile number → ring capped at 10s before the bridge",
+    set_value(r, "call_timeout") == "call_timeout=10"
+        and index_of(r, "set", "call_timeout=10") < index_of(r, "bridge")
+        and find(r, "transfer") and find(r, "transfer").data == "9250 XML acme.voxra.uk", r)
+
+r = run({ user_data = complete_fwd, contacts = fmc_contact, bridge_cause = "NO_ANSWER",
+    vars = { caller_destination = "+441162987910", call_timeout = "20" } })
+check("dialled the business landline → full call_timeout kept", set_value(r, "call_timeout") == nil, r)
+
+r = run({ user_data = complete_fwd, contacts = fmc_contact,
+    vars = { caller_destination = "447940827089", call_timeout = "8" } })
+check("mobile number, ring already shorter than the cap → left alone", set_value(r, "call_timeout") == nil, r)
+
 print(string.format("\n%d passed, %d failed", passed, failures))
 os.exit(failures == 0 and 0 or 1)
