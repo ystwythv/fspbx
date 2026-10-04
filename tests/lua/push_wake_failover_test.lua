@@ -55,6 +55,9 @@ local function run(opts)
             table.insert(executed, { app = app, data = data })
             if app == "unset" then
                 vars[data] = nil
+            elseif app == "set" then
+                local k, v = tostring(data):match("^([^=]+)=(.*)$")
+                if k then vars[k] = v end
             elseif app == "bridge" then
                 if opts.bridge_answers then
                     ready = false
@@ -287,6 +290,33 @@ check("press-1 on, landline call: confirm too (not answered early)",
 r = run({ user_data = complete_fwd, contacts = fmc_contact, vars = mobile_call })
 check("press-1 off: no confirm on the handset leg",
     not find(r, "bridge").data:match("group_confirm") and not find(r, "bridge").data:match("ignore_early_media"), r)
+
+-- Press-1 + owner-call recording (voxragtm#157 live test, 4 Oct): the handset
+-- answering (Live Voicemail) isn't the owner; mark and record only once the
+-- bridge starts, i.e. after the 1.
+local confirm_armed = {}
+for k, v in pairs(mobile_armed) do confirm_armed[k] = v end
+
+r = run({ user_data = confirm_fwd, contacts = fmc_contact, bridge_answers = true, vars = confirm_armed })
+b = find(r, "bridge")
+check("press-1 + recording: nothing on the handset leg's answer; hook on the bridge",
+    not b.data:match("execute_on_answer") and not b.data:match("api_on_answer")
+        and r.vars.execute_on_answer == nil
+        and set_value(r, "bridge_pre_execute_aleg_app") == "bridge_pre_execute_aleg_app=lua"
+        and set_value(r, "bridge_pre_execute_aleg_data") ==
+            "bridge_pre_execute_aleg_data=lua/voxra_owner_bridged.lua /rec/acme.voxra.uk/archive/2026/Sep/27 call-uuid-1.wav"
+        and index_of(r, "set", "bridge_pre_execute_aleg_app=lua") < index_of(r, "bridge"), r)
+
+r = run({ user_data = confirm_fwd, contacts = fmc_contact, bridge_cause = "NO_ANSWER", vars = confirm_armed })
+check("press-1 + recording, no 1 pressed → hook cleared before the AI's bridge",
+    r.vars.bridge_pre_execute_aleg_app == nil and r.vars.bridge_pre_execute_aleg_data == nil
+        and index_of(r, "unset", "bridge_pre_execute_aleg_app") < index_of(r, "transfer")
+        and r.vars.record_name == nil, r)
+
+r = run({ user_data = confirm_fwd, contacts = fmc_contact, bridge_answers = true, vars = mobile_call })
+check("press-1, no recording: the bridge hook still marks the owner answering",
+    set_value(r, "bridge_pre_execute_aleg_data") == "bridge_pre_execute_aleg_data=lua/voxra_owner_bridged.lua"
+        and not find(r, "bridge").data:match("api_on_answer"), r)
 
 print(string.format("\n%d passed, %d failed", passed, failures))
 os.exit(failures == 0 and 0 or 1)
