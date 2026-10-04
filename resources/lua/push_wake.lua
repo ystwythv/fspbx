@@ -394,6 +394,12 @@ end
 -- record_path/record_name so the CDR doesn't point at a file never written.
 -- Only before answer: an already-answered call's recording is left alone.
 local function disarm_owner_recording()
+    -- Press-1 calls arm the owner hook for the bridge (below): clear it so the
+    -- AI's bridge after failover doesn't fire it.
+    if tostring(session:getVariable("bridge_pre_execute_aleg_data") or ""):match("voxra_owner_bridged") then
+        session:execute("unset", "bridge_pre_execute_aleg_app")
+        session:execute("unset", "bridge_pre_execute_aleg_data")
+    end
     -- Answered early for a mobile-number call (below): not the owner answering.
     if session:getVariable("call_answered") == "true" and session:getVariable("voxra_pre_answered") ~= "true" then return end
     local armed = session:getVariable("execute_on_answer")
@@ -553,17 +559,30 @@ if pre_answer then
     local a_uuid = session:getVariable("uuid") or ""
     local on_answer = { "voxra_owner_answered=true" }
     local armed = session:getVariable("execute_on_answer")
+    local rec_path, rec_name = "", ""
     if armed ~= nil and tostring(armed):match("^record_session ") then
-        local rec_path = session:getVariable("record_path") or ""
-        local rec_name = session:getVariable("record_name") or ""
+        rec_path = session:getVariable("record_path") or ""
+        rec_name = session:getVariable("record_name") or ""
         for _, name in ipairs({ "execute_on_answer", "RECORD_ANSWER_REQ", "record_path", "record_name", "record_session" }) do
             session:execute("unset", name)
         end
-        table.insert(b_leg_vars, "execute_on_answer='" .. tostring(armed) .. "'")
-        if rec_path ~= "" then table.insert(on_answer, "record_path=" .. rec_path) end
-        if rec_name ~= "" then table.insert(on_answer, "record_name=" .. rec_name) end
+        if not owner_confirm then
+            table.insert(b_leg_vars, "execute_on_answer='" .. tostring(armed) .. "'")
+            if rec_path ~= "" then table.insert(on_answer, "record_path=" .. rec_path) end
+            if rec_name ~= "" then table.insert(on_answer, "record_name=" .. rec_name) end
+        end
     end
-    table.insert(b_leg_vars, "api_on_answer='uuid_setvar_multi " .. a_uuid .. " " .. table.concat(on_answer, ";") .. "'")
+    if owner_confirm then
+        -- Press-1 on: the handset leg answering isn't the owner (iPhone Live
+        -- Voicemail answers and never presses 1). The bridge starts only after
+        -- the 1, so mark and record then (voxragtm#157 live test, 4 Oct).
+        local hook = "lua/voxra_owner_bridged.lua"
+        if rec_path ~= "" and rec_name ~= "" then hook = hook .. " " .. rec_path .. " " .. rec_name end
+        session:execute("set", "bridge_pre_execute_aleg_app=lua")
+        session:execute("set", "bridge_pre_execute_aleg_data=" .. hook)
+    else
+        table.insert(b_leg_vars, "api_on_answer='uuid_setvar_multi " .. a_uuid .. " " .. table.concat(on_answer, ";") .. "'")
+    end
     session:execute("set", "voxra_pre_answered=true")
     session:execute("set", "transfer_ringback=${uk-ring}")
     session:execute("set", "instant_ringback=true")
