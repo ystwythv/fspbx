@@ -13,8 +13,12 @@ FreeSWITCH records call → CDR row lands in v_xml_cdr (record_name set)
         ▼  every minute (scheduler, gated by scheduled_jobs/recording_webhooks)
 webhooks:dispatch-recordings          app/Console/Commands/DispatchRecordingWebhooks.php
   - scans recorded CDRs (24h lookback) in webhook-enabled domains
-  - one webhook per recording FILE (ring-group legs share a file;
-    primary leg = longest billsec)
+  - one webhook per recording FILE (ring-group legs share a file),
+    announced under the leg that recorded it — the uuid the file is named
+    after (`<uuid>.wav`), which is also the live-transcript key. Siblings
+    (LOSE_RACE ring-group legs, receptionist originate legs) wait for that
+    leg's CDR for up to 3h, then fall back to the longest billsec; files
+    not named after a uuid use the longest billsec
   - claims work atomically: insertOrIgnore + unique(domain_uuid, record_name)
     in recording_webhook_deliveries — safe with BOTH cluster nodes running it
         │
