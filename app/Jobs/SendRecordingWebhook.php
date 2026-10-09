@@ -220,7 +220,12 @@ class SendRecordingWebhook implements ShouldQueue
             return;
         }
 
-        CDR::where('xml_cdr_uuid', $cdr->xml_cdr_uuid)->update(['record_name' => $mp3Name]);
+        // Every leg sharing the file (ring-group siblings, the receptionist
+        // leg) follows the rename, or they stay candidates for a .wav that
+        // no longer exists.
+        CDR::where('record_path', $cdr->record_path)
+            ->where('record_name', $cdr->record_name)
+            ->update(['record_name' => $mp3Name]);
         // The dispatcher dedupes on (domain_uuid, record_name): rename the
         // claim row too or the same call is re-announced under the mp3 name.
         RecordingWebhookDelivery::where('domain_uuid', $cdr->domain_uuid)
