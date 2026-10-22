@@ -33,6 +33,13 @@ use Throwable;
  * Mobile's WhatsApp calls) have their own policies. The Voxra period never
  * deletes anything under a non-Voxra domain's recordings directory, even when
  * a Voxra CDR points there; such rows are skipped and counted, not errors.
+ * One exception for partner domains (domain_description "reseller:<id> …",
+ * made through iqportal's partner API): the daily sweep deletes voicemail
+ * message files older than the Voxra period from box directories that have NO
+ * v_voicemails row. Before fspbx#159 an extension created with
+ * voicemail_enabled=false still recorded callers there, and with no mailbox
+ * nobody can ever play them. Mailboxes that exist, and call recordings, are
+ * not touched.
  * The age sweep also enforces one of those: services.voxra.retention_pbx_domains
  * (IQ Mobile's iqmobile.uk, voxragtm#132) keep PBX recordings/voicemail for
  * retention_pbx_days (90) — never the Voxra period — and their Telnyx media
@@ -108,6 +115,12 @@ class VoxraMediaPurgeService
     }
 
     /** Non-Voxra domains whose PBX media has its own age sweep (voxragtm#132). */
+    /** Partner-API domains (domain_description "reseller:<id> …", made by iqportal). */
+    public function resellerDomains(): array
+    {
+        return Domain::where('domain_description', 'like', 'reseller:%')->get()->all();
+    }
+
     public function pbxOnlyDomains(): array
     {
         $names = self::csv((string) config('services.voxra.retention_pbx_domains', ''));
@@ -170,6 +183,7 @@ class VoxraMediaPurgeService
             'pbx_recording_files_orphaned' => 0,
             'pbx_voicemails' => 0,
             'pbx_voicemail_files_orphaned' => 0,
+            'pbx_voicemail_files_no_mailbox' => 0,
             'pbx_recordings_skipped_non_voxra_dir' => 0,
             'telnyx_conversations' => 0,
             'telnyx_recordings' => 0,
@@ -196,6 +210,19 @@ class VoxraMediaPurgeService
             $counts['pbx_voicemail_files_orphaned'] += $vmOrphans;
             $byDomain[$domain->domain_name] = ['pbx_recordings' => $cdr, 'pbx_recording_files_orphaned' => $orphans, 'pbx_voicemails' => $vm, 'pbx_voicemail_files_orphaned' => $vmOrphans];
             $this->note(sprintf('domain %s: recordings=%d orphan_files=%d voicemails=%d orphan_voicemail_files=%d', $domain->domain_name, $cdr, $orphans, $vm, $vmOrphans));
+        }
+
+        if ($scope === 'age' && ($opts['tenant_id'] ?? null) === null) {
+            foreach ($this->resellerDomains() as $domain) {
+                if (in_array($domain->domain_uuid, $this->scopeUuids, true)) {
+                    continue;
+                }
+                $n = $this->purgeMailboxlessVoicemailFiles($domain, $cutoff, $dry, $limit);
+                $counts['pbx_voicemail_files_no_mailbox'] += $n;
+                if ($n > 0) {
+                    $this->note(sprintf('domain %s: voicemail_files_no_mailbox=%d', $domain->domain_name, $n));
+                }
+            }
         }
 
         if (($opts['telnyx'] ?? true) && $this->telnyx) {
@@ -340,8 +367,43 @@ class VoxraMediaPurgeService
         if (!is_dir($root)) {
             return 0;
         }
+
+        return $this->deleteOldVoicemailFiles($root . '/*/{msg,intro_msg}_*.{wav,mp3}', $cutoff, $dry, $limit);
+    }
+
+    /**
+     * Voicemail message audio older than the cutoff in a domain's box
+     * directories that have no v_voicemails row. With no mailbox the messages
+     * can't be listed or played anywhere. Greetings and recorded names are
+     * never matched.
+     */
+    public function purgeMailboxlessVoicemailFiles(Domain $domain, Carbon $cutoff, bool $dry, int $limit): int
+    {
+        $root = $this->voicemailRoot . '/' . $domain->domain_name;
+        if (!is_dir($root)) {
+            return 0;
+        }
+        $boxes = DB::table('v_voicemails')->where('domain_uuid', $domain->domain_uuid)
+            ->pluck('voicemail_id')->map(fn ($id) => (string) $id)->all();
+
         $n = 0;
-        foreach (glob($root . '/*/{msg,intro_msg}_*.{wav,mp3}', GLOB_BRACE) ?: [] as $path) {
+        foreach (glob($root . '/*', GLOB_ONLYDIR) ?: [] as $dir) {
+            if ($n >= $limit) {
+                break;
+            }
+            if (in_array(basename($dir), $boxes, true)) {
+                continue;
+            }
+            $n += $this->deleteOldVoicemailFiles($dir . '/{msg,intro_msg}_*.{wav,mp3}', $cutoff, $dry, $limit - $n);
+        }
+
+        return $n;
+    }
+
+    private function deleteOldVoicemailFiles(string $pattern, Carbon $cutoff, bool $dry, int $limit): int
+    {
+        $n = 0;
+        foreach (glob($pattern, GLOB_BRACE) ?: [] as $path) {
             if ($n >= $limit) {
                 break;
             }
