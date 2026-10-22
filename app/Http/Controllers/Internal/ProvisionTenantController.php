@@ -66,6 +66,11 @@ use Illuminate\Support\Str;
  * Ring-first / line routing are no-ops in complete mode (the handset rings
  * natively as the extension; no PSTN loopback).
  *
+ * `sector_tools` (voxragtm#256/#257) gives an estate or letting agent's
+ * receptionist the property tools (find_property, send_property_details,
+ * record_offer, record_viewing_feedback): "estate_agent" or "none" (stored
+ * per domain in VoxraRoutingState; omitted → last value, else none).
+ *
  * Phone-number ordering is intentionally NOT done here — it spends money
  * (TelnyxNumberService::createOrder) and is a gated follow-up (voxragtm#23).
  */
@@ -179,6 +184,10 @@ texts, and don't read out booking references unless they ask. If you don't
 know who will do the job, say the team will confirm — don't guess. Only use
 a name the caller has told you on this call: ask for it, never make one up.
 
+## Business-type rules
+If the caller context includes "SECTOR RULES", follow them: they add to and
+outrank the general guidance above, except the abuse and safety rules.
+
 ## Speaking and ending the call
 Everything you write is spoken aloud to the caller, word for word. Only
 ever write what you'd say to them. Never narrate actions or add stage
@@ -271,6 +280,12 @@ PROMPT;
             // a Telnyx voice id. Omitted or malformed → keep the agent's
             // current voice (UK_VOICE for a new agent); see resolveVoice().
             'voice_id'             => 'nullable|string|max:80',
+            // The business type's extra receptionist tools (voxragtm#256/
+            // #257): "estate_agent" adds the property tools (find_property,
+            // send_property_details, record_offer, record_viewing_feedback),
+            // "none" removes them. Omitted or unknown → the stored choice,
+            // else none; never fails the request.
+            'sector_tools'         => 'nullable|string|max:40',
         ]);
 
         $tenantId = $data['tenant_id'];
@@ -337,6 +352,10 @@ PROMPT;
             $request->input('owner_confirm') !== null ? $request->boolean('owner_confirm') : null,
             $previous,
         );
+        $sectorTools = \App\Services\ReceptionAgent\ReceptionAgentToolDefinitions::resolveSectorTools(
+            is_string($data['sector_tools'] ?? null) ? $data['sector_tools'] : null,
+            $previous,
+        );
 
         try {
             VoxraRoutingState::save($domain->domain_uuid, [
@@ -348,6 +367,8 @@ PROMPT;
                 'owner_call_recording' => $ownerRecording,
                 'outbound_cli'         => $outboundCli,
                 'owner_confirm'        => $ownerConfirm,
+                // Read by the Telnyx tool sync below (allowlistFor).
+                'sector_tools'         => $sectorTools,
             ]);
         } catch (\Throwable $e) {
             logger()->error('Voxra routing state save failed for ' . $domain->domain_name . ': ' . $e->getMessage());
@@ -591,6 +612,8 @@ PROMPT;
             'outbound_cli'        => $completeMode ? $outboundCli : null,
             // Complete: whoever answers the eSIM presses 1 first (voxragtm#194).
             'owner_confirm'       => $completeMode ? $ownerConfirm : null,
+            // The business type's extra tools now applied: estate_agent | none.
+            'sector_tools'        => $sectorTools,
             'outbound_caller_id'  => $outboundCallerId,
             'mobile_extension'    => $mobile ? [
                 'extension' => $mobile['extension'],

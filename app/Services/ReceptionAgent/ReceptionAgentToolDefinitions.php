@@ -4,6 +4,7 @@ namespace App\Services\ReceptionAgent;
 
 use App\Models\AiAgent;
 use App\Services\DialplanBuilderService;
+use App\Services\Voxra\VoxraRoutingState;
 
 /**
  * Provider-neutral definitions of the reception-agent tools.
@@ -22,8 +23,8 @@ class ReceptionAgentToolDefinitions
      * Optional keys (Telnyx only): store_as_variables (dynamic variable =>
      * response path), filler (spoken if the webhook is slow), timeout_ms.
      *
-     * @param array<int,string>|null $allow only these tool names (null = all);
-     *   see forAgent() / VOXRA_RECEPTION_TOOLS
+     * @param array<int,string>|null $allow only these tool names (null = all
+     *   except PROPERTY_TOOLS); see forAgent() / VOXRA_RECEPTION_TOOLS
      *
      * @return array<int, array{name:string, description:string, properties:array<string,mixed>, required:array<int,string>, store_as_variables?:array<string,string>, filler?:string, timeout_ms?:int}>
      */
@@ -105,6 +106,10 @@ class ReceptionAgentToolDefinitions
                     'email' => ['type' => 'string', 'description' => 'Their email address, only if they give one (e.g. for a booking confirmation) — spell it back first'],
                     'job_description' => ['type' => 'string', 'description' => 'What the caller needs, in a sentence'],
                     'urgency' => ['type' => 'string', 'enum' => ['emergency', 'urgent', 'routine'], 'description' => 'How urgent the job is. urgent/emergency (per the business\'s urgent definition) alerts the owner immediately — for those use alert_owner instead.'],
+                    // Estate and letting agents (voxragtm#257). Optional and
+                    // additive: voxraweb ignores them for other businesses.
+                    'intent' => ['type' => 'string', 'enum' => ['valuation', 'viewing', 'register', 'offer', 'progress', 'repair_emergency', 'repair', 'landlord', 'complaint', 'other'], 'description' => 'What the call is about (estate and letting agents)'],
+                    'property' => ['type' => 'string', 'description' => 'The property the caller is asking about, if any'],
                 ],
                 'required' => ['job_description'],
             ],
@@ -241,6 +246,51 @@ class ReceptionAgentToolDefinitions
                 ],
                 'required' => ['question', 'topic'],
             ],
+            // Estate and letting agents (voxragtm#256/#257): the agency's
+            // listings, details packs, offers and viewing feedback. Only in
+            // the allowlist for a domain provisioned with
+            // sector_tools=estate_agent (see allowlistFor / PROPERTY_TOOLS).
+            [
+                'name' => 'find_property',
+                'description' => 'Look up one of the agency\'s properties BEFORE saying anything about it: its status (available, under offer, sold STC, let agreed), price or rent, bedrooms, type, key features and what its details pack has. Answer ONLY from the result and say how current it is (its as_of line). If nothing is found or more than one property matches, don\'t guess: ask which one, or say the team will confirm.',
+                'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'The address, street, postcode or reference as the caller said it'],
+                    'channel' => ['type' => 'string', 'enum' => ['sale', 'let'], 'description' => 'For sale or to let, if the caller said'],
+                    'beds' => ['type' => 'number', 'description' => 'Number of bedrooms, if the caller said'],
+                ],
+                'required' => ['query'],
+            ],
+            [
+                'name' => 'send_property_details',
+                'description' => 'Send the caller the details pack for a property (listing link, brochure, floorplan and EPC where available) by WhatsApp or text to the number they are calling from, or by email if they ask for it. Then offer to book a viewing — tell them first if it is under offer, sold STC or let agreed.',
+                'properties' => [
+                    'property' => ['type' => 'string', 'description' => 'The address or reference, as find_property returned it'],
+                    'email' => ['type' => 'string', 'description' => 'Only if the caller asks for email: their email address, spelt back first'],
+                ],
+                'required' => ['property'],
+            ],
+            [
+                'name' => 'record_offer',
+                'description' => 'Record an offer exactly as the caller states it and pass it to the agent immediately. Read the amount and their position back first. Never negotiate, never hint at what the seller or landlord would accept, and never mention other offers or their amounts. Rentals: only the advertised rent — never invite or accept more (rental bidding is illegal).',
+                'properties' => [
+                    'property' => ['type' => 'string', 'description' => 'The address or reference of the property'],
+                    'amount' => ['type' => 'string', 'description' => 'The amount exactly as said, e.g. "£245,000"'],
+                    'buyer_name' => ['type' => 'string', 'description' => 'Who is making the offer'],
+                    'position' => ['type' => 'string', 'description' => 'Their position, e.g. "first-time buyer, mortgage agreed in principle", "cash", "chain: own home under offer"'],
+                    'conditions' => ['type' => 'string', 'description' => 'Any conditions they attach, in their words'],
+                ],
+                'required' => ['property', 'amount'],
+            ],
+            [
+                'name' => 'record_viewing_feedback',
+                'description' => 'Record what the caller thought of a property they viewed, and whether they want to make an offer, view again or not proceed. If they want to offer, use record_offer as well.',
+                'properties' => [
+                    'property' => ['type' => 'string', 'description' => 'The address or reference of the property they viewed'],
+                    'feedback' => ['type' => 'string', 'description' => 'Their feedback, in their words'],
+                    'interest' => ['type' => 'string', 'enum' => ['offer', 'second_viewing', 'interested', 'not_interested', 'undecided'], 'description' => 'Where they stand now'],
+                ],
+                'required' => ['property', 'feedback', 'interest'],
+            ],
             [
                 'name' => 'search_memory',
                 'description' => 'Search everything you know about this business and its customers for anything relevant to a question — past jobs, quotes, preferences, policies. Use it when the structured context does not obviously cover what the caller is asking.',
@@ -297,7 +347,12 @@ class ReceptionAgentToolDefinitions
 
         return array_values(array_filter(
             $all,
-            fn ($t) => ($enabled[$t['name']] ?? true) && ($allow === null || in_array($t['name'], $allow, true))
+            // PROPERTY_TOOLS only when an allowlist names them (an estate
+            // agent's receptionist): an unrestricted *9 summon assistant
+            // keeps exactly the set it had before they existed.
+            fn ($t) => ($enabled[$t['name']] ?? true) && ($allow === null
+                ? ! in_array($t['name'], self::PROPERTY_TOOLS, true)
+                : in_array($t['name'], $allow, true))
         ));
     }
 
@@ -326,18 +381,49 @@ class ReceptionAgentToolDefinitions
     ];
 
     /**
+     * Estate and letting agents' extra tools (voxragtm#256/#257), served by
+     * voxraweb. Added to the allowlist only for a domain provisioned with
+     * sector_tools=estate_agent; every other tenant's tool list is unchanged.
+     */
+    public const PROPERTY_TOOLS = [
+        'find_property', 'send_property_details', 'record_offer', 'record_viewing_feedback',
+    ];
+
+    /** Provision input sector_tools: the business type's extra tool set. */
+    public const SECTOR_TOOLS_ESTATE_AGENT = 'estate_agent';
+    public const SECTOR_TOOLS_NONE = 'none';
+
+    /**
+     * sector_tools from the request; omitted or unknown → the stored choice,
+     * else none (never fails the provision call).
+     */
+    public static function resolveSectorTools(?string $requested, array $previous): string
+    {
+        $known = [self::SECTOR_TOOLS_ESTATE_AGENT, self::SECTOR_TOOLS_NONE];
+        $value = in_array($requested, $known, true) ? $requested : ($previous['sector_tools'] ?? null);
+
+        return $value === self::SECTOR_TOOLS_ESTATE_AGENT ? self::SECTOR_TOOLS_ESTATE_AGENT : self::SECTOR_TOOLS_NONE;
+    }
+
+    /**
      * The allowlist for an agent: VOXRA_RECEPTION_TOOLS for a Voxra tenant's
-     * reception agent (domain tagged "voxra-tenant:<id>"), null (no
-     * restriction) for any other agent — e.g. a PBX customer's *9 in-call
-     * summon assistant, which keeps its full set.
+     * reception agent (domain tagged "voxra-tenant:<id>"), plus
+     * PROPERTY_TOOLS when the domain's stored sector_tools is estate_agent;
+     * null (no restriction) for any other agent — e.g. a PBX customer's *9
+     * in-call summon assistant, which keeps its full set.
      *
      * @return array<int,string>|null
      */
     public static function allowlistFor(AiAgent $agent): ?array
     {
-        return DialplanBuilderService::isVoxraTenantDomain($agent->domain_uuid)
-            ? self::VOXRA_RECEPTION_TOOLS
-            : null;
+        if (! DialplanBuilderService::isVoxraTenantDomain($agent->domain_uuid)) {
+            return null;
+        }
+        $sector = VoxraRoutingState::load($agent->domain_uuid)['sector_tools'] ?? null;
+
+        return $sector === self::SECTOR_TOOLS_ESTATE_AGENT
+            ? array_merge(self::VOXRA_RECEPTION_TOOLS, self::PROPERTY_TOOLS)
+            : self::VOXRA_RECEPTION_TOOLS;
     }
 
     /** list() for this agent: its tools_enabled toggles + allowlistFor(). */
@@ -356,6 +442,7 @@ class ReceptionAgentToolDefinitions
         'cancel_appointment', 'reschedule_appointment',
         'recall_caller', 'remember_about_caller', 'remember', 'recall_business', 'record_summary', 'search_memory',
         'send_payment_link', 'lookup_business_info', 'report_abuse',
+        'find_property', 'send_property_details', 'record_offer', 'record_viewing_feedback',
     ];
 
     public static function isDataTool(string $name): bool

@@ -21,7 +21,9 @@ use App\Models\DomainSettings;
  * Keys: mode (MODE_*), ring_first (Pro preference), owner_mobile (validated
  * E.164 or null), ring_first_timeout (seconds), service_suspended (bool),
  * owner_call_recording (bool), outbound_cli ("mobile" | "business": what the
- * Complete eSIM's own outbound calls present, ProvisionCompleteService).
+ * Complete eSIM's own outbound calls present, ProvisionCompleteService),
+ * owner_confirm (bool), sector_tools ("estate_agent" | "none": the business
+ * type's extra receptionist tools, ReceptionAgentToolDefinitions).
  */
 final class VoxraRoutingState
 {
