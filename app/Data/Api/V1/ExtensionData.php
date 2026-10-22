@@ -84,5 +84,8 @@ class ExtensionData extends Data
 
         /** Follow-me enabled */
         public ?bool $follow_me_enabled,
+
+        /** Whether unanswered calls go to voicemail. False when the mailbox is disabled or the extension has none. */
+        public ?bool $voicemail_enabled = null,
     ) {}
 }

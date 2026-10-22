@@ -209,7 +209,9 @@ class ExtensionController extends Controller
         $hasMore = $rows->count() > $limit;
         $rows = $rows->take($limit);
 
-        $data = $rows->map(function ($e) use ($toBool) {
+        $voicemailEnabled = self::voicemailEnabledMap($domain_uuid, $rows->pluck('extension')->all());
+
+        $data = $rows->map(function ($e) use ($toBool, $voicemailEnabled) {
             $first = $e->directory_first_name ?? null;
             $last  = $e->directory_last_name ?? null;
 
@@ -253,6 +255,7 @@ class ExtensionController extends Controller
                 forward_user_not_registered_enabled: $toBool($e->forward_user_not_registered_enabled),
 
                 follow_me_enabled: $toBool($e->follow_me_enabled),
+                voicemail_enabled: $voicemailEnabled[(string) $e->extension] ?? false,
             );
         })->all();
 
@@ -507,6 +510,7 @@ class ExtensionController extends Controller
             forward_user_not_registered_enabled: $toBool($e->forward_user_not_registered_enabled),
 
             follow_me_enabled: $toBool($e->follow_me_enabled),
+            voicemail_enabled: self::voicemailEnabledMap($domain_uuid, [(string) $e->extension])[(string) $e->extension] ?? false,
         );
 
         return response()->json($payload->toArray(), 200);
@@ -807,6 +811,7 @@ class ExtensionController extends Controller
                 forward_user_not_registered_enabled: filter_var($extension->forward_user_not_registered_enabled, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE),
 
                 follow_me_enabled: filter_var($extension->follow_me_enabled, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE),
+                voicemail_enabled: self::voicemailEnabledMap($domain_uuid, [(string) $extension->extension])[(string) $extension->extension] ?? false,
             );
 
             $body = $payload->toArray();
@@ -1349,6 +1354,7 @@ class ExtensionController extends Controller
                 forward_user_not_registered_enabled: filter_var($fresh->forward_user_not_registered_enabled, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE),
 
                 follow_me_enabled: filter_var($fresh->follow_me_enabled, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE),
+                voicemail_enabled: self::voicemailEnabledMap($domain_uuid, [(string) $fresh->extension])[(string) $fresh->extension] ?? false,
             );
 
             $body = $payload->toArray();
@@ -1430,6 +1436,28 @@ class ExtensionController extends Controller
      * set (or asked us to generate) the SIP password and needs it once to
      * provision the registering device. Never honoured on GET/list.
      */
+    /**
+     * Whether each extension's unanswered calls go to voicemail, keyed by extension number. An
+     * extension with no mailbox row has no voicemail (push_wake.lua hangs up), so it maps to false.
+     *
+     * @param  array<int, string>  $extensions
+     * @return array<string, bool>
+     */
+    private static function voicemailEnabledMap(string $domainUuid, array $extensions): array
+    {
+        if ($extensions === []) {
+            return [];
+        }
+
+        return Voicemails::query()
+            ->where('domain_uuid', $domainUuid)
+            ->whereIn('voicemail_id', array_map('strval', $extensions))
+            ->pluck('voicemail_enabled', 'voicemail_id')
+            ->map(fn ($v) => filter_var($v, FILTER_VALIDATE_BOOLEAN))
+            ->mapWithKeys(fn ($v, $k) => [(string) $k => $v])
+            ->all();
+    }
+
     private static function wantsSipCredentials(Request $request): bool
     {
         $include = $request->query('include', '');

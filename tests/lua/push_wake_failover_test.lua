@@ -74,8 +74,11 @@ local function run(opts)
     package.loaded["resources.functions.database"] = {
         new = function()
             return {
-                connected = function() return true end,
-                first_value = function() return opts.voicemail_enabled or "true" end,
+                connected = function() return not opts.db_down end,
+                first_value = function()
+                    if opts.no_vm_row then return nil end
+                    return opts.voicemail_enabled or "true"
+                end,
                 release = function() end,
             }
         end,
@@ -166,6 +169,16 @@ check("fmc, no forward configured → voicemail",
 r = run({ user_data = { ring_target = "fmc" }, voicemail_enabled = "false" })
 check("fmc, no forward, voicemail disabled → hangup NO_ANSWER",
     not find(r, "voicemail") and r.hungup == "NO_ANSWER", r)
+
+-- No mailbox row (extension created with voicemail_enabled=false) → hang up.
+r = run({ user_data = { ring_target = "fmc" }, no_vm_row = true })
+check("fmc, no forward, no voicemail box → hangup NO_ANSWER",
+    not find(r, "voicemail") and r.hungup == "NO_ANSWER", r)
+
+-- Database unreachable → still fall back to voicemail rather than drop the caller.
+r = run({ user_data = { ring_target = "fmc" }, db_down = true })
+check("fmc, no forward, voicemail lookup fails → voicemail",
+    find(r, "voicemail") and find(r, "voicemail").data == "default acme.voxra.uk 200", r)
 
 -- A forward back to the same extension must not loop.
 r = run({ user_data = { ring_target = "fmc", forward_user_not_registered_enabled = "true", forward_user_not_registered_destination = "200" } })

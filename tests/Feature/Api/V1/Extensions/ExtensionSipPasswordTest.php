@@ -348,4 +348,28 @@ class ExtensionSipPasswordTest extends TestCase
         $index->assertStatus(200);
         $this->assertStringNotContainsString('OldPassword12345', $index->getContent());
     }
+
+    // ---- voicemail_enabled read-back -------------------------------------
+
+    public function test_voicemail_enabled_reads_back_what_was_stored(): void
+    {
+        // false → no mailbox row → reads back false (push_wake.lua hangs up instead of voicemail)
+        $off = $this->postJson($this->base(), $this->storePayload(['voicemail_enabled' => false]), $this->headers());
+        $off->assertStatus(201)->assertJsonPath('voicemail_enabled', false);
+        $this->assertSame(0, Voicemails::where('voicemail_id', '201')->count());
+
+        $on = $this->postJson($this->base(), $this->storePayload(['extension' => '203', 'voicemail_enabled' => true]), $this->headers());
+        $on->assertStatus(201)->assertJsonPath('voicemail_enabled', true);
+
+        $show = $this->getJson($this->base() . '/' . $off->json('extension_uuid'), $this->headers());
+        $show->assertStatus(200)->assertJsonPath('voicemail_enabled', false);
+
+        $byExt = collect($this->getJson($this->base(), $this->headers())->json('data'))->keyBy('extension');
+        $this->assertFalse($byExt['201']['voicemail_enabled']);
+        $this->assertTrue($byExt['203']['voicemail_enabled']);
+
+        $patched = $this->patchJson($this->base() . '/' . $on->json('extension_uuid'), ['voicemail_enabled' => false], $this->headers());
+        $patched->assertStatus(200)->assertJsonPath('voicemail_enabled', false);
+        $this->assertSame('false', Voicemails::where('voicemail_id', '203')->first()->voicemail_enabled);
+    }
 }

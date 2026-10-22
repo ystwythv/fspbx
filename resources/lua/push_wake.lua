@@ -53,10 +53,13 @@ if not WEBHOOK_SECRET or WEBHOOK_SECRET == "" then
     return
 end
 
--- Returns true if v_voicemails.voicemail_enabled='true' for this mailbox, or
--- nil on lookup failure / no row (caller must default safely). Used by the
--- goto_voicemail() fallback to avoid playing mod_voicemail's "not enabled"
--- prompt to a caller whose target extension has deliberately opted out.
+-- Returns true if v_voicemails.voicemail_enabled='true' for this mailbox,
+-- false if it is disabled or the extension has no mailbox row at all, and nil
+-- only when the database can't be reached (caller must default safely). Used
+-- by the goto_voicemail() fallback to avoid playing mod_voicemail's "person at
+-- extension X is not available" prompt to a caller whose target extension has
+-- opted out. An extension created with voicemail_enabled=false gets no row, so
+-- no row must mean "no voicemail", not "unknown".
 local function voicemail_is_enabled(destination_number, domain_name)
     local dbh = Database.new('system')
     if not (dbh and dbh:connected()) then return nil end
@@ -69,7 +72,6 @@ local function voicemail_is_enabled(destination_number, domain_name)
         limit 1
     ]], {domain_name = domain_name, vmid = destination_number})
     dbh:release()
-    if val == nil or val == "" then return nil end
     return val == "true"
 end
 
@@ -419,9 +421,9 @@ local function goto_voicemail(reason)
     -- the call to mod_voicemail even when the user has switched voicemail
     -- off; mod_voicemail then plays a "not enabled for this user" prompt
     -- before hanging up, which exposes a voicemail flow the user
-    -- deliberately opted out of. Treat nil (DB error / no row) as enabled
-    -- so a transient lookup failure still records to voicemail rather
-    -- than silently dropping the caller.
+    -- deliberately opted out of. No mailbox row counts as disabled. Treat
+    -- nil (DB unreachable) as enabled so a transient lookup failure still
+    -- records to voicemail rather than silently dropping the caller.
     local vm_enabled = voicemail_is_enabled(destination_number, domain_name)
     if vm_enabled == false then
         log("INFO", string.format("%s for %s — voicemail disabled, hanging up NO_ANSWER", reason, aor))
