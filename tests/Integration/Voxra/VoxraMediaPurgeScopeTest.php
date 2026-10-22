@@ -165,6 +165,44 @@ class VoxraMediaPurgeScopeTest extends CdrIntegrationTestCase
         $this->assertTrue(DB::table('v_voicemail_messages')->where('voicemail_message_uuid', $vmWa)->exists(), 'lon1.voxra.uk voicemail untouched');
     }
 
+    public function test_reseller_domain_voicemail_files_without_a_mailbox_are_purged(): void
+    {
+        $this->domain('acme.voxra.uk', 'voxra-tenant:t-1');
+        $reseller = $this->domain('ry-abc.voxra.uk', 'reseller:88 Greenhouse Partners Limited');
+        $this->domain('tel.et', null);
+        DB::table('v_voicemails')->insert(['voicemail_uuid' => (string) Str::uuid(), 'domain_uuid' => $reseller, 'voicemail_id' => '201']);
+
+        $file = function (string $domain, string $box, string $name, int $daysAgo): string {
+            $dir = $this->vm . '/' . $domain . '/' . $box;
+            @mkdir($dir, 0777, true);
+            touch($dir . '/' . $name, now()->subDays($daysAgo)->getTimestamp());
+
+            return $dir . '/' . $name;
+        };
+        $noBoxOld = $file('ry-abc.voxra.uk', '1000', 'msg_' . Str::uuid() . '.wav', 11);
+        $noBoxNew = $file('ry-abc.voxra.uk', '1000', 'msg_' . Str::uuid() . '.wav', 9);
+        $noBoxGreeting = $file('ry-abc.voxra.uk', '1000', 'greeting_1.wav', 400);
+        $withBoxOld = $file('ry-abc.voxra.uk', '201', 'msg_' . Str::uuid() . '.wav', 400);
+        $otherDomainOld = $file('tel.et', '1000', 'msg_' . Str::uuid() . '.wav', 400);
+
+        $svc = $this->svc();
+        $tenantOnly = $svc->purge(['scope' => 'age', 'days' => 10, 'tenant_id' => 't-1', 'telnyx' => false]);
+        $this->assertSame(0, $tenantOnly['counts']['pbx_voicemail_files_no_mailbox'], 'a tenant run never sweeps partner domains');
+        $dry = $svc->purge(['scope' => 'age', 'days' => 10, 'dry_run' => true, 'telnyx' => false]);
+        $this->assertSame(1, $dry['counts']['pbx_voicemail_files_no_mailbox']);
+        $this->assertFileExists($noBoxOld, 'dry run deletes nothing');
+
+        $res = $svc->purge(['scope' => 'age', 'days' => 10, 'telnyx' => false]);
+
+        $this->assertSame(1, $res['counts']['pbx_voicemail_files_no_mailbox']);
+        $this->assertFileDoesNotExist($noBoxOld);
+        $this->assertFileExists($noBoxNew, 'inside the retention period');
+        $this->assertFileExists($noBoxGreeting, 'greetings are configuration');
+        $this->assertFileExists($withBoxOld, 'a mailbox that exists keeps its messages');
+        $this->assertFileExists($otherDomainOld, 'only partner (reseller:) domains');
+        $this->assertSame(['acme.voxra.uk'], array_keys($res['by_domain']));
+    }
+
     public function test_whatsapp_realm_and_reseller_domains_refused_even_if_configured(): void
     {
         $this->domain('acme.voxra.uk', 'voxra-tenant:t-1');
