@@ -6,6 +6,7 @@ use App\Http\Controllers\Internal\ProvisionTenantController;
 use App\Models\AiAgent;
 use App\Services\ReceptionAgent\ReceptionAgentToolDefinitions;
 use App\Services\TelnyxConvaiService;
+use App\Services\Voxra\VoxraRoutingState;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -135,7 +136,11 @@ class VoxraReceptionToolAllowlistTest extends TestCase
     public function test_allowlist_matches_the_voxraweb_data_tools(): void
     {
         $this->assertSame(self::RECEPTION_WEBHOOK_TOOLS, ReceptionAgentToolDefinitions::VOXRA_RECEPTION_TOOLS);
-        $this->assertEqualsCanonicalizing(ReceptionAgentToolDefinitions::DATA_TOOLS, ReceptionAgentToolDefinitions::VOXRA_RECEPTION_TOOLS);
+        // Estate agents' property tools (voxragtm#256) are data tools too.
+        $this->assertEqualsCanonicalizing(
+            ReceptionAgentToolDefinitions::DATA_TOOLS,
+            array_merge(ReceptionAgentToolDefinitions::VOXRA_RECEPTION_TOOLS, ReceptionAgentToolDefinitions::PROPERTY_TOOLS)
+        );
         // Every allowlisted name is a real tool definition.
         $defined = array_column(ReceptionAgentToolDefinitions::list([]), 'name');
         $this->assertEmpty(array_diff(ReceptionAgentToolDefinitions::VOXRA_RECEPTION_TOOLS, $defined));
@@ -238,5 +243,118 @@ class VoxraReceptionToolAllowlistTest extends TestCase
         foreach (self::SUMMON_ONLY_TOOLS as $tool) {
             $this->assertStringNotContainsString($tool, $all);
         }
+    }
+
+    // --- Estate and letting agents (voxragtm#256/#257) ---------------------
+
+    private const PROPERTY_TOOLS = ['find_property', 'send_property_details', 'record_offer', 'record_viewing_feedback'];
+
+    private function withRoutingState(array $state): void
+    {
+        Schema::create('v_domain_settings', function ($t) {
+            $t->string('domain_setting_uuid')->primary();
+            $t->string('domain_uuid')->nullable();
+            $t->string('app_uuid')->nullable();
+            $t->string('domain_setting_category')->nullable();
+            $t->string('domain_setting_subcategory')->nullable();
+            $t->string('domain_setting_name')->nullable();
+            $t->text('domain_setting_value')->nullable();
+            $t->string('domain_setting_order')->nullable();
+            $t->string('domain_setting_enabled')->nullable();
+            $t->string('domain_setting_description')->nullable();
+        });
+        VoxraRoutingState::save(self::VOXRA_DOMAIN, $state);
+    }
+
+    public function test_a_tenant_without_sector_tools_gets_no_property_tools(): void
+    {
+        $this->withRoutingState(['mode' => VoxraRoutingState::MODE_PRO]);
+        $names = $this->names($this->syncedTools($this->agent(self::VOXRA_DOMAIN)));
+
+        $this->assertSame(array_merge(self::RECEPTION_WEBHOOK_TOOLS, ['transfer', 'hangup']), $names);
+        $this->assertEmpty(array_intersect(self::PROPERTY_TOOLS, $names));
+    }
+
+    public function test_an_estate_agent_gets_the_property_tools_from_voxraweb(): void
+    {
+        $this->withRoutingState(['mode' => VoxraRoutingState::MODE_PRO, 'sector_tools' => 'estate_agent']);
+        $tools = $this->syncedTools($this->agent(self::VOXRA_DOMAIN));
+
+        $this->assertSame(
+            array_merge(self::RECEPTION_WEBHOOK_TOOLS, self::PROPERTY_TOOLS, ['transfer', 'hangup']),
+            $this->names($tools)
+        );
+        foreach ($tools as $t) {
+            if ($t['type'] === 'webhook' && in_array($t['webhook']['name'], self::PROPERTY_TOOLS, true)) {
+                $this->assertSame('https://voxra.test/api/agent/tool', $t['webhook']['url'], $t['webhook']['name']);
+            }
+        }
+    }
+
+    public function test_summon_agents_never_get_the_property_tools(): void
+    {
+        $names = $this->names($this->syncedTools($this->agent(self::PBX_DOMAIN)));
+
+        $this->assertEmpty(array_intersect(self::PROPERTY_TOOLS, $names));
+    }
+
+    public function test_property_tools_are_voxraweb_data_tools_with_the_agreed_contract(): void
+    {
+        $this->assertSame(self::PROPERTY_TOOLS, ReceptionAgentToolDefinitions::PROPERTY_TOOLS);
+        foreach (self::PROPERTY_TOOLS as $name) {
+            $this->assertTrue(ReceptionAgentToolDefinitions::isDataTool($name), $name);
+        }
+        $defs = collect(ReceptionAgentToolDefinitions::list([], self::PROPERTY_TOOLS))->keyBy('name');
+        $this->assertSame(self::PROPERTY_TOOLS, $defs->keys()->all());
+
+        $this->assertSame(['query'], $defs['find_property']['required']);
+        $this->assertSame(['query', 'channel', 'beds'], array_keys($defs['find_property']['properties']));
+        $this->assertSame(['sale', 'let'], $defs['find_property']['properties']['channel']['enum']);
+        $this->assertSame(['property'], $defs['send_property_details']['required']);
+        $this->assertSame(['property', 'email'], array_keys($defs['send_property_details']['properties']));
+        $this->assertSame(['property', 'amount'], $defs['record_offer']['required']);
+        $this->assertSame(['property', 'amount', 'buyer_name', 'position', 'conditions'], array_keys($defs['record_offer']['properties']));
+        $this->assertStringContainsString('Never negotiate', $defs['record_offer']['description']);
+        $this->assertStringContainsString('rental bidding', $defs['record_offer']['description']);
+        $this->assertSame(['property', 'feedback', 'interest'], $defs['record_viewing_feedback']['required']);
+        $this->assertSame(
+            ['offer', 'second_viewing', 'interested', 'not_interested', 'undecided'],
+            $defs['record_viewing_feedback']['properties']['interest']['enum']
+        );
+    }
+
+    public function test_capture_lead_takes_an_optional_intent_and_property(): void
+    {
+        $def = collect(ReceptionAgentToolDefinitions::list([]))->firstWhere('name', 'capture_lead');
+
+        $this->assertSame(['job_description'], $def['required']);
+        $this->assertSame(
+            ['valuation', 'viewing', 'register', 'offer', 'progress', 'repair_emergency', 'repair', 'landlord', 'complaint', 'other'],
+            $def['properties']['intent']['enum']
+        );
+        $this->assertSame('string', $def['properties']['property']['type']);
+    }
+
+    public function test_sector_tools_input_keeps_the_stored_choice_and_defaults_to_none(): void
+    {
+        $r = fn (?string $req, array $prev) => ReceptionAgentToolDefinitions::resolveSectorTools($req, $prev);
+
+        $this->assertSame('none', $r(null, []));
+        $this->assertSame('estate_agent', $r('estate_agent', []));
+        $this->assertSame('estate_agent', $r(null, ['sector_tools' => 'estate_agent']));
+        $this->assertSame('none', $r('none', ['sector_tools' => 'estate_agent']));
+        // Unknown → the stored choice (never fails the provision call).
+        $this->assertSame('estate_agent', $r('plumber', ['sector_tools' => 'estate_agent']));
+        $this->assertSame('none', $r('plumber', []));
+    }
+
+    public function test_prompt_follows_sector_rules_from_the_caller_context(): void
+    {
+        $p = ProvisionTenantController::RECEPTION_SYSTEM_PROMPT;
+
+        $this->assertStringContainsString('## Business-type rules', $p);
+        $this->assertStringContainsString('"SECTOR RULES"', $p);
+        $this->assertStringContainsString('except the abuse and safety rules', $p);
+        $this->assertLessThan(strpos($p, '## Speaking and ending the call'), strpos($p, '## Business-type rules'));
     }
 }
