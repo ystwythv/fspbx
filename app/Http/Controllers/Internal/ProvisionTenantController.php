@@ -772,6 +772,10 @@ PROMPT;
         return self::UK_VOICE;
     }
 
+    /** The receptionist's language model on Telnyx (Peter, 22 Oct 2026: GLM-5.3-Flash,
+     *  was Kimi K2.6). Existing agents: voxra:resync-reception-agents --model=. */
+    public const RECEPTION_MODEL = 'zai-org/GLM-5.3-Flash';
+
     /** Upsert inputs for the reception agent (agent_enabled is stored as the
      *  strings 'true'/'false' — FusionPBX toggle convention). */
     public function receptionAgentInputs(string $businessName, bool $agentEnabled, ?string $voiceId = null): array
@@ -779,7 +783,7 @@ PROMPT;
         return [
             'agent_name'      => $businessName . ' Reception',
             'provider'        => 'telnyx',
-            'model'           => 'moonshotai/Kimi-K2.6',
+            'model'           => self::RECEPTION_MODEL,
             'telnyx_voice_id' => $voiceId ?: self::UK_VOICE,
             'system_prompt'   => self::RECEPTION_SYSTEM_PROMPT,
             'feature_code'    => '*9',

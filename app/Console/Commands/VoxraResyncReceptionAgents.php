@@ -23,12 +23,16 @@ use Illuminate\Console\Command;
  *   php artisan voxra:resync-reception-agents --dry-run
  *   php artisan voxra:resync-reception-agents
  *   php artisan voxra:resync-reception-agents --tenant=<voxraweb tenant id>
+ *   php artisan voxra:resync-reception-agents --model=zai-org/GLM-5.3-Flash
+ *       (also moves each agent onto that language model; stored on the agent,
+ *       so later syncs keep it)
  */
 class VoxraResyncReceptionAgents extends Command
 {
     protected $signature = 'voxra:resync-reception-agents
         {--tenant= : Only this voxraweb tenant id}
-        {--dry-run : List the assistants that would be updated}';
+        {--dry-run : List the assistants that would be updated}
+        {--model= : Also set each agent\'s language model, e.g. zai-org/GLM-5.3-Flash}';
 
     protected $description = 'Re-sync Voxra reception assistants (prompt + tools) to Telnyx';
 
@@ -46,13 +50,18 @@ class VoxraResyncReceptionAgents extends Command
             if (!$agent || $agent->provider !== AiAgent::PROVIDER_TELNYX || !$agent->telnyx_assistant_id) {
                 continue;
             }
-            $this->line(sprintf('%s  %s  %s', $domain->domain_name, $agent->telnyx_assistant_id, $domain->domain_description));
+            $model = trim((string) $this->option('model'));
+            $this->line(sprintf('%s  %s  %s  %s%s', $domain->domain_name, $agent->telnyx_assistant_id, $domain->domain_description,
+                $agent->model, $model !== '' && $model !== $agent->model ? ' -> ' . $model : ''));
             if ($this->option('dry-run')) {
                 continue;
             }
 
             try {
                 $agent->system_prompt = ProvisionTenantController::RECEPTION_SYSTEM_PROMPT;
+                if ($model !== '') {
+                    $agent->model = $model;
+                }
                 $agent->save();
 
                 $provider = $registry->resolve(AiAgent::PROVIDER_TELNYX);
