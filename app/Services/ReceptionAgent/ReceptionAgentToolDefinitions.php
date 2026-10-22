@@ -246,6 +246,24 @@ class ReceptionAgentToolDefinitions
                 ],
                 'required' => ['question', 'topic'],
             ],
+            [
+                'name' => 'search_memory',
+                'description' => 'Search everything you know about this business and its customers for anything relevant to a question — past jobs, quotes, preferences, policies. Use it when the structured context does not obviously cover what the caller is asking.',
+                'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'What to look up, in a few words'],
+                ],
+                'required' => ['query'],
+            ],
+            [
+                'name' => 'send_payment_link',
+                'description' => 'Text the caller a secure card-payment link for a deposit or upfront payment (their business Stripe). Confirm the amount out loud first. Only use when the business takes deposits and the caller agrees.',
+                'properties' => [
+                    // Bounds mirror voxraweb's server-side £1–£5000 validation.
+                    'amount_pounds' => ['type' => 'number', 'description' => 'Amount in pounds, e.g. 40 for £40', 'minimum' => 1, 'maximum' => 5000],
+                    'description' => ['type' => 'string', 'description' => 'What the payment is for, shown on the payment page'],
+                ],
+                'required' => ['amount_pounds', 'description'],
+            ],
             // Estate and letting agents (voxragtm#256/#257): the agency's
             // listings, details packs, offers and viewing feedback. Only in
             // the allowlist for a domain provisioned with
@@ -290,24 +308,6 @@ class ReceptionAgentToolDefinitions
                     'interest' => ['type' => 'string', 'enum' => ['offer', 'second_viewing', 'interested', 'not_interested', 'undecided'], 'description' => 'Where they stand now'],
                 ],
                 'required' => ['property', 'feedback', 'interest'],
-            ],
-            [
-                'name' => 'search_memory',
-                'description' => 'Search everything you know about this business and its customers for anything relevant to a question — past jobs, quotes, preferences, policies. Use it when the structured context does not obviously cover what the caller is asking.',
-                'properties' => [
-                    'query' => ['type' => 'string', 'description' => 'What to look up, in a few words'],
-                ],
-                'required' => ['query'],
-            ],
-            [
-                'name' => 'send_payment_link',
-                'description' => 'Text the caller a secure card-payment link for a deposit or upfront payment (their business Stripe). Confirm the amount out loud first. Only use when the business takes deposits and the caller agrees.',
-                'properties' => [
-                    // Bounds mirror voxraweb's server-side £1–£5000 validation.
-                    'amount_pounds' => ['type' => 'number', 'description' => 'Amount in pounds, e.g. 40 for £40', 'minimum' => 1, 'maximum' => 5000],
-                    'description' => ['type' => 'string', 'description' => 'What the payment is for, shown on the payment page'],
-                ],
-                'required' => ['amount_pounds', 'description'],
             ],
             [
                 'name' => 'take_notes',

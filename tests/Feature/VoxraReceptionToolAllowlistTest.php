@@ -136,7 +136,11 @@ class VoxraReceptionToolAllowlistTest extends TestCase
     public function test_allowlist_matches_the_voxraweb_data_tools(): void
     {
         $this->assertSame(self::RECEPTION_WEBHOOK_TOOLS, ReceptionAgentToolDefinitions::VOXRA_RECEPTION_TOOLS);
-        $this->assertEqualsCanonicalizing(ReceptionAgentToolDefinitions::DATA_TOOLS, ReceptionAgentToolDefinitions::VOXRA_RECEPTION_TOOLS);
+        // Estate agents' property tools (voxragtm#256) are data tools too.
+        $this->assertEqualsCanonicalizing(
+            ReceptionAgentToolDefinitions::DATA_TOOLS,
+            array_merge(ReceptionAgentToolDefinitions::VOXRA_RECEPTION_TOOLS, ReceptionAgentToolDefinitions::PROPERTY_TOOLS)
+        );
         // Every allowlisted name is a real tool definition.
         $defined = array_column(ReceptionAgentToolDefinitions::list([]), 'name');
         $this->assertEmpty(array_diff(ReceptionAgentToolDefinitions::VOXRA_RECEPTION_TOOLS, $defined));
