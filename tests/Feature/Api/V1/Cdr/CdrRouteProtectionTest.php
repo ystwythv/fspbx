@@ -41,6 +41,12 @@ class CdrRouteProtectionTest extends TestCase
             ->assertStatus(401);
     }
 
+    public function test_routing_targets_require_authentication(): void
+    {
+        $this->getJson('/api/v1/routing-targets?domain_uuid=' . self::DOMAIN)
+            ->assertStatus(401);
+    }
+
     public function test_admin_token_list_requires_authentication(): void
     {
         $this->getJson('/api/v1/admin/api-tokens')
