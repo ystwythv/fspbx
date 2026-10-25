@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\PresenceController;
 use App\Http\Controllers\Api\V1\RingGroupController;
 use App\Http\Controllers\Api\V1\VoicemailController;
 use App\Http\Controllers\Api\V1\PhoneNumberController;
+use App\Http\Controllers\Api\V1\RoutingTargetController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\AiAgentController;
 use App\Http\Controllers\Api\V1\CallFlowSimulationController;
@@ -111,6 +112,16 @@ Route::middleware(['auth:sanctum', 'api.token.auth', 'throttle:api'])->group(fun
 
     Route::delete('/domains/{domain_uuid}/ring-groups/{ring_group_uuid}', [RingGroupController::class, 'destroy'])
         ->middleware('user.authorize:ring_group_delete');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Routing targets — extensions, ring groups and AI agents of many domains
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware(['cdr.scope:global', 'user.authorize:extension_all', 'user.authorize:ring_group_all'])->group(function () {
+        Route::get('/routing-targets', [RoutingTargetController::class, 'index'])
+            ->name('api.v1.routing-targets.index');
+    });
 
     /*
     |--------------------------------------------------------------------------
