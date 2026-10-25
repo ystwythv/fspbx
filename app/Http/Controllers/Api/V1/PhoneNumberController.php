@@ -160,7 +160,8 @@ class PhoneNumberController extends Controller
      * Find phone numbers across all domains
      *
      * Returns every phone number (inbound destination) in any domain whose
-     * `destination_number` is exactly one of the given values. One call in
+     * `destination_number`, with anything but digits removed, is exactly one
+     * of the given values. One call in
      * place of listing each domain: iqportal checks a number is not routed
      * anywhere else before it adds it, and a partner with 57 domains took 57
      * calls to do that (iqportal#1314).
@@ -214,8 +215,12 @@ class PhoneNumberController extends Controller
         }
 
         $limit = 100;
+        // Compare digits only: some rows are stored as "+447940827078".
         $rows = Destinations::query()
-            ->whereIn('destination_number', $numbers)
+            ->whereRaw(
+                "regexp_replace(destination_number, '[^0-9]', '', 'g') in (" . implode(',', array_fill(0, \count($numbers), '?')) . ')',
+                $numbers,
+            )
             ->orderBy('destination_uuid')
             ->limit($limit + 1)
             ->get([
