@@ -157,6 +157,103 @@ class PhoneNumberController extends Controller
     }
 
     /**
+     * Find phone numbers across all domains
+     *
+     * Returns every phone number (inbound destination) in any domain whose
+     * `destination_number`, with anything but digits removed, is exactly one
+     * of the given values. One call in
+     * place of listing each domain: iqportal checks a number is not routed
+     * anywhere else before it adds it, and a partner with 57 domains took 57
+     * calls to do that (iqportal#1314).
+     *
+     * Access rules:
+     * - Global token only (a domain-scoped token gets 403).
+     * - Caller must have the `destination_all` permission.
+     *
+     * Example:
+     * - `GET /api/v1/phone-numbers?destination_number=2033932915,442033932915,02033932915`
+     *
+     * @group Phone Numbers
+     * @authenticated
+     *
+     * @queryParam destination_number string required Comma-separated digits, up to 10 values. Example: 2033932915,442033932915
+     *
+     * @response 200 scenario="Success" {
+     *   "object": "list",
+     *   "url": "/api/v1/phone-numbers",
+     *   "has_more": false,
+     *   "data": [
+     *     {
+     *       "destination_uuid": "c0ec8113-aa15-40ac-8437-47185dd9dcf4",
+     *       "object": "phone_number",
+     *       "domain_uuid": "4018f7a3-8e0a-47bb-9f4f-04b1313e0e1b",
+     *       "destination_prefix": "44",
+     *       "destination_number": "2033932915",
+     *       "destination_enabled": true,
+     *       "destination_description": null
+     *     }
+     *   ]
+     * }
+     *
+     * @response 400 scenario="Missing or invalid destination_number" {"error":{"type":"invalid_request_error","message":"destination_number must be 1 to 10 comma-separated numbers of 3 to 20 digits.","code":"invalid_request","param":"destination_number"}}
+     * @response 403 scenario="Domain-scoped token" {"error":{"type":"invalid_request_error","message":"This endpoint requires a global admin token.","code":"forbidden_scope"}}
+     */
+    public function globalIndex(Request $request)
+    {
+        $numbers = array_values(array_unique(array_filter(
+            array_map('trim', explode(',', (string) $request->input('destination_number', ''))),
+            static fn (string $n): bool => $n !== '',
+        )));
+        $valid = $numbers !== [] && \count($numbers) <= 10;
+        foreach ($numbers as $n) {
+            if (! preg_match('/^\d{3,20}$/', $n)) {
+                $valid = false;
+            }
+        }
+        if (! $valid) {
+            throw new ApiException(400, 'invalid_request_error', 'destination_number must be 1 to 10 comma-separated numbers of 3 to 20 digits.', 'invalid_request', 'destination_number');
+        }
+
+        $limit = 100;
+        // Compare digits only: some rows are stored as "+447940827078".
+        $rows = Destinations::query()
+            ->whereRaw(
+                "regexp_replace(destination_number, '[^0-9]', '', 'g') in (" . implode(',', array_fill(0, \count($numbers), '?')) . ')',
+                $numbers,
+            )
+            ->orderBy('destination_uuid')
+            ->limit($limit + 1)
+            ->get([
+                'destination_uuid',
+                'domain_uuid',
+                'destination_number',
+                'destination_prefix',
+                'destination_enabled',
+                'destination_description',
+            ]);
+        $hasMore = $rows->count() > $limit;
+
+        $data = $rows->take($limit)->map(fn ($d) => new PhoneNumberData(
+            destination_uuid: (string) $d->destination_uuid,
+            object: 'phone_number',
+            domain_uuid: (string) $d->domain_uuid,
+            destination_number: $d->destination_number !== null ? (string) $d->destination_number : null,
+            destination_prefix: $d->destination_prefix !== null ? (string) $d->destination_prefix : null,
+            destination_enabled: $d->destination_enabled === null || $d->destination_enabled === ''
+                ? null
+                : \in_array(strtolower(trim((string) $d->destination_enabled)), ['true', 't', '1', 'yes', 'y', 'on'], true),
+            destination_description: $d->destination_description,
+        ))->values();
+
+        return response()->json([
+            'object' => 'list',
+            'url' => '/api/v1/phone-numbers',
+            'has_more' => $hasMore,
+            'data' => $data,
+        ], 200);
+    }
+
+    /**
      * Retrieve  phone number
      *
      * Returns a single phone number for the specified domain the caller is allowed to access.

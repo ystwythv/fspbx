@@ -114,6 +114,17 @@ Route::middleware(['auth:sanctum', 'api.token.auth', 'throttle:api'])->group(fun
 
     /*
     |--------------------------------------------------------------------------
+    | Phone Numbers — global (cross-domain) lookup by number
+    |--------------------------------------------------------------------------
+    | `cdr.scope:global` rejects tenant tokens (the middleware name is historical).
+    */
+    Route::middleware(['cdr.scope:global', 'user.authorize:destination_all'])->group(function () {
+        Route::get('/phone-numbers', [PhoneNumberController::class, 'globalIndex'])
+            ->name('api.v1.phone-numbers.global.index');
+    });
+
+    /*
+    |--------------------------------------------------------------------------
     | Phone Numbers (domain-scoped)
     |--------------------------------------------------------------------------
     */
