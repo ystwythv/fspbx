@@ -35,6 +35,12 @@ class CdrRouteProtectionTest extends TestCase
             ->assertStatus(401);
     }
 
+    public function test_global_phone_number_lookup_requires_authentication(): void
+    {
+        $this->getJson('/api/v1/phone-numbers?destination_number=2033932915')
+            ->assertStatus(401);
+    }
+
     public function test_admin_token_list_requires_authentication(): void
     {
         $this->getJson('/api/v1/admin/api-tokens')
