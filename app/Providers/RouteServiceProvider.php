@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\ApiRateLimit;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
 use Illuminate\Http\Request;
@@ -59,8 +60,9 @@ class RouteServiceProvider extends ServiceProvider
      */
     protected function configureRateLimiting()
     {
+        // 60/min for customer tokens; superadmin (our own integrations) get more.
         RateLimiter::for('api', function (Request $request) {
-            return Limit::perMinute(60)->by(optional($request->user())->id ?: $request->ip());
+            return ApiRateLimit::forUser($request->user(), (string) $request->ip());
         });
 
         // Provisioning limiter
