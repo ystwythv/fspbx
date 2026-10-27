@@ -12,6 +12,7 @@ use App\Models\Voicemails;
 use App\Services\AgentFailoverService;
 use App\Services\ProvisionCompleteService;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -549,6 +550,51 @@ class ProvisionTenantCompleteModeTest extends TestCase
 
         $this->assertSame(1, Destinations::where('destination_number', '+447434181294')->count());
         Bus::assertDispatchedTimes(BuildDialplanForPhoneNumber::class, 1);
+    }
+
+    public function test_port_in_moves_the_route_to_the_new_number_and_adopts_a_hand_made_one(): void
+    {
+        // voxragtm#259 (Ecohights): the eSIM ported +447435845636 in over its
+        // temporary +447396054197, and staff had added a route by hand.
+        Schema::create('v_dialplans', function ($t) {
+            $t->string('dialplan_uuid')->primary();
+        });
+        Schema::create('v_dialplan_details', function ($t) {
+            $t->string('dialplan_detail_uuid')->primary();
+            $t->string('dialplan_uuid');
+        });
+        $svc = app(ProvisionCompleteService::class);
+        $svc->ensureMobileExtension($this->domain(), 'Acme');
+        $old = $svc->ensureMsisdnDestination($this->domain(), '+447396054197');
+        DB::table('v_dialplans')->insert(['dialplan_uuid' => $old->dialplan_uuid]);
+        DB::table('v_dialplan_details')->insert(['dialplan_detail_uuid' => 'dd-1', 'dialplan_uuid' => $old->dialplan_uuid]);
+        DB::table('v_destinations')->insert([
+            'destination_uuid'        => 'manual-1',
+            'domain_uuid'             => 'dom-uuid-1',
+            'dialplan_uuid'           => 'dp-manual-1',
+            'destination_type'        => 'inbound',
+            'destination_prefix'      => '44',
+            'destination_number'      => '7435845636',
+            'destination_context'     => 'public',
+            'destination_enabled'     => 'true',
+            'destination_description' => 'Post-port Inbound Route',
+        ]);
+
+        $dest = $svc->ensureMsisdnDestination($this->domain(), '+447435845636');
+
+        $this->assertSame('manual-1', $dest->destination_uuid);
+        $rows = Destinations::where('domain_uuid', 'dom-uuid-1')->get();
+        $this->assertCount(1, $rows);
+        $this->assertSame('+447435845636', $rows[0]->destination_number);
+        $this->assertNull($rows[0]->destination_prefix);
+        $this->assertSame(ProvisionCompleteService::MSISDN_DESTINATION_DESCRIPTION, $rows[0]->destination_description);
+        $this->assertSame('+447435845636', $svc->currentMsisdn($this->domain()));
+        $this->assertSame(0, DB::table('v_dialplans')->where('dialplan_uuid', $old->dialplan_uuid)->count());
+        $this->assertSame(0, DB::table('v_dialplan_details')->count());
+
+        // Without a hand-made route the temporary number's row simply moves.
+        $svc->ensureMsisdnDestination($this->domain(), '+447000000001');
+        $this->assertSame(['+447000000001'], Destinations::where('domain_uuid', 'dom-uuid-1')->pluck('destination_number')->all());
     }
 
     public function test_sim_msisdn_is_never_confused_with_the_reception_did(): void
