@@ -210,11 +210,14 @@ class StorePhoneNumberRequest extends FormRequest
         // Trim whitespace
         $input = trim($input);
 
+        // Undo HTML escaping from earlier saves ("&amp;" -> "&") before
+        // stripping tags. The value is stored as plain text: Vue and the
+        // FusionPBX pages escape it on output. Escaping it here too showed
+        // "&amp;" in the form and added another "amp;" on every save.
+        $input = html_entity_decode($input, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
         // Strip HTML tags
         $input = strip_tags($input);
-
-        // Escape special characters
-        $input = htmlspecialchars($input, ENT_QUOTES, 'UTF-8');
 
         // Remove any non-ASCII characters if necessary (optional)
         $input = preg_replace('/[^\x20-\x7E]/', '', $input);

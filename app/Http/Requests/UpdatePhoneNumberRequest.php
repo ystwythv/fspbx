@@ -6,6 +6,7 @@ use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Auth;
+use App\Models\Destinations;
 use Illuminate\Validation\Rule;
 use libphonenumber\NumberParseException;
 use Propaganistas\LaravelPhone\PhoneNumber;
@@ -24,15 +25,32 @@ class UpdatePhoneNumberRequest extends FormRequest
 
     public function rules(): array
     {
+        // voxragtm#259: the edit form shows Country Code and Phone Number as
+        // editable fields and always sends them, but these rules used to be
+        // commented out, so validated() dropped them and the save silently
+        // kept the old number while the UI said it was saved. The upstream
+        // unique rule ignored $this->get('destination_uuid'), which the form
+        // never sends, so it would have failed on every save; that is
+        // probably why it was commented out. The record comes from the
+        // {phone_number} route binding instead, and the unique check only
+        // runs when the number really changes, so an existing duplicate
+        // elsewhere never blocks saving other fields.
+        $current = $this->route('phone_number');
+        $numberRules = ['sometimes', 'required', 'string', 'regex:/^\+?\d+$/'];
+        if ($current instanceof Destinations
+            && (string) $this->input('destination_number') !== (string) $current->destination_number) {
+            $numberRules[] = Rule::unique('v_destinations', 'destination_number')
+                ->ignore($current->destination_uuid, 'destination_uuid');
+        }
+
         return [
-            // 'destination_number' => [
-            //     'required',
-            //     Rule::unique('App\Models\Destinations', 'destination_number')
-            //         ->ignore($this->get('destination_uuid'), 'destination_uuid')
-            // ],
-            // 'destination_prefix' => [
-            //     'nullable'
-            // ],
+            'destination_number' => $numberRules,
+            'destination_prefix' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'regex:/^\d{1,5}$/',
+            ],
             'destination_accountcode' => [
                 'nullable',
                 'string',
@@ -165,6 +183,20 @@ class UpdatePhoneNumberRequest extends FormRequest
             $this->merge(['domain_uuid' => session('domain_uuid')]);
         }
 
+        // Phone number and country code: drop spaces, dashes, dots and
+        // brackets people type or paste ("+44 7435 845636"). The country
+        // code is digits only, because the destination_number_regex built
+        // from it would break on a "+".
+        if ($this->has('destination_number') && $this->destination_number !== null) {
+            $this->merge([
+                'destination_number' => preg_replace('/[\s\-\.\(\)]+/', '', (string) $this->destination_number),
+            ]);
+        }
+        if ($this->has('destination_prefix') && $this->destination_prefix !== null) {
+            $prefix = preg_replace('/\D+/', '', (string) $this->destination_prefix);
+            $this->merge(['destination_prefix' => $prefix === '' ? null : $prefix]);
+        }
+
         // Sanitize description
         if ($this->has('destination_description') && $this->destination_description) {
             $sanitizedDescription = $this->sanitizeInput($this->destination_description);
@@ -183,11 +215,14 @@ class UpdatePhoneNumberRequest extends FormRequest
         // Trim whitespace
         $input = trim($input);
 
+        // Undo HTML escaping from earlier saves ("&amp;" -> "&") before
+        // stripping tags. The value is stored as plain text: Vue and the
+        // FusionPBX pages escape it on output. Escaping it here too showed
+        // "&amp;" in the form and added another "amp;" on every save.
+        $input = html_entity_decode($input, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
         // Strip HTML tags
         $input = strip_tags($input);
-
-        // Escape special characters
-        $input = htmlspecialchars($input, ENT_QUOTES, 'UTF-8');
 
         // Remove any non-ASCII characters if necessary (optional)
         $input = preg_replace('/[^\x20-\x7E]/', '', $input);
