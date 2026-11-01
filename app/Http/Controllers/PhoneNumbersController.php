@@ -693,7 +693,15 @@ public function importCommit(Request $request)
             // Assign the formatted actions to the destination_actions field
             $data['destination_actions'] = json_encode($destination_actions);
 
+            // Keep the old number so its FreeSWITCH dialplan cache entry can
+            // be cleared if the number or country code changes (voxragtm#259).
+            $before = $phone_number->replicate();
+
             $phone_number->update($data);
+
+            if ($phone_number->wasChanged(['destination_number', 'destination_prefix'])) {
+                (new DialplanBuilderService())->clearCacheForPhoneNumber($before);
+            }
 
             // $this->generateDialPlanXML($phone_number);
             dispatch(new \App\Jobs\BuildDialplanForPhoneNumber($phone_number->destination_uuid, session('domain_name')));
