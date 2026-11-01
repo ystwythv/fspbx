@@ -2,11 +2,14 @@
 
 namespace App\Services;
 
+use App\Models\DialplanDetails;
+use App\Models\Dialplans;
 use App\Models\Destinations;
 use App\Models\Domain;
 use App\Models\Extensions;
 use App\Models\FusionCache;
 use App\Models\Voicemails;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 /**
@@ -249,7 +252,13 @@ class ProvisionCompleteService
      * reseller peering gateway (sip-in.voxra.uk:5080 → public context), so
      * without this row a call to the mobile number never reaches the PBX
      * (and never gets the agent failover). Same +E.164 convention as the
-     * Voxra reception DID rows. Idempotent: keyed on marker + number.
+     * Voxra reception DID rows. Idempotent.
+     *
+     * The domain keeps ONE such row (voxragtm#259). When the eSIM's number
+     * changes (a mobile port-in replaces the temporary MSISDN) the row moves
+     * to the new number; a row staff already made for the new number by hand
+     * is adopted instead of duplicated, and the old number's row goes — the
+     * network releases a temporary MSISDN after a port.
      */
     public function ensureMsisdnDestination(Domain $domain, string $msisdn): ?Destinations
     {
@@ -269,11 +278,15 @@ class ProvisionCompleteService
             $domain->domain_name,
         )]);
 
-        $dest = Destinations::where('domain_uuid', $domain->domain_uuid)
+        $rows = Destinations::where('domain_uuid', $domain->domain_uuid)
             ->where('destination_type', 'inbound')
-            ->where('destination_description', self::MSISDN_DESTINATION_DESCRIPTION)
-            ->where('destination_number', $number)
-            ->first();
+            ->orderByDesc('insert_date')
+            ->get();
+        ['keep' => $dest, 'delete' => $stale] = self::planMsisdnDestination($rows, $digits);
+
+        foreach ($stale as $old) {
+            $this->deleteDestination($old);
+        }
 
         if (! $dest) {
             $dest = new Destinations();
@@ -282,22 +295,90 @@ class ProvisionCompleteService
                 'domain_uuid'             => $domain->domain_uuid,
                 'dialplan_uuid'           => (string) Str::uuid(),
                 'destination_type'        => 'inbound',
-                'destination_number'      => $number,
                 'destination_context'     => 'public',
-                'destination_description' => self::MSISDN_DESTINATION_DESCRIPTION,
             ]);
             $dest->insert_date = date('Y-m-d H:i:s');
-        } elseif ($dest->destination_actions === $actions && (string) $dest->destination_enabled === '1') {
+        } elseif ($dest->destination_number === $number
+            && $dest->destination_description === self::MSISDN_DESTINATION_DESCRIPTION
+            && $dest->destination_actions === $actions
+            && (string) $dest->destination_enabled === '1') {
             return $dest; // unchanged — no dialplan rebuild
         }
 
-        $dest->destination_actions = $actions;
-        $dest->destination_enabled = true;
+        $oldNumber = $dest->exists ? (clone $dest) : null;
+        $dest->destination_number      = $number;
+        $dest->destination_description = self::MSISDN_DESTINATION_DESCRIPTION;
+        $dest->destination_actions     = $actions;
+        $dest->destination_enabled     = true;
+        // An adopted hand-made row may hold 44 + national digits; the marker
+        // convention is the bare +E.164 number (currentMsisdn() reads it).
+        $dest->destination_prefix       = null;
+        $dest->destination_trunk_prefix = null;
+        $dest->destination_area_code    = null;
         $dest->save();
 
+        if ($oldNumber && $oldNumber->destination_number !== $number) {
+            app(DialplanBuilderService::class)->clearCacheForPhoneNumber($oldNumber);
+        }
         dispatch(new \App\Jobs\BuildDialplanForPhoneNumber($dest->destination_uuid, $domain->domain_name));
 
         return $dest;
+    }
+
+    /**
+     * Which inbound row should carry the eSIM's number (digits without '+'),
+     * and which rows must go. Keep, in order of preference: the marker row
+     * already on the number; any other row on the number (staff's hand-made
+     * route); the newest marker row (the pre-port number, re-pointed). Delete
+     * every other marker row and every other row on the number, so the
+     * number never has two dialplans. Rows for other numbers are untouched.
+     *
+     * @param  Collection<int, Destinations>  $rows  the domain's inbound rows, newest first
+     * @return array{keep: ?Destinations, delete: list<Destinations>}
+     */
+    public static function planMsisdnDestination(Collection $rows, string $digits): array
+    {
+        $isMarker = fn (Destinations $d) => $d->destination_description === self::MSISDN_DESTINATION_DESCRIPTION;
+        $onNumber = fn (Destinations $d) => self::isSameNumber($d, $digits);
+
+        $keep = $rows->first(fn ($d) => $isMarker($d) && $onNumber($d))
+            ?? $rows->first($onNumber)
+            ?? $rows->first($isMarker);
+
+        $delete = $rows
+            ->filter(fn ($d) => $d !== $keep && ($isMarker($d) || $onNumber($d)))
+            ->values()
+            ->all();
+
+        return ['keep' => $keep, 'delete' => $delete];
+    }
+
+    /**
+     * Does the row route $digits (E.164 digits)? Rows come as "+447…",
+     * "447…", national "07…", or iqportal's prefix 44 + "7…" without the 0.
+     */
+    public static function isSameNumber(Destinations $row, string $digits): bool
+    {
+        $national = ltrim((string) preg_replace('/\D/', '', (string) $row->destination_number), '0');
+        if (strlen($national) < 9) {
+            return false;
+        }
+        if ($national === $digits) {
+            return true;
+        }
+        // National significant number: the E.164 digits after the country code.
+        return str_ends_with($digits, $national) && strlen($digits) - strlen($national) <= 3;
+    }
+
+    /** Remove a destination and its dialplan, as the phone-number API's destroy does. */
+    private function deleteDestination(Destinations $dest): void
+    {
+        if (! empty($dest->dialplan_uuid)) {
+            DialplanDetails::where('dialplan_uuid', $dest->dialplan_uuid)->delete();
+            Dialplans::where('dialplan_uuid', $dest->dialplan_uuid)->delete();
+        }
+        $dest->delete();
+        app(DialplanBuilderService::class)->clearCacheForPhoneNumber($dest);
     }
 
     /** Digits of an E.164 number (10-15 digits after the '+'), or null. */
