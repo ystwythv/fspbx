@@ -125,6 +125,11 @@ Route::post('/internal/voxra/purge-media', [
     \App\Http\Controllers\Internal\VoxraPurgeMediaController::class, 'purge',
 ])->middleware(\App\Http\Middleware\VerifyVoxraInternalSignature::class);
 
+// voxraweb → delete a closed tenant's PBX domain once its numbers are released (voxragtm#173).
+Route::post('/internal/voxra/delete-tenant', [
+    \App\Http\Controllers\Internal\VoxraDeleteTenantController::class, 'delete',
+])->middleware(\App\Http\Middleware\VerifyVoxraInternalSignature::class);
+
 // ElevenLabs Conversational AI tool callbacks (transfer, lookup_user, etc).
 Route::post('/webhooks/voxra/reception-agent/tool', [
     \App\Http\Controllers\Webhooks\ReceptionAgentToolController::class, 'handle',
