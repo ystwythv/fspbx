@@ -93,6 +93,8 @@ class ReceptionAgentSummonService
             $token = (string) random_int(1000000000, 1999999999);
             $vars['origination_caller_id_number'] = $token;
             Redis::setex(self::SESSION_KEY_PREFIX . 'telnyxtoken:' . $token, self::SESSION_TTL_SECONDS, $conversationId);
+            // Offer Telnyx wideband first (16 kHz); G.711 stays as the fallback.
+            $vars['absolute_codec_string'] = 'G722,PCMU,PCMA';
         }
 
         $this->esl->originate(

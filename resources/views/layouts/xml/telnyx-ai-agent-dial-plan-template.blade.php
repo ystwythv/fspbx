@@ -7,7 +7,7 @@
         {{-- a failed bridge hangs the channel up by default; needed so the
              SIP-attach bridge can fall through to the subdomain bridge --}}
         <action application="set" data="continue_on_fail=true" />
-        <action application="set" data="absolute_codec_string=PCMU,PCMA" />
+        <action application="set" data="absolute_codec_string=G722,PCMU,PCMA" />
         <action application="set" data="ringback=$${uk-ring}" />
         <action application="set" data="transfer_ringback=$${uk-ring}" />
         <action application="set" data="ignore_early_media=true" />
@@ -17,8 +17,8 @@
              Falls through to the public assistant subdomain if unregistered.
              NB: "@" must stay inside the echo — a literal "@{{" is Blade's
              escape syntax and renders the braces verbatim. --}}
-        <action application="bridge" data="user/{{ $agent->telnyx_attach_extension . '@' . $attach_domain }}" />
+        <action application="bridge" data="{absolute_codec_string='G722,PCMU,PCMA'}user/{{ $agent->telnyx_attach_extension . '@' . $attach_domain }}" />
 @endif
-        <action application="bridge" data="sofia/external/sip:{{ 'agent@' . $agent->telnyx_assistant_id }}.sip.telnyx.com" />
+        <action application="bridge" data="{absolute_codec_string='G722,PCMU,PCMA'}sofia/external/sip:{{ 'agent@' . $agent->telnyx_assistant_id }}.sip.telnyx.com" />
     </condition>
 </extension>
