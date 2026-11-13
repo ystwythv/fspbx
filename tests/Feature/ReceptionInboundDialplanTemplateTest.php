@@ -66,4 +66,20 @@ class ReceptionInboundDialplanTemplateTest extends TestCase
         $this->assertSame(['hangup', 'NO_ANSWER'], $last);
         $this->assertGreaterThan(max($telnyx), array_key_last($actions));
     }
+
+    public function test_offers_telnyx_g722_wideband_first_with_g711_fallback(): void
+    {
+        $xml = $this->render();
+
+        $doc = simplexml_load_string($xml);
+        $bridges = 0;
+        foreach ($doc->condition->action as $a) {
+            if ((string) $a['application'] === 'bridge') {
+                // Set on the leg itself, or FreeSWITCH puts the caller's PCMA/PCMU first.
+                $this->assertStringStartsWith("{absolute_codec_string='G722,PCMU,PCMA',", (string) $a['data']);
+                $bridges++;
+            }
+        }
+        $this->assertGreaterThan(0, $bridges);
+    }
 }

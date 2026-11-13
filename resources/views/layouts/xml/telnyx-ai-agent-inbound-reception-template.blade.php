@@ -9,7 +9,7 @@
         <action application="set" data="hangup_after_bridge=true" />
         {{-- a failed SIP-attach bridge must fall through to the subdomain bridge --}}
         <action application="set" data="continue_on_fail=true" />
-        <action application="set" data="absolute_codec_string=PCMU,PCMA" />
+        <action application="set" data="absolute_codec_string=G722,PCMU,PCMA" />
         <action application="set" data="ringback=$${uk-ring}" />
         <action application="set" data="transfer_ringback=$${uk-ring}" />
         <action application="set" data="ignore_early_media=true" />
@@ -24,21 +24,24 @@
         <action application="set" data="voxra_conversation_id=${uuid}" />
         <action application="set" data="voxra_caller_number=${caller_id_number}" />
 @php
-    $voxraHeaders = '{sip_h_X-Voxra-Conversation-Id=${uuid},sip_h_X-Voxra-Domain-Uuid=' . $agent->domain_uuid . ',sip_h_X-Voxra-Caller-Number=${caller_id_number}}';
+    // Codecs on the Telnyx leg itself: a dialplan-level absolute_codec_string
+    // still gets the caller's codec (PCMA/PCMU off the PSTN) put ahead of G722,
+    // and Telnyx answers with the first codec offered.
+    $voxraHeaders = '{absolute_codec_string=\'G722,PCMU,PCMA\',sip_h_X-Voxra-Conversation-Id=${uuid},sip_h_X-Voxra-Domain-Uuid=' . $agent->domain_uuid . ',sip_h_X-Voxra-Caller-Number=${caller_id_number}}';
 @endphp
 @if (!empty($agent->telnyx_attach_extension) && !empty($attach_domain))
         {{-- SIP attach: Telnyx registers this extension into the attach domain.
              Falls through to the public assistant subdomain if unregistered. --}}
-        <action application="bridge" data="{{ $voxraHeaders }}user/{{ $agent->telnyx_attach_extension . '@' . $attach_domain }}" />
+        <action application="bridge" data="{!! $voxraHeaders !!}user/{{ $agent->telnyx_attach_extension . '@' . $attach_domain }}" />
 @endif
         {{-- Telnyx normally answers the assistant leg in ~2 s. On 26 Sep
              06:53-07:20 UTC Telnyx's AI platform stalled session starts for
              16-40 s (or for good): 180 Ringing, then nothing, and callers sat
              in ringback until they gave up (voxragtm#153). Bound each attempt;
              a fresh INVITE starts a fresh Telnyx session, so retry once. --}}
-        <action application="bridge" data="{{ $voxraHeaders }}[leg_timeout={{ $telnyx_leg_timeout ?? 10 }}]sofia/external/sip:{{ 'agent@' . $agent->telnyx_assistant_id }}.sip.telnyx.com" />
+        <action application="bridge" data="{!! $voxraHeaders !!}[leg_timeout={{ $telnyx_leg_timeout ?? 10 }}]sofia/external/sip:{{ 'agent@' . $agent->telnyx_assistant_id }}.sip.telnyx.com" />
         <action application="log" data="WARNING Voxra: Telnyx assistant {{ $agent->telnyx_assistant_id }} did not answer (${originate_disposition}); retrying once" />
-        <action application="bridge" data="{{ $voxraHeaders }}[leg_timeout={{ $telnyx_leg_timeout ?? 10 }}]sofia/external/sip:{{ 'agent@' . $agent->telnyx_assistant_id }}.sip.telnyx.com" />
+        <action application="bridge" data="{!! $voxraHeaders !!}[leg_timeout={{ $telnyx_leg_timeout ?? 10 }}]sofia/external/sip:{{ 'agent@' . $agent->telnyx_assistant_id }}.sip.telnyx.com" />
 @if (!empty($voicemail_fallback) && !empty($domain_name))
         {{-- Line+AI (voxragtm#163): still no AI — the caller leaves a message
              in the tenant's voicemail box (branded greeting, transcribed,
