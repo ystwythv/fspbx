@@ -254,7 +254,7 @@ check("dialled the mobile number → answered before the bridge, full ring, then
 r = run({ user_data = complete_fwd, contacts = fmc_contact, vars = mobile_call })
 local b = find(r, "bridge")
 check("the owner answering is marked on the caller's leg (api_on_answer)",
-    b and b.data:match("^{sip_invite_domain=acme%.voxra%.uk,api_on_answer='uuid_setvar_multi call%-uuid%-1 voxra_owner_answered=true'}"), r)
+    b and b.data:match("^{sip_invite_domain=acme%.voxra%.uk,ignore_early_media=ring_ready,api_on_answer='uuid_setvar_multi call%-uuid%-1 voxra_owner_answered=true'}"), r)
 
 r = run({ user_data = complete_fwd, contacts = fmc_contact, bridge_cause = "NO_ANSWER",
     vars = { caller_destination = "+441162987910", call_timeout = "20" } })
@@ -302,7 +302,7 @@ check("press-1 on, landline call: confirm too (not answered early)",
 
 r = run({ user_data = complete_fwd, contacts = fmc_contact, vars = mobile_call })
 check("press-1 off: no confirm on the handset leg",
-    not find(r, "bridge").data:match("group_confirm") and not find(r, "bridge").data:match("ignore_early_media"), r)
+    not find(r, "bridge").data:match("group_confirm") and not find(r, "bridge").data:match("ignore_early_media=true"), r)
 
 -- Press-1 + owner-call recording (voxragtm#157 live test, 4 Oct): the handset
 -- answering (Live Voicemail) isn't the owner; mark and record only once the
@@ -330,6 +330,24 @@ r = run({ user_data = confirm_fwd, contacts = fmc_contact, bridge_answers = true
 check("press-1, no recording: the bridge hook still marks the owner answering",
     set_value(r, "bridge_pre_execute_aleg_data") == "bridge_pre_execute_aleg_data=lua/voxra_owner_bridged.lua"
         and not find(r, "bridge").data:match("api_on_answer"), r)
+
+-- The SIM carrier answers the FMC leg with a 183 + SDP but sends no audio
+-- until the handset answers, then a 180. Passing the 183 through left callers
+-- in silence (15 Nov 2026, 07477021770 → 07970030010); ring_ready turns it
+-- into a 180 so the caller's network plays ringing.
+r = run({ user_data = complete_fwd, contacts = fmc_contact, bridge_answers = true,
+    vars = { caller_destination = "+441162987910" } })
+check("fmc leg: early media becomes ringing for the caller (ignore_early_media=ring_ready)",
+    find(r, "bridge").data == "{sip_invite_domain=acme.voxra.uk,ignore_early_media=ring_ready}" .. fmc_contact, r)
+
+local app_only = {}
+for k, v in pairs(complete_fwd) do app_only[k] = v end
+app_only.ring_target = "app"
+local app_contact = "sofia/webrtc/sip:200@10.0.0.8:7443;transport=wss;device=app"
+r = run({ user_data = app_only, contacts = app_contact, bridge_answers = true,
+    vars = { caller_destination = "+441162987910" } })
+check("app-only ring: early media left alone (no FMC leg)",
+    find(r, "bridge") and not find(r, "bridge").data:match("ignore_early_media"), r)
 
 print(string.format("\n%d passed, %d failed", passed, failures))
 os.exit(failures == 0 and 0 or 1)

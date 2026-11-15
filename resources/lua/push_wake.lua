@@ -508,8 +508,10 @@ local owner_confirm = api_value("user_data " .. aor .. " var voxra_owner_confirm
 
 local contacts = get_contacts()
 local matched = {}
+local has_fmc_leg = false
 for _, c in ipairs(contacts) do
     if ring_target == "both" or c.class == ring_target then
+        if c.class == "fmc" then has_fmc_leg = true end
         if owner_confirm and c.class == "fmc" then
             table.insert(matched, OWNER_CONFIRM_LEG_VARS .. c.dial)
         else
@@ -611,6 +613,18 @@ session:execute("set", "hangup_after_bridge=true")
 -- leg's early media or the prompt, until the owner has pressed 1.
 if owner_confirm then
     table.insert(b_leg_vars, 1, "ignore_early_media=true")
+elseif has_fmc_leg then
+    -- The SIM leg's carrier (Transatel) answers our INVITE with a 183 + SDP
+    -- while it pages the handset, sends NO audio on it, then sends 180
+    -- Ringing. Passing that 183 through puts the caller into silent early
+    -- media, and FreeSWITCH then drops the 180 because the caller is already
+    -- pre-answered — so the caller hears nothing until the SIM answers
+    -- (homer: 15 Nov 2026 call 07477021770 → 07970030010, first carrier RTP
+    -- 0.3s before the 200). ring_ready turns the leg's early media into a
+    -- 180 towards the caller, whose network then plays its own ringing tone.
+    -- An unreachable SIM's carrier announcement is lost, but that call fails
+    -- over (voicemail / forward / AI) anyway.
+    table.insert(b_leg_vars, 1, "ignore_early_media=ring_ready")
 end
 local bridge_vars = string.format("{sip_invite_domain=%s}", domain_name)
 if #b_leg_vars > 0 then
