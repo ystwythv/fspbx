@@ -97,7 +97,7 @@ class ReceptionAgentToolDefinitions
                 // voxragtm#194: the visit address (house number + street) and
                 // an email for the booking confirmation. voxraweb checks the
                 // postcode against the service area and returns out_of_area.
-                'description' => 'Record who is calling and what they need — use this as you qualify a new caller. Capture their name, the job/enquiry, their postcode (and, for a job at their address, the house number or name and street) and how urgent it is. Safe to call more than once as you learn more; it updates the same lead. If the result has out_of_area true, the postcode is outside the area the business covers: say its `say` line politely and don\'t book or promise a visit. If the number has rung before, the result says so (returning_caller); what they last wanted is only included once the name the caller gave matches the name on file — the number may be a shared phone.',
+                'description' => 'Record who is calling and what they need — use this as you qualify a new caller. Capture their name, the job/enquiry, their postcode (and, for a job at their address, the house number or name and street) and how urgent it is. Safe to call more than once as you learn more; it updates the same lead. If the result has out_of_area true, the postcode is outside the area the business covers: say its `say` line politely and don\'t book or promise a visit. If it has postcode_invalid or callback_number_invalid, what you heard isn\'t a valid postcode / whole phone number: ask again (its `say` line) and never tell the caller you\'ve noted it. If the number has rung before, the result says so (returning_caller); what they last wanted is only included once the name the caller gave matches the name on file — the number may be a shared phone.',
                 'properties' => [
                     'name' => ['type' => 'string', 'description' => "Caller's name"],
                     'caller_number' => ['type' => 'string', 'description' => "Caller's phone number (ask if not already known)"],
@@ -115,7 +115,9 @@ class ReceptionAgentToolDefinitions
             ],
             [
                 'name' => 'check_availability',
-                'description' => 'Check which appointment slots are free on a given day before offering times to the caller. Returns available slots within business hours.',
+                // Call review (Nov 2026): when the day has nothing free,
+                // voxraweb looks ahead and returns next_available.
+                'description' => 'Check which appointment slots are free on a given day before offering times to the caller. Returns available slots within business hours. If that day has nothing free it also returns next_available: the earliest free times on the following days — offer those.',
                 'properties' => [
                     // Only phrasings voxraweb's date parser handles (voxragtm#175).
                     'date' => ['type' => 'string', 'description' => 'The day to check: "today", "tomorrow", a weekday ("Tuesday", "this Tuesday", "next Tuesday") or a date as YYYY-MM-DD ("2026-07-03")'],
@@ -134,7 +136,7 @@ class ReceptionAgentToolDefinitions
                 // voxragtm#194: voxraweb refuses a visit without the address
                 // (needs) or outside the service area (out_of_area), and texts
                 // the caller a confirmation (confirmation_instruction).
-                'description' => 'Book the job into the diary once the caller has agreed a time. Only book a time you have confirmed is free with check_availability. For a job at the caller\'s address, pass address_line1 and postcode — read the address back to them first. If it returns ok false with needs, ask for what it names and try again; with out_of_area, say its `say` line and don\'t book or promise anything. On success, say what confirmation_instruction tells you (usually "I\'ll text you a confirmation").',
+                'description' => 'Book the job into the diary once the caller has agreed a time. Only book a time you have confirmed is free with check_availability. For a job at the caller\'s address, pass address_line1 and postcode — read the address back to them first. If it returns ok false with needs, ask for what it names and try again (needs date_confirmation: read the date back as its `say` line and, once they confirm, call again with date_confirmed true); with out_of_area, say its `say` line and don\'t book or promise anything; with postcode_invalid, ask for the postcode again. On success, say what confirmation_instruction tells you (usually "I\'ll text you a confirmation").',
                 'properties' => [
                     'starts_at' => ['type' => 'string', 'description' => 'Start date & time, e.g. "2026-07-03 09:30" or ISO 8601'],
                     'service' => ['type' => 'string', 'description' => 'What is being booked (e.g. "boiler repair", "cut & colour")'],
@@ -146,6 +148,10 @@ class ReceptionAgentToolDefinitions
                     'customer_name' => ['type' => 'string', 'description' => "Customer's name (defaults to the captured lead)"],
                     'customer_number' => ['type' => 'string', 'description' => "Customer's phone number (defaults to the captured lead)"],
                     'deposit_amount' => ['type' => 'number', 'description' => 'Holding deposit taken, if any'],
+                    // Call review (Nov 2026): a booking more than ~60 days out
+                    // comes back needs date_confirmation until the caller has
+                    // confirmed the date read back to them. Optional, additive.
+                    'date_confirmed' => ['type' => 'boolean', 'description' => 'true once you have read the date back to the caller (weekday, date, and year if not this year) and they clearly said yes — needed for a date months away'],
                 ],
                 'required' => ['starts_at', 'service'],
                 // Several sequential writes (booking, calendar, reminders).

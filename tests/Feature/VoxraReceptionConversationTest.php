@@ -212,4 +212,40 @@ class VoxraReceptionConversationTest extends TestCase
         // QA line.visit_booking: the agent called "Jo Taylor" "Sarah".
         $this->assertStringContainsString('never make one up', $p);
     }
+
+    /**
+     * Call review (Nov 2026): callers asked for the owner by name and heard
+     * "he"/"she"; invalid numbers and postcodes were accepted; a garbled date
+     * was booked 3½ months out; coverage was the model's own guess; a caller
+     * who asked for the owner about a complaint only had a message taken.
+     */
+    public function test_prompt_covers_the_call_review_rules(): void
+    {
+        $p = ProvisionTenantController::RECEPTION_SYSTEM_PROMPT;
+
+        $this->assertStringContainsString('## The owner (call review, Nov 2026)', $p);
+        $this->assertStringContainsString('"he" or "she"', $p);
+        $this->assertStringContainsString('## Numbers, postcodes and dates (call review, Nov 2026)', $p);
+        $this->assertStringContainsString('callback_number_invalid', $p);
+        $this->assertStringContainsString('postcode_invalid', $p);
+        $this->assertStringContainsString('date_confirmation', $p);
+        $this->assertStringContainsString('only a tool result', $p);
+        $this->assertStringContainsString('next_available', $p);
+        $this->assertStringContainsString('a complaint', $p);
+        $this->assertStringContainsString("don't only take a message", $p);
+        // The new sections sit before the disclosure section, which stays last.
+        $this->assertLessThan(strpos($p, '## AI disclosure and call recording'), strpos($p, '## Numbers, postcodes and dates'));
+    }
+
+    public function test_book_appointment_takes_an_optional_date_confirmed_flag(): void
+    {
+        $tools = collect(ReceptionAgentToolDefinitions::list([], ReceptionAgentToolDefinitions::VOXRA_RECEPTION_TOOLS))->keyBy('name');
+
+        $book = $tools['book_appointment'];
+        $this->assertSame('boolean', $book['properties']['date_confirmed']['type']);
+        $this->assertSame(['starts_at', 'service'], $book['required']);
+        $this->assertStringContainsString('date_confirmation', $book['description']);
+        $this->assertStringContainsString('next_available', $tools['check_availability']['description']);
+        $this->assertStringContainsString('postcode_invalid', $tools['capture_lead']['description']);
+    }
 }
