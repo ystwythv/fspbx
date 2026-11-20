@@ -79,7 +79,12 @@ class ReceptionAgentToolDefinitions
                 'properties' => [
                     'caller_name' => ['type' => 'string', 'description' => "Caller's name (leave out if they won't give it)"],
                     'caller_declined_name' => ['type' => 'boolean', 'description' => 'true when the caller refuses to give a name — the owner is alerted with their number and the problem'],
-                    'callback_number' => ['type' => 'string', 'description' => 'Number the owner should call back on — the number they are calling from unless they give another'],
+                    // A caller said "yes, this number" and the model, with no number
+                    // to pass, filled this required field with 07700 900123; the
+                    // caller was told the owner would ring them on it (Ecohights,
+                    // 19 Nov 2026). "same" is what it passes now; voxraweb then
+                    // uses the caller ID.
+                    'callback_number' => ['type' => 'string', 'description' => 'The digits of a different number the caller SAID to call them back on. If they confirmed the number they are calling from, or gave no number, pass exactly "same". Never make a number up.'],
                     'problem' => ['type' => 'string', 'description' => 'What has happened / what they need, in a sentence'],
                     'urgency' => ['type' => 'string', 'enum' => ['emergency', 'urgent'], 'description' => 'emergency = risk to health/safety or damage happening now; otherwise urgent'],
                 ],
