@@ -275,6 +275,32 @@ class ReceptionAgentToolDefinitions
                 ],
                 'required' => ['amount_pounds', 'description'],
             ],
+            // Takeaways (voxragtm#275): text the shop's own online ordering
+            // link, or take a phone order and send it to the shop as a
+            // ticket. Only in the allowlist for a domain provisioned with
+            // sector_tools=takeaway (see allowlistFor / TAKEAWAY_TOOLS).
+            [
+                'name' => 'send_order_link',
+                'description' => 'Text the caller the shop\'s own online ordering link (full menu and prices). Offer it first when someone wants to order; use it when they agree. Say its `say` line.',
+                'properties' => [],
+                'required' => [],
+            ],
+            [
+                'name' => 'take_order',
+                'description' => 'Send a phone order to the shop as a ticket, and text the caller a confirmation. Only after you have read the whole order back and the caller has agreed it. For delivery you need the house number or name, street and postcode. Say its `say` line; if it returns ok false, do what its message says.',
+                'properties' => [
+                    'items' => ['type' => 'string', 'description' => 'Every item exactly as the caller said it, one per line, with quantity, size and options, e.g. "2 x large margherita\n1 x garlic bread, no cheese"'],
+                    'fulfilment' => ['type' => 'string', 'enum' => ['collection', 'delivery'], 'description' => 'Collection or delivery'],
+                    'name' => ['type' => 'string', 'description' => "The caller's name"],
+                    'address_line1' => ['type' => 'string', 'description' => 'Delivery only: house number or name and street'],
+                    'postcode' => ['type' => 'string', 'description' => 'Delivery only: the postcode'],
+                    'when' => ['type' => 'string', 'description' => 'When they want it, if not as soon as possible, e.g. "8pm"'],
+                    'allergies' => ['type' => 'string', 'description' => 'Any food allergy in the order, in their words, or "none"'],
+                    'notes' => ['type' => 'string', 'description' => 'Anything else for the shop, e.g. "ring the bell twice"'],
+                ],
+                'required' => ['items', 'fulfilment', 'allergies'],
+                'timeout_ms' => 10000,
+            ],
             // Estate and letting agents (voxragtm#256/#257): the agency's
             // listings, details packs, offers and viewing feedback. Only in
             // the allowlist for a domain provisioned with
@@ -362,7 +388,7 @@ class ReceptionAgentToolDefinitions
             // agent's receptionist): an unrestricted *9 summon assistant
             // keeps exactly the set it had before they existed.
             fn ($t) => ($enabled[$t['name']] ?? true) && ($allow === null
-                ? ! in_array($t['name'], self::PROPERTY_TOOLS, true)
+                ? ! in_array($t['name'], array_merge(self::PROPERTY_TOOLS, self::TAKEAWAY_TOOLS), true)
                 : in_array($t['name'], $allow, true))
         ));
     }
@@ -400,8 +426,15 @@ class ReceptionAgentToolDefinitions
         'find_property', 'send_property_details', 'record_offer', 'record_viewing_feedback',
     ];
 
+    /**
+     * Takeaways' extra tools (voxragtm#275), served by voxraweb. Added to the
+     * allowlist only for a domain provisioned with sector_tools=takeaway.
+     */
+    public const TAKEAWAY_TOOLS = ['send_order_link', 'take_order'];
+
     /** Provision input sector_tools: the business type's extra tool set. */
     public const SECTOR_TOOLS_ESTATE_AGENT = 'estate_agent';
+    public const SECTOR_TOOLS_TAKEAWAY = 'takeaway';
     public const SECTOR_TOOLS_NONE = 'none';
 
     /**
@@ -410,10 +443,10 @@ class ReceptionAgentToolDefinitions
      */
     public static function resolveSectorTools(?string $requested, array $previous): string
     {
-        $known = [self::SECTOR_TOOLS_ESTATE_AGENT, self::SECTOR_TOOLS_NONE];
+        $known = [self::SECTOR_TOOLS_ESTATE_AGENT, self::SECTOR_TOOLS_TAKEAWAY, self::SECTOR_TOOLS_NONE];
         $value = in_array($requested, $known, true) ? $requested : ($previous['sector_tools'] ?? null);
 
-        return $value === self::SECTOR_TOOLS_ESTATE_AGENT ? self::SECTOR_TOOLS_ESTATE_AGENT : self::SECTOR_TOOLS_NONE;
+        return in_array($value, [self::SECTOR_TOOLS_ESTATE_AGENT, self::SECTOR_TOOLS_TAKEAWAY], true) ? $value : self::SECTOR_TOOLS_NONE;
     }
 
     /**
@@ -432,9 +465,11 @@ class ReceptionAgentToolDefinitions
         }
         $sector = VoxraRoutingState::load($agent->domain_uuid)['sector_tools'] ?? null;
 
-        return $sector === self::SECTOR_TOOLS_ESTATE_AGENT
-            ? array_merge(self::VOXRA_RECEPTION_TOOLS, self::PROPERTY_TOOLS)
-            : self::VOXRA_RECEPTION_TOOLS;
+        return match ($sector) {
+            self::SECTOR_TOOLS_ESTATE_AGENT => array_merge(self::VOXRA_RECEPTION_TOOLS, self::PROPERTY_TOOLS),
+            self::SECTOR_TOOLS_TAKEAWAY => array_merge(self::VOXRA_RECEPTION_TOOLS, self::TAKEAWAY_TOOLS),
+            default => self::VOXRA_RECEPTION_TOOLS,
+        };
     }
 
     /** list() for this agent: its tools_enabled toggles + allowlistFor(). */
