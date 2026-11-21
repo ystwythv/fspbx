@@ -489,6 +489,8 @@ class ReceptionAgentToolDefinitions
         'recall_caller', 'remember_about_caller', 'remember', 'recall_business', 'record_summary', 'search_memory',
         'send_payment_link', 'lookup_business_info', 'report_abuse',
         'find_property', 'send_property_details', 'record_offer', 'record_viewing_feedback',
+        // Takeaways (voxragtm#275).
+        'send_order_link', 'take_order',
     ];
 
     public static function isDataTool(string $name): bool
