@@ -291,6 +291,25 @@ class VoxraReceptionToolAllowlistTest extends TestCase
         }
     }
 
+    public function test_a_takeaway_gets_the_order_tools_and_no_one_else_does(): void
+    {
+        $this->withRoutingState(['mode' => VoxraRoutingState::MODE_PRO, 'sector_tools' => 'takeaway']);
+        $tools = $this->syncedTools($this->agent(self::VOXRA_DOMAIN));
+        $takeaway = ['send_order_link', 'take_order'];
+
+        $this->assertSame(array_merge(self::RECEPTION_WEBHOOK_TOOLS, $takeaway, ['transfer', 'hangup']), $this->names($tools));
+        $this->assertEmpty(array_intersect(self::PROPERTY_TOOLS, $this->names($tools)));
+        foreach ($tools as $t) {
+            if ($t['type'] === 'webhook' && in_array($t['webhook']['name'], $takeaway, true)) {
+                $this->assertSame('https://voxra.test/api/agent/tool', $t['webhook']['url'], $t['webhook']['name']);
+            }
+        }
+        $this->assertSame($takeaway, ReceptionAgentToolDefinitions::TAKEAWAY_TOOLS);
+        $defs = collect(ReceptionAgentToolDefinitions::list([], $takeaway))->keyBy('name');
+        $this->assertSame(['items', 'fulfilment', 'allergies'], $defs['take_order']['required']);
+        $this->assertEmpty(array_intersect($takeaway, $this->names($this->syncedTools($this->agent(self::PBX_DOMAIN)))));
+    }
+
     public function test_summon_agents_never_get_the_property_tools(): void
     {
         $names = $this->names($this->syncedTools($this->agent(self::PBX_DOMAIN)));
@@ -346,6 +365,8 @@ class VoxraReceptionToolAllowlistTest extends TestCase
         // Unknown → the stored choice (never fails the provision call).
         $this->assertSame('estate_agent', $r('plumber', ['sector_tools' => 'estate_agent']));
         $this->assertSame('none', $r('plumber', []));
+        $this->assertSame('takeaway', $r('takeaway', []));
+        $this->assertSame('takeaway', $r(null, ['sector_tools' => 'takeaway']));
     }
 
     public function test_prompt_follows_sector_rules_from_the_caller_context(): void
